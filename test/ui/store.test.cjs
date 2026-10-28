@@ -264,6 +264,37 @@ function mockStore(options = {}) {
                 };
               if (k === 'chooseInstallRoot') return { root: 'E:\\Games', free: 100 * 1024 ** 3 };
               if (k === 'startInstall') return { result: { how: 'started' }, state };
+              if (k === 'storageInfo')
+                return {
+                  checkedAt: Date.now(),
+                  drives: [
+                    {
+                      root: 'D:\\',
+                      total: 1000 * 1024 ** 3,
+                      free: 300 * 1024 ** 3,
+                      gamesSize: 100 * 1024 ** 3,
+                      other: 600 * 1024 ** 3,
+                      games: [
+                        {
+                          id: 'epic:Salt',
+                          name: 'Slay the Spire',
+                          provider: 'epic',
+                          dir: 'D:\\Games\\Salt',
+                          size: 60 * 1024 ** 3,
+                        },
+                        {
+                          id: 'steam:1145360',
+                          name: 'Hades',
+                          provider: 'steam',
+                          dir: 'D:\\Steam\\Hades',
+                          size: 40 * 1024 ** 3,
+                        },
+                      ],
+                    },
+                  ],
+                };
+              if (k === 'openGameFolder' || k === 'moveGame')
+                return k === 'moveGame' ? { result: { how: 'moving', to: 'E:\\Salt' }, state } : true;
               if (k === 'friends')
                 return {
                   steam: [
@@ -808,6 +839,49 @@ test(
       await p.waitForFunction(() => !document.querySelector('#install-dialog')?.open);
       const sent = await p.evaluate(() => window.__calls.filter(c => c[0] === 'startInstall').map(c => c[1]));
       assert.deepEqual(sent, [{ id: 'epic:Salt', root: 'E:\\Games', tags: ['hd'], dlcs: ['SaltDlc'] }]);
+      assert.deepEqual(errors, []);
+    } finally {
+      await browser.close();
+    }
+  }
+);
+
+test(
+  '"Хранилище": drives, games by size, open folder / move / uninstall',
+  { skip: !chromium && 'playwright is not installed' },
+  async () => {
+    const browser = await chromium.launch();
+    try {
+      const p = await browser.newPage({ viewport: { width: 1440, height: 940 } });
+      const errors = [];
+      p.on('pageerror', e => errors.push(e.message));
+      await p.addInitScript(mockStore, { library: true });
+      await p.goto(page);
+      await p.waitForSelector('#showcase-block');
+      await p.evaluate(() => setPage('storage'));
+      await p.waitForSelector('.drive');
+      const text = await p.locator('#content').textContent();
+      assert.match(text, /Диск D:\\/);
+      assert.match(text, /Свободно 300 ГБ из 1\s?000 ГБ/);
+      assert.deepEqual(await p.locator('.storage-name strong').allTextContents(), [
+        'Slay the Spire',
+        'Hades',
+      ]);
+      assert.equal(await p.locator('.storage-row').first().locator('[data-move-game]').count(), 1);
+      assert.equal(
+        await p.locator('.storage-row').nth(1).locator('[data-move-game]').count(),
+        0,
+        'Steam moves its games itself'
+      );
+      await p.locator('.storage-row').first().locator('[data-open-folder]').click();
+      await p.locator('.storage-row').first().locator('[data-move-game]').click();
+      const calls = await p.evaluate(() =>
+        window.__calls.filter(c => ['openGameFolder', 'moveGame'].includes(c[0]))
+      );
+      assert.deepEqual(calls, [
+        ['openGameFolder', 'D:\\Games\\Salt'],
+        ['moveGame', 'epic:Salt'],
+      ]);
       assert.deepEqual(errors, []);
     } finally {
       await browser.close();

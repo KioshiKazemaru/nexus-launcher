@@ -1350,6 +1350,42 @@ function downloadsPage() {
       : '<div class="empty"><h2>Нет активных загрузок</h2><p>Когда Steam или Epic Games начнут устанавливать или обновлять игру, она появится здесь.</p></div>'
   }`;
 }
+// ---- "Хранилище": drives and the games on them ----------------------------------------
+let storageState = { loading: false, data: null, error: '' };
+async function loadStorage() {
+  if (!api?.storageInfo || demo || storageState.loading) return;
+  storageState = { ...storageState, loading: true };
+  try {
+    storageState = { loading: false, data: await call('storageInfo'), error: '' };
+  } catch (e) {
+    storageState = { ...storageState, loading: false, error: e.message };
+  }
+  if (page === 'storage') render();
+}
+function storageRow(x) {
+  const busy = x.busy || !!state.progress?.[x.id];
+  return `<div class="storage-row"><button class="storage-name" data-detail="${esc(x.id)}"><strong>${esc(x.name)}</strong><small>${esc(x.dir)}</small></button><span class="pill ${x.provider === 'steam' ? 'blue' : ''}">${names[x.provider] || ''}</span><span class="storage-size">${x.size ? bytesText(x.size) : '—'}</span><span class="storage-actions"><button class="secondary" data-open-folder="${esc(x.dir)}" title="Открыть папку">📁</button>${x.provider === 'epic' && !busy ? `<button class="secondary" data-move-game="${esc(x.id)}">Переместить</button>` : ''}${x.provider !== 'custom' && !busy ? `<button class="secondary" data-uninstall="${esc(x.provider)}" data-game-id="${esc(x.id)}">Удалить</button>` : ''}</span></div>`;
+}
+function storagePage() {
+  if (!storageState.data && !storageState.loading && !storageState.error) loadStorage();
+  const drives = storageState.data?.drives || [];
+  const pct = (n, total) => (total ? Math.max(0, Math.min(100, (n / total) * 100)).toFixed(2) : 0);
+  const body = !storageState.data
+    ? `<div class="empty"><h2>${storageState.error ? esc(storageState.error) : 'Считаем место на дисках…'}</h2></div>`
+    : drives.length
+      ? drives
+          .map(
+            d =>
+              `<section class="drive"><div class="drive-head"><h2>Диск ${esc(d.root)}</h2><span>Свободно <strong>${bytesText(d.free)}</strong> из ${bytesText(d.total)}</span></div><div class="drive-bar" title="Игры: ${bytesText(d.gamesSize)} · другое: ${bytesText(d.other)} · свободно: ${bytesText(d.free)}"><i class="games" style="width:${pct(d.gamesSize, d.total)}%"></i><i class="other" style="width:${pct(d.other, d.total)}%"></i></div><div class="drive-legend"><span><i class="games"></i>Игры ${bytesText(d.gamesSize)}</span><span><i class="other"></i>Другое ${bytesText(d.other)}</span><span><i class="free"></i>Свободно ${bytesText(d.free)}</span></div>${
+                d.games.length
+                  ? `<div class="storage-list">${d.games.map(storageRow).join('')}</div>`
+                  : '<p class="hint">Игр на этом диске нет.</p>'
+              }</section>`
+          )
+          .join('')
+      : '<div class="empty"><h2>Установленных игр нет</h2></div>';
+  return `${notice()}<div class="section-head"><h1>Хранилище</h1><button class="secondary" id="storage-refresh" ${storageState.loading ? 'disabled' : ''}>↻ Обновить</button></div><p class="subheading">Сколько места занимают игры на каждом диске. Размеры — из данных Steam и Epic.</p>${body}`;
+}
 // Install / uninstall / verify through the official client.
 function clientButtons(o) {
   if (!o || o.provider === 'custom' || demo) return '';
@@ -1837,6 +1873,7 @@ function render() {
           favorites: 'КОЛЛЕКЦИЯ <span>/ ИЗБРАННОЕ</span>',
           recent: 'БИБЛИОТЕКА <span>/ НЕДАВНИЕ</span>',
           downloads: 'БИБЛИОТЕКА <span>/ ЗАГРУЗКИ</span>',
+          storage: 'БИБЛИОТЕКА <span>/ ХРАНИЛИЩЕ</span>',
           tracking: 'МАГАЗИН <span>/ СКИДКИ</span>',
           accounts: 'NEXUS <span>/ НАСТРОЙКИ</span>',
         }[page];
@@ -1852,13 +1889,15 @@ function render() {
       ? store()
       : page === 'downloads'
         ? downloadsPage()
-        : page === 'accounts'
-          ? accounts() + epicImportPanel()
-          : page === 'tracking'
-            ? tracking()
-            : librarySelection && page === 'library'
-              ? libraryGamePage()
-              : library();
+        : page === 'storage'
+          ? storagePage()
+          : page === 'accounts'
+            ? accounts() + epicImportPanel()
+            : page === 'tracking'
+              ? tracking()
+              : librarySelection && page === 'library'
+                ? libraryGamePage()
+                : library();
   $('#footer-status').textContent =
     state.warnings[0] || 'Steam в приоритете · покупка в официальном магазине';
   renderDownloads();
@@ -2138,6 +2177,24 @@ document.addEventListener('click', event =>
       );
       return;
     }
+    if (el.dataset.openFolder) {
+      await call('openGameFolder', el.dataset.openFolder);
+      return;
+    }
+    if (el.dataset.moveGame) {
+      el.disabled = true;
+      const r = await call('moveGame', el.dataset.moveGame);
+      state = r.state;
+      storageState.data = null;
+      render();
+      if (r.result.how === 'moving') toast(`Переносим игру в ${r.result.to}…`);
+      return;
+    }
+    if (el.id === 'storage-refresh') {
+      storageState.data = null;
+      render();
+      return;
+    }
     if (el.id === 'library-move') {
       el.disabled = true;
       const r = await call('moveGame', librarySelection);
@@ -2269,7 +2326,11 @@ document.addEventListener('click', event =>
     }
     if (el.dataset.uninstall) {
       el.disabled = true;
-      const r = await call('uninstallGame', { id: librarySelection, provider: el.dataset.uninstall });
+      const r = await call('uninstallGame', {
+        id: el.dataset.gameId || librarySelection,
+        provider: el.dataset.uninstall,
+      });
+      storageState.data = null;
       state = r.state;
       render();
       const res = r.result;

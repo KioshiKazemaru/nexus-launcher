@@ -45,6 +45,7 @@ const { SocialWindows } = require('./main/social.cjs');
 const { ChatService } = require('./main/chat.cjs');
 const { EpicInstaller } = require('./main/epic-install.cjs');
 const { SteamInstaller } = require('./main/steam-install.cjs');
+const { DiskInfo } = require('./main/disk.cjs');
 const { FriendsService } = require('./main/friends.cjs');
 const { ArtworkCache } = require('./artwork.cjs');
 const { ownedOffers } = require('./ownership.cjs');
@@ -541,6 +542,15 @@ function registerIpc() {
     return { result, state: ctx.hub.reply() };
   });
   register('gameDlcs', v => ctx.epicInstall.dlcs(gameId(v)), { quiet: true });
+  // "Хранилище": drives, free space, games by size.
+  register('storageInfo', () => ctx.disk.info(), { quiet: true });
+  register('openGameFolder', dir => {
+    if (!ctx.disk.allowed(dir)) throw Error('Это не папка установленной игры');
+    return shell.openPath(String(dir)).then(err => {
+      if (err) throw Error(err);
+      return true;
+    });
+  });
   // A game already on disk; moving an installed game.
   register('importGame', async v => ({
     result: await ctx.epicInstall.importFolder(gameId(v)),
@@ -769,6 +779,7 @@ async function start() {
   ctx.uninstall = new Uninstaller(ctx);
   ctx.epicInstall = new EpicInstaller(ctx);
   ctx.steamInstall = new SteamInstaller(ctx);
+  ctx.disk = new DiskInfo(ctx);
   ctx.friends = new FriendsService(ctx);
   ctx.social = new SocialWindows(ctx, { icon });
   ctx.chat = new ChatService(ctx);

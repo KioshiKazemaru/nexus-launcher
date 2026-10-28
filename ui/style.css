@@ -4686,3 +4686,99 @@ button.link:hover {
 .install-import {
   margin-top: 14px;
 }
+.drive {
+  margin: 18px 0 26px;
+}
+.drive-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.drive-head h2 {
+  margin: 0;
+  font-weight: 500;
+}
+.drive-head span {
+  color: #8b929a;
+}
+.drive-head strong {
+  color: #dcdedf;
+}
+.drive-bar {
+  display: flex;
+  height: 14px;
+  margin: 10px 0 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: #3d4450;
+}
+.drive-bar i,
+.drive-legend i {
+  display: block;
+}
+.drive-bar .games,
+.drive-legend .games {
+  background: #1a9fff;
+}
+.drive-bar .other,
+.drive-legend .other {
+  background: #6b7280;
+}
+.drive-legend .free {
+  background: #3d4450;
+}
+.drive-legend {
+  display: flex;
+  gap: 18px;
+  color: #8b929a;
+  font-size: 12px;
+}
+.drive-legend span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.drive-legend i {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+.storage-list {
+  margin-top: 10px;
+  border-top: 1px solid #2f333b;
+}
+.storage-row {
+  display: grid;
+  grid-template-columns: 1fr auto 90px auto;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 4px;
+  border-bottom: 1px solid #2f333b;
+}
+.storage-name {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  background: none;
+  border: 0;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.storage-name small {
+  color: #8b929a;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.storage-size {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.storage-actions {
+  display: flex;
+  gap: 6px;
+}

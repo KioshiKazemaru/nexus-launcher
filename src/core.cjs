@@ -306,6 +306,8 @@ async function scanSteam(roots) {
             source: 'local',
             licenseUnknown: true,
             lastPlayed: Number(v.LastPlayed) || 0,
+            // Size on disk as Steam counts it (the "Хранилище" page).
+            sizeOnDisk: Number(v.SizeOnDisk) || 0,
             // The manifest Steam keeps for the installed game (removed on uninstall).
             manifestFile: path.join(root, 'steamapps', file),
             // Folder of the game: its processes run from here (see main/running.cjs).
@@ -355,6 +357,7 @@ async function scanEpic(manifestDir, installedDat) {
           licenseUnknown: true,
           // What the game needs to start without the Epic launcher (see main/epic-play.cjs).
           installLocation: v.InstallLocation,
+          installSize: Number(v.InstallSize) || 0,
           manifestFile: path.join(manifestDir, file),
           executable: typeof v.LaunchExecutable === 'string' ? v.LaunchExecutable : '',
           launchCommand: typeof v.LaunchCommand === 'string' ? v.LaunchCommand : '',
