@@ -76,7 +76,7 @@ test('Steam friends from the Steam Community page (fallback)', () => {
 test('Epic friends: ids and names only (no status for other programs)', () => {
   const id = 'a'.repeat(32);
   assert.deepEqual(f.parseEpicFriendIds({ friends: [{ accountId: id }, { accountId: 'nope' }] }), [id]);
-  assert.equal(f.parseEpicAccounts([{ id, displayName: 'Kioshi' }]).get(id), 'Kioshi');
+  assert.equal(f.parseEpicAccounts([{ id, displayName: 'SteamPlayer' }]).get(id), 'SteamPlayer');
   assert.throws(() => f.parseEpicFriendIds({}), /Epic/);
 });
 

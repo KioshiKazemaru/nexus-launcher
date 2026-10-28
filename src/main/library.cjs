@@ -88,7 +88,9 @@ class LibraryService {
   // ---- local scan -------------------------------------------------------
 
   async discoverSteam() {
-    if (process.platform !== 'win32') return [this.ctx.settings.steamRoot].filter(Boolean);
+    // Tests set NEXUS_NO_SYSTEM_SCAN: only the chosen folder, never the PC's real Steam.
+    if (process.platform !== 'win32' || process.env.NEXUS_NO_SYSTEM_SCAN)
+      return [this.ctx.settings.steamRoot].filter(Boolean);
     const roots = [
       this.ctx.settings.steamRoot,
       path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Steam'),

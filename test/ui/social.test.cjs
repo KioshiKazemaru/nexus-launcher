@@ -31,7 +31,7 @@ function mockSocial() {
   const friends = {
     steam: [
       {
-        account: { key: 'steam:0', id: '76561198000000010', name: 'Kioshi' },
+        account: { key: 'steam:0', id: '76561198000000010', name: 'SteamPlayer' },
         friends: [
           friend('76561198000000001', 'Alpha', 'ingame', 'Dota 2', 2),
           friend('76561198000000002', 'Beta', 'online'),
@@ -41,7 +41,7 @@ function mockSocial() {
     ],
     epic: [
       {
-        account: { key: 'epic:a', id: 'a'.repeat(32), name: 'Kioshi1337' },
+        account: { key: 'epic:a', id: 'a'.repeat(32), name: 'EpicPlayer' },
         friends: [
           {
             id: 'e'.repeat(32),
@@ -58,8 +58,8 @@ function mockSocial() {
     errors: [],
     epicLive: true,
     me: [
-      { provider: 'steam', name: 'Kioshi', avatar: '', playing: 'Hades' },
-      { provider: 'epic', name: 'Kioshi1337', avatar: '', playing: '' },
+      { provider: 'steam', name: 'SteamPlayer', avatar: '', playing: 'Hades' },
+      { provider: 'epic', name: 'EpicPlayer', avatar: '', playing: '' },
     ],
     unread: {},
     checkedAt: Date.now(),

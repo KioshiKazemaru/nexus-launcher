@@ -189,6 +189,9 @@ let mainWindow, call, uiUrl;
 test.before(async () => {
   process.argv.push('--dev-linux');
   process.env.NEXUS_TEST = '1';
+  // Isolated from the PC: no real Steam folders and no real Epic installs.
+  process.env.NEXUS_NO_SYSTEM_SCAN = '1';
+  process.env.ProgramData = path.join(T.dir, 'ProgramData');
   require('../../src/main.cjs');
   for (let i = 0; i < 100 && !T.handlers.size; i++) await wait(20);
   mainWindow = T.windows.find(w => w.options?.webPreferences?.preload);

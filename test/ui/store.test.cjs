@@ -104,12 +104,15 @@ function mockStore(options = {}) {
       hidden: [],
     },
     accounts: options.friends
-      ? { steam: { status: 'connected', name: 'Kioshi' }, epic: { status: 'connected', name: 'Kioshi1337' } }
+      ? {
+          steam: { status: 'connected', name: 'SteamPlayer' },
+          epic: { status: 'connected', name: 'EpicPlayer' },
+        }
       : { steam: { status: 'signedOut' }, epic: { status: 'signedOut' } },
     accountList: options.friends
       ? [
-          { key: 'steam:0', provider: 'steam', status: 'connected', name: 'Kioshi' },
-          { key: 'epic:' + 'a'.repeat(32), provider: 'epic', status: 'connected', name: 'Kioshi1337' },
+          { key: 'steam:0', provider: 'steam', status: 'connected', name: 'SteamPlayer' },
+          { key: 'epic:' + 'a'.repeat(32), provider: 'epic', status: 'connected', name: 'EpicPlayer' },
         ]
       : [],
     // With options.friends: "Game 0" (Steam) is running.
@@ -235,7 +238,7 @@ function mockStore(options = {}) {
                 return {
                   steam: [
                     {
-                      account: { key: 'steam:0', name: 'Kioshi' },
+                      account: { key: 'steam:0', name: 'SteamPlayer' },
                       friends: [
                         {
                           id: '76561198000000001',
@@ -251,7 +254,7 @@ function mockStore(options = {}) {
                   ],
                   epic: [
                     {
-                      account: { key: 'epic:x', name: 'Kioshi1337' },
+                      account: { key: 'epic:x', name: 'EpicPlayer' },
                       friends: [
                         { id: 'b'.repeat(32), name: 'EpicPal', status: 'unknown', game: '', avatar: '' },
                       ],
