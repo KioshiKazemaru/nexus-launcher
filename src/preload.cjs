@@ -1,0 +1,97 @@
+'use strict';
+const { contextBridge, ipcRenderer } = require('electron');
+
+// Every channel here must be registered in main.cjs. Results are unwrapped:
+// { ok: true, data } → data, { ok: false, error } → thrown Error.
+const channels = [
+  'state',
+  'stateUpdate',
+  'scan',
+  'syncLibraries',
+  'importLegendary',
+  'steamImport',
+  'libraryView',
+  'gamePrices',
+  'gameDeals',
+  'watchHistory',
+  'refreshCatalogPrices',
+  'watchPrice',
+  'checkPrices',
+  'removeWatch',
+  'priceTarget',
+  'toggle',
+  'preferred',
+  'remember',
+  'login',
+  'epicCode',
+  'browser',
+  'forget',
+  'buy',
+  'claimFree',
+  'freeGames',
+  'importWishlists',
+  'play',
+  'clientAction',
+  'achievements',
+  'setTrackProcess',
+  'add',
+  'steamRoot',
+  'autoStart',
+  'autoUpdate',
+  'launchSetting',
+  'epicSyncSaves',
+  'openClientDownloads',
+  'closeGame',
+  'uninstallGame',
+  'downloadControl',
+  'checkUpdates',
+  'friends',
+  'openFriendsWindow',
+  'openChat',
+  'socialInfo',
+  'openProfile',
+  'checkUpdate',
+  'installUpdate',
+  'getArtwork',
+  'searchCatalog',
+  'homeCatalog',
+  'browseCatalog',
+  'browseDlc',
+  'recommendations',
+  'refreshAccounts',
+  'country',
+  'linkGames',
+  'splitGame',
+  'setHidden',
+  'createCollection',
+  'deleteCollection',
+  'setInCollection',
+  'importSteamCollections',
+  'exportBackup',
+  'importBackup',
+  'saveDiagnostics',
+  'openLogs',
+  'rendererError',
+  'setKey',
+  'notifyGiveaways',
+  'networkChanged',
+];
+
+const listen = channel => callback => ipcRenderer.on(channel, (_e, value) => callback(value));
+
+contextBridge.exposeInMainWorld('nexus', {
+  onStateChanged: listen('state-changed'),
+  onShowPage: listen('show-page'),
+  onToast: listen('toast'),
+  onSocialEvent: listen('social-event'),
+  ...Object.fromEntries(
+    channels.map(channel => [
+      channel,
+      async payload => {
+        const r = await ipcRenderer.invoke(channel, payload);
+        if (!r.ok) throw Error(r.error);
+        return r.data;
+      },
+    ])
+  ),
+});

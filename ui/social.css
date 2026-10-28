@@ -1,0 +1,470 @@
+/* Friends and chat windows, in the colours of Steam's "Друзья и чат". */
+:root {
+  --bg: #1e2329;
+  --bg-deep: #171a21;
+  --panel: #23262e;
+  --line: #2f333b;
+  --text: #dcdedf;
+  --muted: #8b929a;
+  --online: #6dcff6;
+  --ingame: #90ba3c;
+  --ingame-text: #a3cf06;
+  --offline: #7f8287;
+  --accent: #1a9fff;
+  --danger: #e65c5c;
+  color-scheme: dark;
+}
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  height: 100%;
+}
+body {
+  margin: 0;
+  background: linear-gradient(180deg, var(--bg) 0%, var(--bg-deep) 100%);
+  color: var(--text);
+  font:
+    13px/1.4 'Motiva Sans',
+    'Segoe UI',
+    Arial,
+    sans-serif;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.titlebar {
+  height: 30px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 150px 0 10px;
+  background: #171d25;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  -webkit-app-region: drag;
+  user-select: none;
+}
+.brand-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: linear-gradient(135deg, #1a9fff, #6c5ce7);
+  color: #fff;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+.icon,
+.ghost {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: var(--muted);
+  padding: 4px 8px;
+}
+.icon:hover,
+.ghost:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+.ghost {
+  border-color: var(--line);
+}
+.spin {
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* avatars with the status frame */
+.avatar {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 3px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: #3d4450;
+  color: #fff;
+  font-weight: 600;
+  border: 2px solid var(--offline);
+}
+.avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.avatar.online,
+.avatar.away {
+  border-color: var(--online);
+}
+.avatar.away {
+  opacity: 0.75;
+}
+.avatar.ingame {
+  border-color: var(--ingame);
+}
+.avatar.offline,
+.avatar.unknown {
+  opacity: 0.65;
+}
+.avatar.small {
+  width: 22px;
+  height: 22px;
+  font-size: 11px;
+  border-width: 1px;
+}
+.avatar.big {
+  width: 44px;
+  height: 44px;
+}
+.friend-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.friend-text strong,
+.friend-text small {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.friend-text strong {
+  font-weight: 500;
+}
+.friend-text small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.unread {
+  margin-left: auto;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  text-align: center;
+  line-height: 18px;
+}
+
+/* ---- friends window ---- */
+.me {
+  flex: none;
+  padding: 10px 12px 6px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.15);
+}
+.me-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+}
+.me-row strong {
+  color: var(--online);
+  font-size: 14px;
+}
+.me-row.ingame strong,
+.me-row.ingame small {
+  color: var(--ingame-text);
+}
+.friends-tools {
+  flex: none;
+  display: flex;
+  gap: 6px;
+  padding: 8px 10px;
+}
+.search {
+  flex: 1;
+}
+.search input {
+  width: 100%;
+  background: #2b2f37;
+  border: 1px solid #3a3f48;
+  border-radius: 3px;
+  color: var(--text);
+  padding: 6px 9px;
+  font: inherit;
+}
+.search input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.friends-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 4px 8px;
+}
+.group-head {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 0;
+  padding: 8px 8px 4px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.group-head:hover {
+  color: #fff;
+}
+.friend {
+  display: flex;
+  align-items: center;
+  border-radius: 3px;
+}
+.friend:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+.friend-open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 8px;
+  background: none;
+  border: 0;
+  text-align: left;
+}
+.friend.online strong,
+.friend.away strong {
+  color: var(--online);
+}
+.friend.ingame strong {
+  color: var(--ingame);
+}
+.friend.ingame small {
+  color: var(--ingame-text);
+}
+.friend.offline strong,
+.friend.unknown strong {
+  color: var(--offline);
+}
+.friend .profile {
+  visibility: hidden;
+  font-size: 12px;
+}
+.friend:hover .profile {
+  visibility: visible;
+}
+.empty {
+  color: var(--muted);
+  text-align: center;
+  padding: 30px 16px;
+}
+.note {
+  flex: none;
+  padding: 0 12px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.note p {
+  margin: 6px 0;
+}
+.warning {
+  color: #e5b567;
+}
+
+/* ---- chat window ---- */
+.chat-window .titlebar {
+  padding-right: 140px;
+}
+.tabs {
+  display: flex;
+  gap: 2px;
+  min-width: 0;
+  overflow-x: auto;
+  height: 100%;
+  align-items: flex-end;
+  margin-left: 8px;
+  -webkit-app-region: no-drag;
+  scrollbar-width: none;
+}
+.tab {
+  display: flex;
+  align-items: center;
+  max-width: 190px;
+  height: 26px;
+  border-radius: 4px 4px 0 0;
+  background: #262a32;
+  color: var(--muted);
+  letter-spacing: 0;
+}
+.tab.active {
+  background: var(--bg);
+  color: #fff;
+}
+.tab.has-unread:not(.active) {
+  color: #fff;
+  background: #2c4a63;
+}
+.tab-open {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  background: none;
+  border: 0;
+  padding: 0 4px 0 6px;
+  font-size: 12px;
+}
+.tab-open span:not(.avatar) {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tab-close {
+  background: none;
+  border: 0;
+  color: var(--muted);
+  padding: 0 7px;
+  font-size: 15px;
+}
+.tab-close:hover {
+  color: #fff;
+}
+.chat {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.chat-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.chat-head .friend-text {
+  flex: 1;
+}
+.chat-head strong {
+  font-size: 15px;
+}
+.chat-head small.ingame {
+  color: var(--ingame-text);
+}
+.chat-head small.online,
+.chat-head small.away {
+  color: var(--online);
+}
+.chat-note {
+  margin: 8px 16px 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 16px 12px;
+}
+.day {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0 6px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.day::before,
+.day::after {
+  content: '';
+  flex: 1;
+  border-top: 1px solid var(--line);
+}
+.msg {
+  margin-top: 10px;
+}
+.msg.grouped {
+  margin-top: 2px;
+}
+.msg-head {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+.msg-head strong {
+  color: var(--online);
+  font-weight: 500;
+}
+.msg.mine .msg-head strong {
+  color: #c7d5e0;
+}
+.msg-head time {
+  color: var(--muted);
+  font-size: 11px;
+}
+.msg p {
+  margin: 1px 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.chat-error {
+  margin: 0 16px 6px;
+  color: var(--danger);
+  font-size: 12px;
+}
+.composer {
+  flex: none;
+  display: flex;
+  gap: 8px;
+  padding: 10px 16px 14px;
+  border-top: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.12);
+}
+.composer textarea {
+  flex: 1;
+  resize: none;
+  background: #2b2f37;
+  border: 1px solid #3a3f48;
+  border-radius: 3px;
+  color: var(--text);
+  padding: 8px 10px;
+  font: inherit;
+  max-height: 140px;
+}
+.composer textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.composer button {
+  width: 44px;
+  border: 0;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #06bfff, #2d73ff);
+  color: #fff;
+  font-size: 16px;
+}
+.composer button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.chat-empty {
+  margin: auto;
+  text-align: center;
+  color: var(--muted);
+  padding: 20px;
+}
+.chat-empty h2 {
+  color: var(--text);
+  font-weight: 500;
+}

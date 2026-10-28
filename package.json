@@ -1,0 +1,72 @@
+{
+  "name": "nexus-launcher",
+  "productName": "Nexus Launcher",
+  "version": "0.10.4",
+  "private": true,
+  "description": "Unified Steam and Epic library for Windows",
+  "main": "src/main.cjs",
+  "author": "Nexus",
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --require ./test/helpers/register-electron.cjs --test test/*.test.cjs test/services/*.test.cjs",
+    "test:live": "node --test test/live/*.live.cjs",
+    "lint": "eslint src test ui/app.js ui/friends.js ui/chat.js ui/social-common.js",
+    "format": "prettier --write \"src/**/*.cjs\" \"test/**/*.cjs\" ui/app.js ui/friends.js ui/chat.js ui/social-common.js ui/style.css ui/social.css",
+    "dist": "electron-builder --win nsis --x64 --publish never",
+    "release": "electron-builder --win nsis --x64 --publish always",
+    "pack:win": "electron-builder --win dir --x64 --publish never",
+    "test:ui": "node --test test/ui/*.test.cjs"
+  },
+  "dependencies": {
+    "cheerio": "1.2.0",
+    "electron-updater": "^6.6.2",
+    "steam-user": "5.3.0"
+  },
+  "devDependencies": {
+    "electron": "44.4.5",
+    "electron-builder": "^26.0.12",
+    "eslint": "^9.17.0",
+    "playwright": "^1.49.1",
+    "prettier": "^3.4.2"
+  },
+  "build": {
+    "appId": "nexus.launcher",
+    "productName": "Nexus Launcher",
+    "artifactName": "Nexus-Setup-${version}.${ext}",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "ui/**/*",
+      "package.json",
+      "!**/*.map"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "ui/assets/nexus.ico",
+      "signtoolOptions": {
+        "publisherName": "Nexus",
+        "signingHashAlgorithms": [
+          "sha256"
+        ],
+        "rfc3161TimeStampServer": "http://timestamp.digicert.com"
+      }
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "Nexus"
+    }
+  }
+}

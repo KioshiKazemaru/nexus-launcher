@@ -1,0 +1,7 @@
+node_modules/
+dist/
+*.log
+sessions.bin
+settings.json
+owned-library.json
+integrations.json

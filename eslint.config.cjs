@@ -1,0 +1,61 @@
+// Flat config without plugins so it runs with a plain `eslint` install.
+const node = {
+  require: 'readonly',
+  module: 'writable',
+  process: 'readonly',
+  Buffer: 'readonly',
+  __dirname: 'readonly',
+  console: 'readonly',
+  setTimeout: 'readonly',
+  clearTimeout: 'readonly',
+  setInterval: 'readonly',
+  clearInterval: 'readonly',
+  setImmediate: 'readonly',
+  URL: 'readonly',
+  URLSearchParams: 'readonly',
+  AbortSignal: 'readonly',
+  Response: 'readonly',
+  fetch: 'readonly',
+  structuredClone: 'readonly',
+};
+const browser = {
+  window: 'readonly',
+  document: 'readonly',
+  location: 'readonly',
+  fetch: 'readonly',
+  DOMParser: 'readonly',
+  innerHeight: 'readonly',
+  innerWidth: 'readonly',
+  requestAnimationFrame: 'readonly',
+  IntersectionObserver: 'readonly',
+  MutationObserver: 'readonly',
+  navigator: 'readonly',
+  CSS: 'readonly',
+  Intl: 'readonly',
+  console: 'readonly',
+  setTimeout: 'readonly',
+  clearTimeout: 'readonly',
+  setInterval: 'readonly',
+  URL: 'readonly',
+  AbortSignal: 'readonly',
+  structuredClone: 'readonly',
+};
+module.exports = [
+  { ignores: ['dist/**', 'node_modules/**', 'ui/demo.js'] },
+  {
+    files: ['src/**/*.cjs', 'test/**/*.cjs', 'eslint.config.cjs'],
+    languageOptions: { ecmaVersion: 2024, sourceType: 'commonjs', globals: node },
+    rules: {
+      'no-unused-vars': ['error', { args: 'none', caughtErrors: 'none' }],
+      'no-empty': ['error', { allowEmptyCatch: true }],
+    },
+  },
+  {
+    files: ['ui/app.js', 'ui/friends.js', 'ui/chat.js', 'ui/social-common.js'],
+    languageOptions: { ecmaVersion: 2024, sourceType: 'script', globals: browser },
+    rules: {
+      'no-unused-vars': ['error', { args: 'none', caughtErrors: 'none' }],
+      'no-empty': ['error', { allowEmptyCatch: true }],
+    },
+  },
+];
