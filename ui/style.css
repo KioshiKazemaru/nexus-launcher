@@ -3605,9 +3605,7 @@ body {
 body[data-page='store'] main,
 body[data-page='wishlist'] main,
 body[data-page='tracking'] main {
-  background:
-    radial-gradient(ellipse 80% 420px at 50% 0, #2a475e 0%, transparent 100%),
-    var(--st-store);
+  background: radial-gradient(ellipse 80% 420px at 50% 0, #2a475e 0%, transparent 100%), var(--st-store);
 }
 .store-subnav {
   background: linear-gradient(90deg, rgba(62, 126, 167, 0.8) 0%, rgba(57, 105, 138, 0.8) 100%);
@@ -4358,7 +4356,8 @@ footer #scan:hover {
 
 /* ---- downloads (Steam and Epic Games), like the downloads page of Steam ---- */
 body[data-page='downloads'] main {
-  background: radial-gradient(ellipse 90% 360px at 50% 0, #2b303b 0%, transparent 100%), var(--st-lib, #1b1e24);
+  background:
+    radial-gradient(ellipse 90% 360px at 50% 0, #2b303b 0%, transparent 100%), var(--st-lib, #1b1e24);
 }
 .footer-downloads {
   position: relative;
@@ -4865,7 +4864,9 @@ body.bp-on {
   overflow: hidden;
   background: #1b2430;
   cursor: pointer;
-  transition: transform 0.12s, border-color 0.12s;
+  transition:
+    transform 0.12s,
+    border-color 0.12s;
 }
 .bp-tile img {
   width: 100%;

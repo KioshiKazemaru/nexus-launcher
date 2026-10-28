@@ -149,7 +149,10 @@ test('a Steam download that finished while Nexus runs gives a notification', () 
     ctx: { settings: {}, store: { notify: (title, body) => notes.push([title, body]) } },
     offerToGame: new Map([['steam:570', 'steam:570']]),
   };
-  const before = { 'steam:570': { state: 'downloading', percent: 99 }, 'steam:620': { state: 'uninstalling' } };
+  const before = {
+    'steam:570': { state: 'downloading', percent: 99 },
+    'steam:620': { state: 'uninstalling' },
+  };
   const local = {
     offers: [
       { provider: 'steam', appId: '570', name: 'Dota 2', installed: true },

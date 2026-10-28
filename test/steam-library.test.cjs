@@ -175,7 +175,10 @@ test('store asset paths become safe image URLs; foreign formats are refused', ()
     'https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/3241660/abc123/header.jpg?t=1'
   );
   assert.match(a.portrait, /abc123\/library_600x900\.jpg/);
-  assert.deepEqual(s.storeAssets({ asset_url_format: 'https://evil.example/${FILENAME}', header: 'h.jpg' }), {});
+  assert.deepEqual(
+    s.storeAssets({ asset_url_format: 'https://evil.example/${FILENAME}', header: 'h.jpg' }),
+    {}
+  );
   assert.deepEqual(s.storeAssets({ asset_url_format: 'steam/apps/1/${FILENAME}', header: '../x.jpg' }), {});
   assert.deepEqual(s.storeAssets(null), {});
 });

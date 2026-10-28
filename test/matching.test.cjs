@@ -43,7 +43,13 @@ test('a game known under a Russian and an English title merges across stores', (
   const { groupOffers: group } = require('../src/matching.cjs');
   const offers = [
     { provider: 'steam', appId: '990080', name: 'Hogwarts Legacy', installed: true },
-    { provider: 'epic', appId: 'fa4240e57a3c46b39f169041b7811293', name: 'Хогвартс. Наследие', altName: 'Hogwarts Legacy', owned: true },
+    {
+      provider: 'epic',
+      appId: 'fa4240e57a3c46b39f169041b7811293',
+      name: 'Хогвартс. Наследие',
+      altName: 'Hogwarts Legacy',
+      owned: true,
+    },
   ];
   const groups = group(offers);
   assert.equal(groups.length, 1);

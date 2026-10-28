@@ -18,7 +18,13 @@ const signedIn = { 'nexus-steam': STEAM_A };
 const steamIdFor = partition => signedIn[partition] || null;
 globalThis.__stubCookies = partition =>
   steamIdFor(partition)
-    ? [{ name: 'steamLoginSecure', domain: 'store.steampowered.com', value: `${steamIdFor(partition)}%7C%7Cx` }]
+    ? [
+        {
+          name: 'steamLoginSecure',
+          domain: 'store.steampowered.com',
+          value: `${steamIdFor(partition)}%7C%7Cx`,
+        },
+      ]
     : [];
 let partitionB = '';
 const accountHtml = id =>

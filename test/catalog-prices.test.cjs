@@ -119,7 +119,12 @@ test('owned Epic game is priced when search omits items but its namespace has on
       },
     },
   };
-  const fetcher = async () => ({ ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) });
+  const fetcher = async () => ({
+    ok: true,
+    status: 200,
+    json: async () => body,
+    text: async () => JSON.stringify(body),
+  });
   const game = {
     id: 'epic:x',
     name: '20XX',

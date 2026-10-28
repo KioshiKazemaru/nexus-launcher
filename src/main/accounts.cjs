@@ -274,7 +274,10 @@ class AccountsService {
       this.ctx.storage.saveSettings();
     }
     if (state.status !== 'connected')
-      this.ctx.log?.info('account', `${key}: ${state.status}${state.message ? ' — ' + state.message : ''}${state.reason ? ' [' + state.reason + ']' : ''}`);
+      this.ctx.log?.info(
+        'account',
+        `${key}: ${state.status}${state.message ? ' — ' + state.message : ''}${state.reason ? ' [' + state.reason + ']' : ''}`
+      );
     this.ctx.hub.publish();
     this.ctx.library.accountChanged(key, state);
     const purpose = this.ctx.windows.purpose.get(key);

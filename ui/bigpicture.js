@@ -318,5 +318,5 @@ const bigPicture = (() => {
   };
 })();
 
-// For app.js (top-level const is not a window property).
+// For app-boot.js (top-level const is not a window property).
 window.bigPicture = bigPicture;

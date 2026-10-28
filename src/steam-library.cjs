@@ -148,7 +148,8 @@ function parseStoreItems(json) {
 const ASSET_BASE = 'https://shared.akamai.steamstatic.com/store_item_assets/';
 function storeAssets(assets) {
   const format = assets?.asset_url_format;
-  if (typeof format !== 'string' || !format.includes('${FILENAME}') || /^[a-z]+:|\.\./i.test(format)) return {};
+  if (typeof format !== 'string' || !format.includes('${FILENAME}') || /^[a-z]+:|\.\./i.test(format))
+    return {};
   const url = file => {
     if (typeof file !== 'string' || !/^[\w./-]+$/.test(file) || file.includes('..')) return '';
     return imageUrl(ASSET_BASE + format.replace('${FILENAME}', file));
@@ -201,7 +202,8 @@ function parseStoreDetails(json, tagNames = new Map()) {
         ? imageUrl(ASSET_BASE + format.replace('${FILENAME}', file))
         : '';
     const shot = file => {
-      if (typeof file !== 'string' || !/^[\w./-]+\.jpg(\?t=\d+)?$/.test(file) || file.includes('..')) return '';
+      if (typeof file !== 'string' || !/^[\w./-]+\.jpg(\?t=\d+)?$/.test(file) || file.includes('..'))
+        return '';
       const [name, query] = file.split('?');
       return imageUrl(ASSET_BASE + name.replace(/\.jpg$/, '.600x338.jpg') + (query ? '?' + query : ''));
     };
@@ -274,7 +276,9 @@ async function findSteamApp(fetcher, title, country = 'US') {
   const items = (await r.json())?.items;
   if (!Array.isArray(items)) return null;
   const want = canonicalTitle(title);
-  const hit = items.find(x => x?.type === 'app' && /^\d+$/.test(String(x.id)) && canonicalTitle(x.name) === want);
+  const hit = items.find(
+    x => x?.type === 'app' && /^\d+$/.test(String(x.id)) && canonicalTitle(x.name) === want
+  );
   return hit ? String(hit.id) : null;
 }
 
@@ -308,9 +312,31 @@ async function storeDetails(fetcher, appIds, country = 'US') {
 // Steam client tools that install like games: redistributables, SteamVR,
 // Linux runtimes and Proton builds.
 const STEAM_TOOL_IDS = new Set([
-  '228980', '250820', '1007', '1070560', '1391110', '1628350', '4183110', '858280', '930400',
-  '961940', '996510', '1054830', '1113280', '1245040', '1420170', '1493710', '1580130', '1887720',
-  '2180100', '2230260', '2348590', '2805730', '3658110', '1826330', '1161040',
+  '228980',
+  '250820',
+  '1007',
+  '1070560',
+  '1391110',
+  '1628350',
+  '4183110',
+  '858280',
+  '930400',
+  '961940',
+  '996510',
+  '1054830',
+  '1113280',
+  '1245040',
+  '1420170',
+  '1493710',
+  '1580130',
+  '1887720',
+  '2180100',
+  '2230260',
+  '2348590',
+  '2805730',
+  '3658110',
+  '1826330',
+  '1161040',
 ]);
 
 function filterGames(offers, items) {
