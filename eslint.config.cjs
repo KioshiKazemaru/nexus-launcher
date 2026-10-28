@@ -51,7 +51,7 @@ module.exports = [
     },
   },
   {
-    files: ['ui/app.js', 'ui/friends.js', 'ui/chat.js', 'ui/social-common.js'],
+    files: ['ui/app.js', 'ui/bigpicture.js', 'ui/friends.js', 'ui/chat.js', 'ui/social-common.js'],
     languageOptions: { ecmaVersion: 2024, sourceType: 'script', globals: browser },
     rules: {
       'no-unused-vars': ['error', { args: 'none', caughtErrors: 'none' }],

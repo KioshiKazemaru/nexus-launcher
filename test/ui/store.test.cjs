@@ -888,3 +888,66 @@ test(
     }
   }
 );
+
+test(
+  'gamepad mode: full screen tiles, navigation with keys and a gamepad, details, exit',
+  { skip: !chromium && 'playwright is not installed' },
+  async () => {
+    const browser = await chromium.launch();
+    try {
+      const p = await browser.newPage({ viewport: { width: 1440, height: 940 } });
+      const errors = [];
+      p.on('pageerror', e => errors.push(e.message));
+      await p.addInitScript(mockStore, { library: true });
+      // A fake gamepad: the test sets which buttons are held.
+      await p.addInitScript(() => {
+        window.__pad = {
+          index: 0,
+          buttons: Array.from({ length: 17 }, () => ({ pressed: false })),
+          axes: [0, 0],
+        };
+        navigator.getGamepads = () => [window.__pad];
+      });
+      await p.goto(page);
+      await p.waitForSelector('#showcase-block');
+      await p.click('#bp-enter');
+      const bp = p.locator('#bigpicture');
+      await bp.locator('.bp-tile').first().waitFor();
+      // Nothing installed: the whole library is shown.
+      assert.match(await bp.locator('.bp-tab.active').textContent(), /Вся библиотека/);
+      assert.deepEqual(await bp.locator('.bp-tile-name').allTextContents(), ['Hades', 'Slay the Spire']);
+      assert.equal(await p.evaluate(() => document.activeElement.dataset.bpGame), 'steam:1145360');
+      await p.keyboard.press('ArrowRight');
+      assert.equal(await p.evaluate(() => document.activeElement.dataset.bpGame), 'epic:Salt');
+      // Gamepad: D-pad left, then A opens the game.
+      const tap = async i => {
+        await p.evaluate(i => (window.__pad.buttons[i].pressed = true), i);
+        await p.waitForTimeout(80);
+        await p.evaluate(i => (window.__pad.buttons[i].pressed = false), i);
+        await p.waitForTimeout(80);
+      };
+      await tap(14);
+      assert.equal(await p.evaluate(() => document.activeElement.dataset.bpGame), 'steam:1145360');
+      await tap(0);
+      await bp.locator('.bp-detail').waitFor();
+      assert.match(await bp.locator('.bp-detail h1').textContent(), /Hades/);
+      assert.equal(await p.evaluate(() => document.activeElement.dataset.bpAct), 'install');
+      // B goes back to the tiles (focus on the same game), RB switches the section.
+      await tap(1);
+      await bp.locator('.bp-grid').waitFor();
+      assert.equal(await p.evaluate(() => document.activeElement.dataset.bpGame), 'steam:1145360');
+      await tap(5);
+      assert.match(await bp.locator('.bp-tab.active').textContent(), /Загрузки/);
+      // Esc leaves the mode; the window left full screen.
+      await p.keyboard.press('Escape');
+      assert.equal(await bp.isVisible(), false);
+      assert.deepEqual(
+        await p.evaluate(() => window.__calls.filter(c => c[0] === 'bigPicture').map(c => c[1])),
+        [true, false]
+      );
+      assert.deepEqual(errors, []);
+    } finally {
+      await browser.close();
+    }
+  }
+);

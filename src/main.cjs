@@ -542,6 +542,11 @@ function registerIpc() {
     return { result, state: ctx.hub.reply() };
   });
   register('gameDlcs', v => ctx.epicInstall.dlcs(gameId(v)), { quiet: true });
+  // Gamepad mode: the window goes full screen.
+  register('bigPicture', on => {
+    main?.setFullScreen(on === true);
+    return true;
+  });
   // "Хранилище": drives, free space, games by size.
   register('storageInfo', () => ctx.disk.info(), { quiet: true });
   register('openGameFolder', dir => {

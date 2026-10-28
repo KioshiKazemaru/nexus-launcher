@@ -3100,6 +3100,8 @@ function applyState() {
           (state.accountList || []).find(a => a.key === el.dataset.accountMessage)?.message || '')
     );
   updateOffline();
+  // Gamepad mode (ui/bigpicture.js) follows the state too.
+  globalThis.bigPicture?.refresh();
   if (detailId && $('#details').open) renderDetail();
   // Only text entry blocks re-rendering; a focused <select> or checkbox keeps
   // focus after a change and must not freeze updates.

@@ -55,6 +55,7 @@ const channels = [
   'moveGame',
   'storageInfo',
   'openGameFolder',
+  'bigPicture',
   'friends',
   'openFriendsWindow',
   'openChat',
