@@ -263,7 +263,15 @@ function steamChat({ webToken = 'web-token', loggedIn = true } = {}) {
   });
   const ctx = {
     log: { info() {}, warn() {}, debug() {} },
-    storage: { file: n => path.join(dir, n) },
+    storage: {
+      file: n => path.join(dir, n),
+      encryptionAvailable: () => true,
+      // Stand-in for Windows' safeStorage: reversible, but not plain text.
+      safeStorage: {
+        encryptString: t => Buffer.from(Buffer.from(t).map(b => b ^ 0x5a)),
+        decryptString: b => Buffer.from(b.map(x => x ^ 0x5a)).toString(),
+      },
+    },
     accounts: {
       connected: p => (p === 'steam' ? [{ key: 'steam:0', id: ME, name: 'Me' }] : []),
       session: () => ({
@@ -399,10 +407,13 @@ test('Steam chat: sends through the chat servers with the web chat token; live m
   await assert.rejects(t.chat.send(key, 'again'), /вы не друзья/);
   await assert.rejects(t.chat.send(key, '   '), /Пустое/);
   await assert.rejects(t.chat.send('steam|1|2', 'x'), /Некорректный/);
-  // The history is written to disk.
+  // The history is written to disk encrypted, and read back after a restart.
   t.chat.file.flushSync();
-  const saved = JSON.parse(fs.readFileSync(path.join(t.dir, 'chat-history.json'), 'utf8'));
-  assert.equal(saved[key][0].text, 'привет [b]');
+  const raw = fs.readFileSync(path.join(t.dir, 'chat-history.json'), 'utf8');
+  assert.doesNotMatch(raw, /привет/);
+  assert.equal(typeof JSON.parse(raw).encrypted, 'string');
+  const again = new ChatService(t.chat.ctx, { SteamUserImpl: FakeSteamUser });
+  assert.equal(again.history[key][0].text, 'привет [b]');
   t.chat.stop();
   assert.equal(u.loggedOff, true);
 });
@@ -417,4 +428,26 @@ test('Steam chat: a rejected sign-in is explained; Epic friends cannot be writte
   const r = await t.chat.messages(epicKey);
   assert.equal(r.readonly, true);
   assert.match(r.warning, /Epic Games Launcher или в игре/);
+});
+
+test('chat history: an old plain-text file is encrypted; without encryption nothing is kept on disk', async () => {
+  const t = steamChat();
+  const file = path.join(t.dir, 'chat-history.json');
+  const key = c.convKey('steam', ME, FRIEND);
+  fs.writeFileSync(file, JSON.stringify({ [key]: [{ from: 'them', text: 'секрет', at: 1 }] }));
+  const chat = new ChatService(t.chat.ctx, { SteamUserImpl: FakeSteamUser });
+  assert.equal(chat.history[key][0].text, 'секрет');
+  await new Promise(r => setImmediate(r));
+  chat.file.flushSync();
+  assert.doesNotMatch(fs.readFileSync(file, 'utf8'), /секрет/);
+  // No Windows encryption: the old file is emptied, new messages stay in memory only.
+  fs.writeFileSync(file, JSON.stringify({ [key]: [{ from: 'them', text: 'секрет', at: 1 }] }));
+  const plain = new ChatService(
+    { ...t.chat.ctx, storage: { file: n => path.join(t.dir, n) } },
+    { SteamUserImpl: FakeSteamUser }
+  );
+  await new Promise(r => setImmediate(r));
+  plain.store(key, [{ from: 'me', text: 'новое', at: 2 }]);
+  plain.file.flushSync();
+  assert.equal(fs.readFileSync(file, 'utf8'), '{}');
 });

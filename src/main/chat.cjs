@@ -247,8 +247,7 @@ class ChatService {
     this.WebSocketImpl = WebSocketImpl;
     this.SteamUserImpl = SteamUserImpl;
     this.file = new JsonFile(ctx.storage.file('chat-history.json'), 1500);
-    const saved = this.file.readSync({});
-    this.history = saved && typeof saved === 'object' && !Array.isArray(saved) ? saved : {};
+    this.history = this.loadHistory();
     this.unread = new Map(); // conv → count
     this.viewing = new Set(); // conversations open in the chat window
     this.steamSeen = new Map(); // account id → Map(friend id → last message ms); null until the first poll
@@ -417,7 +416,44 @@ class ChatService {
   }
   store(key, msgs) {
     this.history[key] = msgs;
-    this.file.schedule(() => JSON.stringify(this.history));
+    this.saveHistory();
+  }
+  // The history is encrypted with Windows' protection of the user account
+  // (safeStorage, like the saved sign-ins). Without it nothing is written:
+  // the conversation then lives only until Nexus is closed.
+  canEncrypt() {
+    return !!this.ctx.storage.encryptionAvailable?.() && !!this.ctx.storage.safeStorage;
+  }
+  loadHistory() {
+    const raw = this.file.readSync({});
+    const ok = v => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
+    if (typeof raw?.encrypted === 'string') {
+      try {
+        return ok(
+          JSON.parse(this.ctx.storage.safeStorage.decryptString(Buffer.from(raw.encrypted, 'base64')))
+        );
+      } catch {
+        this.ctx.log.warn('chat', 'history could not be decrypted');
+        return {};
+      }
+    }
+    // An older plain-text file is encrypted right away (or removed without encryption).
+    const legacy = ok(raw);
+    if (Object.keys(legacy).length) queueMicrotask(() => this.saveHistory(true));
+    return legacy;
+  }
+  saveHistory(force = false) {
+    if (!this.canEncrypt()) {
+      if (force) this.file.schedule(() => '{}');
+      return;
+    }
+    this.file.schedule(() =>
+      JSON.stringify({
+        encrypted: this.ctx.storage.safeStorage
+          .encryptString(JSON.stringify(this.history))
+          .toString('base64'),
+      })
+    );
   }
   async messages(key) {
     const k = this.conv(key);
