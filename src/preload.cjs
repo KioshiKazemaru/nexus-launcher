@@ -45,6 +45,7 @@ const channels = [
   'uninstallGame',
   'downloadControl',
   'checkUpdates',
+  'downloadSettings',
   'friends',
   'openFriendsWindow',
   'openChat',
@@ -84,6 +85,7 @@ contextBridge.exposeInMainWorld('nexus', {
   onShowPage: listen('show-page'),
   onToast: listen('toast'),
   onSocialEvent: listen('social-event'),
+  onShowGame: listen('show-game'),
   ...Object.fromEntries(
     channels.map(channel => [
       channel,

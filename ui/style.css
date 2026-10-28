@@ -4563,3 +4563,27 @@ body[data-page='downloads'] main {
 .download-row.error .download-bar i {
   background: #e65c5c;
 }
+.downloads-card .field {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+}
+.downloads-card .field input {
+  width: 90px;
+}
+.downloads-card .field small {
+  width: 100%;
+  color: #8b929a;
+}
+.downloads-card .time-range {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 4px 26px;
+}
+.download-row.queued .download-bar i,
+.download-row.scheduled .download-bar i {
+  opacity: 0.4;
+}

@@ -103,6 +103,14 @@ class EpicInstaller {
         speed: speed || undefined,
         eta: speed > 0 ? Math.round(left / speed) : undefined,
         error: j.error || undefined,
+        // Place in the queue (1 = next).
+        queue:
+          j.state === 'queued' || j.state === 'scheduled'
+            ? [...this.jobs.values()]
+                .filter(x => x.state === 'queued' || x.state === 'scheduled')
+                .sort((a, b) => (a.queuedAt || 0) - (b.queuedAt || 0))
+                .indexOf(j) + 1
+            : undefined,
       };
     }
     return out;
@@ -359,9 +367,69 @@ class EpicInstaller {
     const job = this.jobs.get(gameId);
     if (!job) throw Error('Загрузка не найдена');
     if (job.running) job.pause = true;
-    else job.state = 'paused';
+    else {
+      job.state = 'paused';
+      delete job.queuedAt;
+    }
+    this.publish();
+    this.next();
+    return true;
+  }
+  // "▲ Первой": the job is the next one to download.
+  first(gameId) {
+    const job = this.jobs.get(gameId);
+    if (!job) throw Error('Загрузка не найдена');
+    const waiting = [...this.jobs.values()].filter(j => j.queuedAt);
+    job.queuedAt = Math.min(Date.now(), ...waiting.map(j => j.queuedAt)) - 1;
+    if (job.state === 'paused' || job.state === 'error') this.resume(gameId);
     this.publish();
     return true;
+  }
+  // "Загрузить сейчас": this job ignores the download schedule.
+  now(gameId) {
+    const job = this.jobs.get(gameId);
+    if (!job) throw Error('Загрузка не найдена');
+    job.ignoreSchedule = true;
+    if (job.state === 'paused' || job.state === 'error') return this.resume(gameId);
+    if (!job.running) this.launch(job);
+    return { how: 'started' };
+  }
+  // ---- queue and schedule -------------------------------------------------------------
+  // Downloads may run only in the hours the user chose (e.g. at night).
+  allowedNow(job, date = new Date()) {
+    const s = this.ctx.settings.downloadSchedule;
+    if (job?.ignoreSchedule || !s?.enabled) return true;
+    const min = t => {
+      const m = /^(\d{1,2}):(\d{2})$/.exec(String(t || ''));
+      return m ? Math.min(23, +m[1]) * 60 + Math.min(59, +m[2]) : null;
+    };
+    const from = min(s.from),
+      to = min(s.to);
+    if (from === null || to === null || from === to) return true;
+    const now = date.getHours() * 60 + date.getMinutes();
+    return from < to ? now >= from && now < to : now >= from || now < to;
+  }
+  // The next waiting job starts when nothing downloads (and the schedule allows it).
+  next() {
+    if ([...this.jobs.values()].some(j => j.running)) return;
+    const waiting = [...this.jobs.values()]
+      .filter(j => j.state === 'queued' || j.state === 'scheduled')
+      .sort((a, b) => (a.queuedAt || 0) - (b.queuedAt || 0));
+    const job = waiting.find(j => this.allowedNow(j));
+    if (job) this.launch(job);
+    else if (waiting.length) this.armSchedule();
+  }
+  armSchedule() {
+    if (this.scheduleTimer) return;
+    this.scheduleTimer = setInterval(() => {
+      if (![...this.jobs.values()].some(j => j.state === 'scheduled' || j.state === 'queued')) {
+        clearInterval(this.scheduleTimer);
+        this.scheduleTimer = null;
+        return;
+      }
+      this.next();
+    }, 60000);
+    this.scheduleTimer.unref?.();
   }
   async cancel(gameId) {
     const job = this.jobs.get(gameId);
@@ -391,23 +459,56 @@ class EpicInstaller {
     return true;
   }
   launch(job) {
+    // One download at a time: the others wait in the queue (or for the schedule).
+    const active = [...this.jobs.values()].some(j => j !== job && j.running);
+    if (active || !this.allowedNow(job)) {
+      job.state = active ? 'queued' : 'scheduled';
+      job.queuedAt ??= Date.now();
+      this.publish();
+      if (!active) this.armSchedule();
+      return;
+    }
+    delete job.queuedAt;
+    job.state = 'downloading';
     this.publish();
     job.running = this.run(job)
       .catch(e => {
         if (e instanceof Paused) {
-          if (!job.canceled) job.state = 'paused';
+          // The user's pause, or the end of the allowed hours.
+          if (!job.canceled) {
+            job.state = job.pause ? 'paused' : 'scheduled';
+            if (job.state === 'scheduled') job.queuedAt ??= Date.now();
+          }
           return;
         }
         job.state = 'error';
         job.error = e.message;
         this.ctx.log.warn('epic-install', `${job.appId}: ${e.message}`);
         this.ctx.toast?.(`«${job.title}»: ${e.message}`);
+        this.notify(`Загрузка «${job.title}» остановилась`, e.message, job.gameId);
       })
       .finally(() => {
         job.running = null;
         job.pause = false;
         this.publish();
+        this.next();
       });
+  }
+  // A Windows notification (setting "Уведомлять о загрузках").
+  notify(title, body, gameId) {
+    if (this.ctx.settings.downloadNotify === false) return;
+    try {
+      this.ctx.store?.notify?.(title, body, () => gameId && this.ctx.showGame?.(gameId));
+    } catch {}
+  }
+  // Waits so that downloads stay under the user's limit (KB/s; 0 = no limit).
+  async throttle(bytes) {
+    const limit = Number(this.ctx.settings.downloadLimit) * 1024;
+    if (!(limit > 0)) return;
+    const now = Date.now();
+    this.nextSlot = Math.max(this.nextSlot || 0, now) + (bytes / limit) * 1000;
+    const wait = this.nextSlot - now - 1000; // up to one second of burst
+    if (wait > 0) await new Promise(r => setTimeout(r, wait));
   }
   // ---- the job ---------------------------------------------------------------------
   stateFile(job) {
@@ -502,6 +603,17 @@ class EpicInstaller {
           ? `«${job.title}» обновлена.`
           : `Файлы «${job.title}» проверены и исправлены.`
     );
+    this.notify(
+      job.kind === 'install'
+        ? `«${job.title}» установлена`
+        : job.kind === 'update'
+          ? `«${job.title}» обновлена`
+          : `«${job.title}» проверена`,
+      job.kind === 'install'
+        ? 'Можно играть — нажмите, чтобы открыть игру в Nexus.'
+        : 'Игра готова к запуску.',
+      job.gameId
+    );
     if (job.kind === 'install') await this.offerPrereqs(job, manifest).catch(() => {});
   }
   async prepareFiles(job, files, temp) {
@@ -544,6 +656,7 @@ class EpicInstaller {
         if (!r.ok) throw Error(`HTTP ${r.status}`);
         const raw = Buffer.from(await r.arrayBuffer());
         this.rate(base, (Date.now() - t0) / Math.max(1, raw.length / 1024));
+        await this.throttle(raw.length);
         const data = readChunk(raw).data;
         if (c.chunk.sha && !crypto.createHash('sha1').update(data).digest().equals(c.chunk.sha))
           throw Error('повреждённая часть');
@@ -567,7 +680,7 @@ class EpicInstaller {
       let abort = null;
       const worker = async () => {
         for (let c = queue.shift(); c && !abort; c = queue.shift()) {
-          if (job.pause) throw (abort = new Paused());
+          if (job.pause || !this.allowedNow(job)) throw (abort = new Paused());
           let data;
           try {
             data = await this.fetchChunk(assets, c);
@@ -761,6 +874,13 @@ class EpicInstaller {
       }
     }
     this.publish();
+    // Like the Epic launcher: new builds are downloaded by themselves (in the queue and the schedule).
+    if (this.ctx.settings.epicAutoUpdate !== false)
+      for (const id of this.updates.keys())
+        if (!this.jobs.has(id) && !this.ctx.running?.isRunning(id))
+          await this.update(id).catch(e =>
+            this.ctx.log.warn('epic-install', `auto-update ${id}: ${e.message}`)
+          );
     return this.updatesMap();
   }
 }

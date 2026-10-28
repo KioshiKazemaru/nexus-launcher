@@ -44,6 +44,11 @@ const defaults = () => ({
   nexusDownloads: true,
   epicJobs: {},
   epicInstallRoot: '',
+  // Downloads: limit in KB/s (0 = none), allowed hours, auto-updates, notifications.
+  downloadLimit: 0,
+  downloadSchedule: { enabled: false, from: '01:00', to: '07:00' },
+  epicAutoUpdate: true,
+  downloadNotify: true,
   epicCloudSaves: true,
   steamSilent: true,
   steamCloseAfter: true,

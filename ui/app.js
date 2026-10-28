@@ -1279,6 +1279,8 @@ const PROGRESS_LABELS = {
   uninstalling: 'Удаление',
   verifying: 'Проверка файлов',
   error: 'Ошибка',
+  queued: 'В очереди',
+  scheduled: 'Ждёт разрешённых часов',
 };
 function bytesText(n) {
   if (!Number.isFinite(n)) return '';
@@ -1327,9 +1329,13 @@ function downloadsPage() {
       return `<article class="download-row ${esc(p.state || '')}"><button class="download-art" data-detail="${esc(id)}">${artTag(g)}</button><div class="download-main"><div class="download-title"><strong>${esc(g.name)}</strong><span class="pill ${p.provider === 'steam' ? 'blue' : ''}">${names[p.provider] || ''}</span></div><div class="download-state"><span>${esc(PROGRESS_LABELS[p.state] || 'Загрузка')}${Number.isFinite(p.eta) && p.state !== 'paused' ? ' · осталось ' + etaText(p.eta) : ''}</span><span>${esc(size)}</span></div><div class="download-bar">${Number.isFinite(p.percent) ? `<i style="width:${p.percent}%"></i>` : '<i class="indeterminate"></i>'}</div></div><div class="download-stats"><div><small>СКОРОСТЬ</small><strong>${p.speed > 0 ? bytesText(p.speed) + '/с' : '—'}</strong></div><div><small>ГОТОВО</small><strong>${Number.isFinite(p.percent) ? p.percent + '%' : '—'}</strong></div></div><div class="download-actions">${
         p.nexus
           ? `${
-              p.state === 'paused' || p.state === 'error'
-                ? `<button class="secondary" data-download-action="resume" data-download-id="${esc(id)}">▶ Продолжить</button>`
-                : `<button class="secondary" data-download-action="pause" data-download-id="${esc(id)}">❚❚ Пауза</button>`
+              p.state === 'scheduled'
+                ? `<button class="secondary" data-download-action="now" data-download-id="${esc(id)}">▶ Загрузить сейчас</button>`
+                : p.state === 'queued'
+                  ? `${p.queue > 1 ? `<button class="secondary" data-download-action="first" data-download-id="${esc(id)}" title="Скачать следующей">▲ Первой</button>` : ''}<button class="secondary" data-download-action="pause" data-download-id="${esc(id)}">❚❚ Пауза</button>`
+                  : p.state === 'paused' || p.state === 'error'
+                    ? `<button class="secondary" data-download-action="resume" data-download-id="${esc(id)}">▶ Продолжить</button>`
+                    : `<button class="secondary" data-download-action="pause" data-download-id="${esc(id)}">❚❚ Пауза</button>`
             }<button class="secondary" data-download-action="cancel" data-download-id="${esc(id)}">Отменить</button>`
           : `<button class="secondary" data-client-downloads="${esc(p.provider)}" title="Пауза, отмена и очередь — в клиенте ${esc(names[p.provider] || '')}">Открыть в ${esc(p.provider === 'epic' ? 'Epic' : 'Steam')}</button>`
       }</div>${p.error ? `<p class="download-error">${esc(p.error)}</p>` : ''}</article>`;
@@ -1544,6 +1550,14 @@ function launchCard() {
     'Игры Epic Nexus скачивает сам с серверов Epic (как Legendary): с паузой, докачкой, обновлениями и проверкой файлов. Игры Steam скачивает Steam в фоне, без своего окна.'
   )}</section>`;
 }
+// "Загрузки": speed limit, allowed hours, auto-updates, notifications.
+function downloadsCard() {
+  const s = state.settings;
+  const sch = s.downloadSchedule || { enabled: false, from: '01:00', to: '07:00' };
+  const off = demo ? 'disabled' : '';
+  const mb = s.downloadLimit ? +(s.downloadLimit / 1024).toFixed(1) : 0;
+  return `<section class="settings-card downloads-card"><h3>Загрузки</h3><p>Для игр, которые скачивает Nexus (Epic Games). Загрузками Steam управляет сам Steam.</p><label class="field">Ограничение скорости, МБ/с <input type="number" id="download-limit" min="0" max="10000" step="0.5" value="${mb}" ${off}><small>0 — без ограничений</small></label><label class="check"><input type="checkbox" id="schedule-enabled" ${sch.enabled ? 'checked' : ''} ${off}> Скачивать только в эти часы</label><div class="time-range"><input type="time" id="schedule-from" value="${esc(sch.from)}" ${off}> — <input type="time" id="schedule-to" value="${esc(sch.to)}" ${off}></div><p class="hint">Вне этих часов загрузки ждут; кнопка «Загрузить сейчас» запускает игру без ожидания.</p><label class="check"><input type="checkbox" id="epic-auto-update" ${s.epicAutoUpdate !== false ? 'checked' : ''} ${off}> Обновлять игры Epic автоматически</label><label class="check"><input type="checkbox" id="download-notify" ${s.downloadNotify !== false ? 'checked' : ''} ${off}> Уведомлять, когда игра скачалась или обновилась</label><button class="secondary" id="check-game-updates" ${off}>Проверить обновления игр</button></section>`;
+}
 function updatesCard() {
   const u = state.updater || {};
   const text =
@@ -1578,7 +1592,7 @@ ${keyField('igdbSecret', 'IGDB · TWITCH CLIENT SECRET', 'секрет того 
 ${keyField('sgdb', 'STEAMGRIDDB API KEY · вертикальные обложки для Epic и сторонних игр', 'steamgriddb.com → Preferences → API', integrations.sgdb?.enabled, integrations.sgdb?.error)}</section>
 <section class="settings-card"><h3>Облачная библиотека Steam · импорт по Web API key</h3><p>Запасной вариант, если автоматическая синхронизация недоступна. Работает только для подключённого аккаунта.</p><form id="steam-form" class="form-row"><label class="field">STEAMID64<input id="steam-id" inputmode="numeric" maxlength="17" autocomplete="off" placeholder="7656119…" value="${esc(state.accounts.steam?.steamId || '')}"></label><label class="field">ЛИЧНЫЙ WEB API KEY<input id="api-key" type="password" autocomplete="off" placeholder="${integrations.steamWebApi?.enabled ? 'Сохранён' : '32 символа'}"></label><button class="primary" type="submit">Импортировать</button></form></section>
 <section class="settings-card"><div class="settings-row"><div><h3>Библиотеки на диске</h3><p>${esc(state.settings.steamRoot || 'Steam определяется автоматически, Epic — по манифестам и LauncherInstalled.dat.')}</p></div><button class="secondary" id="steam-root">Указать папку Steam</button></div><label class="check"><input type="checkbox" id="auto-start" ${state.settings.autoStart ? 'checked' : ''}> Запускать Nexus при входе в Windows</label></section>
-${launchCard()}${updatesCard()}
+${launchCard()}${downloadsCard()}${updatesCard()}
 <section class="settings-card"><h3>Nexus</h3><p>Независимый лаунчер для Windows 10/11 x64, не связан с Valve и Epic Games. Покупку подтверждаешь на официальном сайте.</p><button class="secondary" id="demo">Посмотреть демонстрационную библиотеку</button></section>`;
 }
 const requestedPrices = new Map();
@@ -2344,6 +2358,19 @@ document.addEventListener('click', event =>
       }
       case 'friends-toggle':
         return call('openFriendsWindow');
+      case 'check-game-updates': {
+        el.disabled = true;
+        const r = await call('checkUpdates');
+        state = r.state;
+        render();
+        const n = Object.keys(r.result || {}).length;
+        toast(
+          n
+            ? `Обновления есть у ${n} ${plural(n, 'игры', 'игр', 'игр')}`
+            : 'Все установленные игры Epic обновлены'
+        );
+        return;
+      }
       case 'nav-back':
       case 'nav-forward':
         return goHistory(el.id === 'nav-back' ? -1 : 1);
@@ -2491,6 +2518,25 @@ document.addEventListener('change', event =>
     if (el.id === 'auto-update') state = await call('autoUpdate', el.checked);
     if (el.dataset.launchSetting)
       state = await call('launchSetting', { name: el.dataset.launchSetting, value: el.checked });
+    if (el.id === 'download-limit') {
+      if (!el.checkValidity()) throw Error('Укажите скорость от 0 до 10000 МБ/с');
+      state = await call('downloadSettings', { downloadLimit: Math.round(Number(el.value || 0) * 1024) });
+      toast(
+        Number(el.value) ? `Загрузки Nexus ограничены ${el.value} МБ/с` : 'Скорость загрузок не ограничена'
+      );
+    }
+    if (['schedule-enabled', 'schedule-from', 'schedule-to'].includes(el.id)) {
+      state = await call('downloadSettings', {
+        schedule: {
+          enabled: $('#schedule-enabled').checked,
+          from: $('#schedule-from').value,
+          to: $('#schedule-to').value,
+        },
+      });
+      render();
+    }
+    if (el.id === 'epic-auto-update') state = await call('downloadSettings', { epicAutoUpdate: el.checked });
+    if (el.id === 'download-notify') state = await call('downloadSettings', { downloadNotify: el.checked });
     if (el.id === 'auto-start') {
       try {
         state = await call('autoStart', el.checked);
@@ -2883,6 +2929,11 @@ document.addEventListener(
   true
 );
 api?.onShowPage?.(p => setPage(p));
+// A click on a "game installed" notification: its page in the library.
+api?.onShowGame?.(id => {
+  page = 'library';
+  showDetail(id);
+});
 api?.onToast?.(message => toast(message));
 // Library grid grows while scrolling instead of rendering thousands of cards at once.
 const libraryObserver = new IntersectionObserver(

@@ -141,3 +141,26 @@ test('Epic: sizes like the Epic launcher — download size from the build manife
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('a Steam download that finished while Nexus runs gives a notification', () => {
+  const { LibraryService } = require('../src/main/library.cjs');
+  const notes = [];
+  const self = {
+    ctx: { settings: {}, store: { notify: (title, body) => notes.push([title, body]) } },
+    offerToGame: new Map([['steam:570', 'steam:570']]),
+  };
+  const before = { 'steam:570': { state: 'downloading', percent: 99 }, 'steam:620': { state: 'uninstalling' } };
+  const local = {
+    offers: [
+      { provider: 'steam', appId: '570', name: 'Dota 2', installed: true },
+      { provider: 'steam', appId: '620', name: 'Portal 2', installed: true },
+    ],
+  };
+  LibraryService.prototype.notifyFinished.call(self, before, {}, local);
+  assert.deepEqual(notes, [['«Dota 2» установлена', 'Steam: игра готова к запуску.']]);
+  // Still downloading, or notifications off: nothing.
+  LibraryService.prototype.notifyFinished.call(self, before, { 'steam:570': {} }, local);
+  self.ctx.settings.downloadNotify = false;
+  LibraryService.prototype.notifyFinished.call(self, before, {}, local);
+  assert.equal(notes.length, 1);
+});

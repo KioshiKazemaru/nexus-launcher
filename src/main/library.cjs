@@ -306,9 +306,11 @@ class LibraryService {
   async pollProgress() {
     const local = await this.readLocal();
     if (LibraryService.signature(local) !== this.localSignature) {
+      const before = this.progress || {};
       this.local = local;
       this.localSignature = LibraryService.signature(local);
       this.progress = LibraryService.progressMap(local, this.progress);
+      this.notifyFinished(before, this.progress, local);
       await this.readSteamLocalMeta();
       this.rebuild();
       // An app installed while Nexus runs may be a tool or software.
@@ -324,6 +326,25 @@ class LibraryService {
       }
     }
     this.watchProgress();
+  }
+  // A download of the clients that was running and is now an installed game.
+  notifyFinished(before, now, local) {
+    if (this.ctx.settings?.downloadNotify === false || !this.ctx.store?.notify) return;
+    for (const [key, p] of Object.entries(before)) {
+      if (now[key] || p.state === 'uninstalling') continue;
+      const [provider, ...rest] = key.split(':');
+      const appId = rest.join(':');
+      const o = local.offers.find(x => x.provider === provider && String(x.appId) === appId && x.installed);
+      if (!o) continue;
+      const gameId = this.offerToGame.get(key);
+      try {
+        this.ctx.store?.notify?.(
+          `«${o.name}» установлена`,
+          `${provider === 'steam' ? 'Steam' : 'Epic Games'}: игра готова к запуску.`,
+          () => gameId && this.ctx.showGame?.(gameId)
+        );
+      } catch {}
+    }
   }
   // Download progress per game id, from the latest scan.
   progressByGame() {

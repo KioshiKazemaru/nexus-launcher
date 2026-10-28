@@ -523,3 +523,91 @@ test('Steam: a running Steam game or a missing Steam hands the install to Steam 
   assert.deepEqual(await s.install('steam:1'), { how: 'client' });
   assert.equal(fs.readdirSync(path.join(root, 'steamapps')).length, 0);
 });
+
+test('Epic downloads: one at a time in a queue, notifications when done', () => {
+  const dir = tmp();
+  return withProgramData(dir, async () => {
+    const srv = fakeEpic();
+    srv.publish({ 'Game.exe': rnd(300 * 1024) }, 1);
+    const a = ownedGame();
+    const b = {
+      id: 'epic:owl',
+      name: 'Owl',
+      offers: [
+        { provider: 'epic', appId: 'Owl', namespace: 'ns', itemId: 'item2', owned: true, accountId: ACCOUNT },
+      ],
+    };
+    const { ctx } = epicCtx(dir, a);
+    ctx.library.games.push(b);
+    const notes = [];
+    ctx.store = { notify: (title, body) => notes.push(title) };
+    const e = new EpicInstaller(ctx, { fetcher: srv.fetch });
+    await e.install('epic:fennec');
+    await e.install('epic:owl');
+    assert.equal(e.progress()['epic:owl'].state, 'queued');
+    assert.equal(e.progress()['epic:owl'].queue, 1);
+    await e.jobs.get('epic:fennec').running;
+    // The queued one starts by itself after the first.
+    for (let i = 0; i < 100 && !e.jobs.get('epic:owl')?.running && e.jobs.has('epic:owl'); i++)
+      await new Promise(r => setTimeout(r, 10));
+    await e.jobs.get('epic:owl')?.running;
+    assert.equal(e.jobs.size, 0);
+    assert.ok(fs.existsSync(path.join(dir, 'Games', 'Fennec', 'Game.exe')));
+    assert.ok(fs.existsSync(path.join(dir, 'Games', 'Owl', 'Game.exe')));
+    assert.deepEqual(notes, ['«Fennec» установлена', '«Owl» установлена']);
+    // Notifications can be switched off.
+    ctx.settings.downloadNotify = false;
+    e.notify('x', 'y');
+    assert.equal(notes.length, 2);
+  });
+});
+
+test('Epic downloads: allowed hours (also over midnight), "Загрузить сейчас", speed limit', () => {
+  const dir = tmp();
+  return withProgramData(dir, async () => {
+    const srv = fakeEpic();
+    srv.publish({ 'Game.exe': rnd(100 * 1024) }, 1);
+    const { ctx } = epicCtx(dir, ownedGame());
+    const e = new EpicInstaller(ctx, { fetcher: srv.fetch });
+    const at = (h, m) => new Date(2026, 0, 1, h, m);
+    ctx.settings.downloadSchedule = { enabled: true, from: '22:00', to: '06:00' };
+    assert.equal(e.allowedNow(null, at(23, 30)), true);
+    assert.equal(e.allowedNow(null, at(5, 59)), true);
+    assert.equal(e.allowedNow(null, at(12, 0)), false);
+    ctx.settings.downloadSchedule = { enabled: true, from: '01:00', to: '07:00' };
+    assert.equal(e.allowedNow(null, at(3, 0)), true);
+    assert.equal(e.allowedNow(null, at(7, 0)), false);
+    assert.equal(e.allowedNow({ ignoreSchedule: true }, at(12, 0)), true);
+    // Outside the hours a new download waits…
+    const h = new Date().getHours();
+    ctx.settings.downloadSchedule = {
+      enabled: true,
+      from: `${String((h + 2) % 24).padStart(2, '0')}:00`,
+      to: `${String((h + 3) % 24).padStart(2, '0')}:00`,
+    };
+    await e.install('epic:fennec');
+    assert.equal(e.progress()['epic:fennec'].state, 'scheduled');
+    assert.equal(srv.fetched.filter(u => u.endsWith('.chunk')).length, 0);
+    // …until "Загрузить сейчас".
+    e.now('epic:fennec');
+    await e.jobs.get('epic:fennec')?.running;
+    assert.equal(e.jobs.size, 0);
+    clearInterval(e.scheduleTimer);
+    // Speed limit: the waits keep the average under the limit (1 s burst allowed).
+    const waits = [];
+    const realTimeout = global.setTimeout;
+    global.setTimeout = (fn, ms) => (waits.push(ms), realTimeout(fn, 0));
+    try {
+      ctx.settings.downloadLimit = 1024; // 1 MB/s
+      e.nextSlot = 0;
+      await e.throttle(1024 * 1024); // 1 s of budget: within the burst
+      await e.throttle(2 * 1024 * 1024); // 2 more seconds
+      ctx.settings.downloadLimit = 0;
+      await e.throttle(50 * 1024 * 1024); // no limit: no wait
+    } finally {
+      global.setTimeout = realTimeout;
+    }
+    assert.equal(waits.length, 1);
+    assert.ok(waits[0] > 1900 && waits[0] <= 2000, String(waits[0]));
+  });
+});

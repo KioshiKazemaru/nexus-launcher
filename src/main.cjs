@@ -99,6 +99,11 @@ ctx.showPage = page => {
   ctx.focusMain();
   main?.webContents.send('show-page', page);
 };
+// A click on a notification: the game's page in the library.
+ctx.showGame = id => {
+  ctx.focusMain();
+  main?.webContents.send('show-game', String(id));
+};
 ctx.mainWindow = () => (main && !main.isDestroyed() ? main : null);
 ctx.toast = message => main?.webContents.send('toast', String(message).slice(0, 300));
 ctx.prepareQuit = () => {
@@ -502,15 +507,19 @@ function registerIpc() {
     const result =
       action === 'pause'
         ? e.pause(id)
-        : action === 'resume'
-          ? e.resume(id)
-          : action === 'cancel'
-            ? await e.cancel(id)
-            : action === 'update'
-              ? await e.update(id)
-              : action === 'repair'
-                ? await e.repair(id)
-                : null;
+        : action === 'first'
+          ? e.first(id)
+          : action === 'now'
+            ? e.now(id)
+            : action === 'resume'
+              ? e.resume(id)
+              : action === 'cancel'
+                ? await e.cancel(id)
+                : action === 'update'
+                  ? await e.update(id)
+                  : action === 'repair'
+                    ? await e.repair(id)
+                    : null;
     if (result === null) throw Error('Неизвестное действие');
     return { result, state: ctx.hub.reply() };
   });
@@ -518,6 +527,28 @@ function registerIpc() {
     result: await ctx.epicInstall.checkUpdates(),
     state: ctx.hub.reply(),
   }));
+  // Download settings: limit, allowed hours, auto-updates, notifications.
+  register(
+    'downloadSettings',
+    save(p => {
+      const s = settings;
+      if (p?.downloadLimit !== undefined) {
+        const n = Math.round(Number(p.downloadLimit));
+        if (!Number.isFinite(n) || n < 0 || n > 10 * 1024 * 1024) throw Error('Некорректный лимит скорости');
+        s.downloadLimit = n;
+      }
+      if (p?.schedule) {
+        const t = v => (/^([01]?\d|2[0-3]):[0-5]\d$/.test(String(v)) ? String(v).padStart(5, '0') : null);
+        const from = t(p.schedule.from),
+          to = t(p.schedule.to);
+        if (!from || !to) throw Error('Время укажите как ЧЧ:ММ');
+        s.downloadSchedule = { enabled: !!p.schedule.enabled, from, to };
+      }
+      if (p?.epicAutoUpdate !== undefined) s.epicAutoUpdate = !!p.epicAutoUpdate;
+      if (p?.downloadNotify !== undefined) s.downloadNotify = !!p.downloadNotify;
+      ctx.epicInstall.next();
+    })
+  );
   // "Удалить": removes the game files right in Nexus (or hands over to the client).
   register('uninstallGame', async p => {
     const { id, provider } = p || {};
