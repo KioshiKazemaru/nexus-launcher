@@ -51,6 +51,8 @@ const channels = [
   'startInstall',
   'gameDlcs',
   'installDlc',
+  'importGame',
+  'moveGame',
   'friends',
   'openFriendsWindow',
   'openChat',

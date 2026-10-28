@@ -74,6 +74,7 @@ class EpicInstaller {
     this.updates = new Map(); // gameId → new build version
     this.prepared = new Map(); // gameId → what the install window showed
     this.dlcCache = new Map(); // account id → { at, records }
+    this.moves = new Map(); // gameId → { title, done, total } while a game is moved
   }
   get saved() {
     return (this.ctx.settings.epicJobs ||= {});
@@ -117,6 +118,16 @@ class EpicInstaller {
             : undefined,
       };
     }
+    for (const [id, m] of this.moves)
+      out[id] = {
+        state: 'moving',
+        provider: 'epic',
+        nexus: true,
+        title: m.title,
+        done: m.done,
+        total: m.total,
+        percent: m.total ? Math.min(99, Math.floor((m.done / m.total) * 100)) : undefined,
+      };
     return out;
   }
   speed(j) {
@@ -399,6 +410,182 @@ class EpicInstaller {
     });
     for (const x of dlcList) this.beginDlc(gameId, prep.offer, prep.account, prep.title, folder, x);
     return r;
+  }
+  // ---- a game that is already on disk (after reinstalling Windows, a copy, …) -----------
+  // The folder is checked against the manifest; it is registered like an install,
+  // and missing or damaged files are downloaded by a repair job.
+  async importFolder(gameId, dirArg) {
+    const g = this.game(gameId);
+    if (this.jobs.has(gameId)) throw Error('Игра уже в загрузках');
+    const offer = this.ownedOffer(g);
+    if (offer.installed) throw Error('Игра уже установлена');
+    let dir = dirArg;
+    if (!dir) {
+      const r = await dialog.showOpenDialog(this.ctx.mainWindow?.() || null, {
+        title: `Папка с игрой «${g.name}»`,
+        defaultPath: this.defaultRoot(),
+        properties: ['openDirectory'],
+      });
+      if (r.canceled || !r.filePaths[0]) return { how: 'canceled' };
+      dir = r.filePaths[0];
+    }
+    if (!path.isAbsolute(dir) || !fs.existsSync(dir)) throw Error('Папка не найдена');
+    const account = this.account(offer);
+    const token = await this.token(account.id);
+    const [assets, info] = await Promise.all([this.assets(token, offer), this.catalogInfo(token, offer)]);
+    const { bytes, manifest } = await this.manifest(assets);
+    // Untagged files decide: a folder of this game has (almost) all of them.
+    const required = manifest.files.filter(f => !(f.installTags || []).length && !f.symlinkTarget);
+    let present = 0,
+      wrong = 0;
+    for (const f of required) {
+      try {
+        const st = await fsp.stat(d.safeTarget(dir, f.filename));
+        if (st.size === f.size) present++;
+        else wrong++;
+      } catch {
+        wrong++;
+      }
+    }
+    if (!required.length || present / required.length < 0.5)
+      throw Error(
+        `В папке ${dir} нет файлов «${g.name}» (найдено ${present} из ${required.length}). Выберите папку самой игры.`
+      );
+    const title = g.name || info.title || offer.appId;
+    const job = {
+      gameId,
+      kind: 'install',
+      appId: offer.appId,
+      namespace: offer.namespace,
+      itemId: offer.itemId,
+      accountId: account.id,
+      title,
+      installDir: dir,
+      ownershipToken: !!info.ownershipToken,
+      canRunOffline: info.canRunOffline !== false,
+    };
+    await this.register(job, assets, manifest, bytes, {});
+    await this.ctx.library.scanLocal().catch(e => this.ctx.log.warn('scan', e.message));
+    this.ctx.log.info('epic-install', `${offer.appId}: imported from ${dir} (${present}/${required.length})`);
+    if (wrong) {
+      // The registered game is checked file by file; damaged and missing ones are downloaded.
+      await this.repair(gameId).catch(e => this.ctx.toast?.(`«${title}»: ${e.message}`));
+      return { how: 'imported', missing: wrong };
+    }
+    return { how: 'imported', missing: 0 };
+  }
+  // ---- moving an installed game to another folder or drive ----------------------------
+  async move(gameId, targetRoot) {
+    const g = this.game(gameId);
+    const offer = g.offers.find(o => o.provider === 'epic' && o.installed);
+    if (!offer?.installLocation || !offer.manifestFile) throw Error('Игра не установлена');
+    if (this.jobs.has(gameId) || this.moves.has(gameId)) throw Error('С игрой уже идёт загрузка или перенос');
+    if (this.ctx.running?.isRunning(gameId)) throw Error('Сначала закройте игру');
+    let rootDir = targetRoot;
+    if (!rootDir) {
+      const r = await dialog.showOpenDialog(this.ctx.mainWindow?.() || null, {
+        title: `Куда перенести «${g.name}»`,
+        defaultPath: path.dirname(offer.installLocation),
+        properties: ['openDirectory', 'createDirectory'],
+      });
+      if (r.canceled || !r.filePaths[0]) return { how: 'canceled' };
+      rootDir = r.filePaths[0];
+    }
+    const from = path.resolve(offer.installLocation);
+    const to = path.join(path.resolve(rootDir), path.basename(from));
+    if (to.toLowerCase() === from.toLowerCase()) throw Error('Игра уже в этой папке');
+    if ((to.toLowerCase() + path.sep).startsWith(from.toLowerCase() + path.sep))
+      throw Error('Нельзя перенести игру внутрь её же папки');
+    if (fs.existsSync(to)) throw Error(`Папка ${to} уже существует`);
+    const size = await require('../core.cjs').folderBytes(from);
+    const problem = await this.folderProblem(rootDir, size);
+    if (problem) throw Error(problem);
+    const m = { title: g.name, done: 0, total: size };
+    this.moves.set(gameId, m);
+    this.publish();
+    this.moveFiles(gameId, offer, from, to, m)
+      .then(() => {
+        this.ctx.toast?.(`«${g.name}» перенесена в ${to}`);
+        this.notify(`«${g.name}» перенесена`, to, gameId);
+      })
+      .catch(e => {
+        this.ctx.log.warn('epic-install', `move ${offer.appId}: ${e.message}`);
+        this.ctx.toast?.(`«${g.name}» не перенесена: ${e.message}`);
+      })
+      .finally(async () => {
+        this.moves.delete(gameId);
+        await this.ctx.library.scanLocal().catch(() => {});
+        this.publish();
+      });
+    return { how: 'moving', to };
+  }
+  async moveFiles(gameId, offer, from, to, m) {
+    await fsp.mkdir(path.dirname(to), { recursive: true });
+    let moved = false;
+    try {
+      // Same drive: one rename, instantly.
+      await fsp.rename(from, to);
+      moved = true;
+      m.done = m.total;
+    } catch (e) {
+      if (e.code !== 'EXDEV' && e.code !== 'EPERM' && e.code !== 'EACCES') throw e;
+    }
+    if (!moved) {
+      // Another drive: copied file by file (the progress moves), then the old folder is removed.
+      let tick = 0;
+      const copy = async (src, dst) => {
+        await fsp.mkdir(dst, { recursive: true });
+        for (const e of await fsp.readdir(src, { withFileTypes: true })) {
+          const a = path.join(src, e.name),
+            b = path.join(dst, e.name);
+          if (e.isDirectory()) await copy(a, b);
+          else if (e.isFile()) {
+            await fsp.copyFile(a, b);
+            m.done += (await fsp.stat(b)).size;
+            if (++tick % 50 === 0) this.publish();
+          }
+        }
+      };
+      try {
+        await copy(from, to);
+      } catch (e) {
+        await fsp.rm(to, { recursive: true, force: true }).catch(() => {});
+        throw e;
+      }
+    }
+    // The records follow the folder (the game's and its DLC's).
+    await this.relocate(offer, from, to);
+    if (!moved) await fsp.rm(from, { recursive: true, force: true });
+  }
+  async relocate(offer, from, to) {
+    const swap = p => {
+      const s = String(p || '');
+      return s.toLowerCase().startsWith(from.toLowerCase()) ? to + s.slice(from.length) : s;
+    };
+    const dir = path.dirname(offer.manifestFile);
+    for (const n of await fsp.readdir(dir).catch(() => [])) {
+      if (!n.endsWith('.item')) continue;
+      const file = path.join(dir, n);
+      let v;
+      try {
+        v = JSON.parse(await fsp.readFile(file, 'utf8'));
+      } catch {
+        continue;
+      }
+      if (v.AppName !== offer.appId && v.MainGameAppName !== offer.appId) continue;
+      for (const k of ['InstallLocation', 'ManifestLocation', 'StagingLocation']) if (v[k]) v[k] = swap(v[k]);
+      await fsp.writeFile(file, JSON.stringify(v, null, '\t'));
+    }
+    const dat = launcherInstalledFile();
+    try {
+      const json = JSON.parse(await fsp.readFile(dat, 'utf8'));
+      if (Array.isArray(json.InstallationList)) {
+        for (const x of json.InstallationList) if (x?.AppName === offer.appId) x.InstallLocation = to;
+        const tmp = dat + '.nexus.tmp';
+        await fsp.writeFile(tmp, JSON.stringify(json, null, '\t'));
+        await fsp.rename(tmp, dat);
+      }
+    } catch {}
   }
   // DLC with their own files (the account's library lists them with the main game).
   async ownedDlcs(token, account, offer) {

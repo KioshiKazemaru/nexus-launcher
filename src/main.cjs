@@ -541,6 +541,15 @@ function registerIpc() {
     return { result, state: ctx.hub.reply() };
   });
   register('gameDlcs', v => ctx.epicInstall.dlcs(gameId(v)), { quiet: true });
+  // A game already on disk; moving an installed game.
+  register('importGame', async v => ({
+    result: await ctx.epicInstall.importFolder(gameId(v)),
+    state: ctx.hub.reply(),
+  }));
+  register('moveGame', async v => ({
+    result: await ctx.epicInstall.move(gameId(v)),
+    state: ctx.hub.reply(),
+  }));
   register('installDlc', async p => ({
     result: await ctx.epicInstall.installDlc(gameId(p?.id), String(p?.appId || '')),
     state: ctx.hub.reply(),

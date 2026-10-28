@@ -720,3 +720,79 @@ test('Epic install window: options, start with DLC into the game folder, DLC rec
     );
   });
 });
+
+test('Epic: a game already on disk is found and registered; missing files are downloaded', () => {
+  const dir = tmp();
+  return withProgramData(dir, async () => {
+    const files = { 'Game.exe': rnd(150 * 1024), 'Data/a.pak': rnd(90 * 1024), 'Data/b.pak': rnd(40 * 1024) };
+    const srv = fakeEpic();
+    srv.publish(files, 1);
+    const game = ownedGame();
+    const { ctx } = epicCtx(dir, game);
+    const e = new EpicInstaller(ctx, { fetcher: srv.fetch });
+    // A copy of the game with one file lost.
+    const copy = path.join(dir, 'Backup', 'Fennec');
+    fs.mkdirSync(path.join(copy, 'Data'), { recursive: true });
+    fs.writeFileSync(path.join(copy, 'Game.exe'), files['Game.exe']);
+    fs.writeFileSync(path.join(copy, 'Data', 'a.pak'), files['Data/a.pak']);
+    // A folder of something else is refused.
+    const other = path.join(dir, 'Other');
+    fs.mkdirSync(other);
+    fs.writeFileSync(path.join(other, 'x.txt'), 'x');
+    await assert.rejects(e.importFolder('epic:fennec', other), /нет файлов/);
+    // The library sees the registered game when repair starts.
+    ctx.library.scanLocal = async () => {
+      const items = path.join(dir, 'ProgramData', 'Epic', 'EpicGamesLauncher', 'Data', 'Manifests');
+      const n = fs.readdirSync(items)[0];
+      Object.assign(game.offers[0], {
+        installed: true,
+        installLocation: copy,
+        manifestFile: path.join(items, n),
+        version: '1.1',
+      });
+    };
+    const r = await e.importFolder('epic:fennec', copy);
+    assert.deepEqual(r, { how: 'imported', missing: 1 });
+    await e.jobs.get('epic:fennec')?.running;
+    for (const [name, data] of Object.entries(files))
+      assert.ok(fs.readFileSync(path.join(copy, name)).equals(data), name);
+  });
+});
+
+test('Epic: moving a game to another folder updates its records', () => {
+  const dir = tmp();
+  return withProgramData(dir, async () => {
+    const files = { 'Game.exe': rnd(120 * 1024), 'Data/a.pak': rnd(10 * 1024) };
+    const srv = fakeEpic();
+    srv.publish(files, 1);
+    const game = ownedGame();
+    const { ctx, toasts } = epicCtx(dir, game);
+    const e = new EpicInstaller(ctx, { fetcher: srv.fetch });
+    await e.install('epic:fennec');
+    await e.jobs.get('epic:fennec').running;
+    const itemsDir = path.join(dir, 'ProgramData', 'Epic', 'EpicGamesLauncher', 'Data', 'Manifests');
+    const itemFile = path.join(itemsDir, fs.readdirSync(itemsDir)[0]);
+    const from = path.join(dir, 'Games', 'Fennec');
+    Object.assign(game.offers[0], { installed: true, installLocation: from, manifestFile: itemFile });
+    await assert.rejects(e.move('epic:fennec', from), /внутрь её же папки|уже в этой папке/);
+    const dest = path.join(dir, 'Other drive');
+    assert.equal((await e.move('epic:fennec', dest)).how, 'moving');
+    assert.equal(e.progress()['epic:fennec'].state, 'moving');
+    for (let i = 0; i < 200 && e.moves.size; i++) await new Promise(r => setTimeout(r, 10));
+    const to = path.join(dest, 'Fennec');
+    assert.equal(fs.existsSync(from), false);
+    for (const [name, data] of Object.entries(files))
+      assert.ok(fs.readFileSync(path.join(to, name)).equals(data), name);
+    const item = JSON.parse(fs.readFileSync(itemFile, 'utf8'));
+    assert.equal(item.InstallLocation, to);
+    assert.equal(item.ManifestLocation, path.join(to, '.egstore'));
+    const dat = JSON.parse(
+      fs.readFileSync(
+        path.join(dir, 'ProgramData', 'Epic', 'UnrealEngineLauncher', 'LauncherInstalled.dat'),
+        'utf8'
+      )
+    );
+    assert.equal(dat.InstallationList[0].InstallLocation, to);
+    assert.match(toasts.at(-1), /перенесена/);
+  });
+});

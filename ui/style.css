@@ -4671,3 +4671,18 @@ body[data-page='downloads'] main {
 .dlc-row small {
   color: #8b929a;
 }
+button.link {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: #66c0f4;
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+}
+button.link:hover {
+  color: #fff;
+}
+.install-import {
+  margin-top: 14px;
+}

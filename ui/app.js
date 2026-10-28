@@ -1277,6 +1277,7 @@ const PROGRESS_LABELS = {
   updating: 'Обновление',
   paused: 'Пауза',
   uninstalling: 'Удаление',
+  moving: 'Перенос',
   verifying: 'Проверка файлов',
   error: 'Ошибка',
   queued: 'В очереди',
@@ -1363,7 +1364,7 @@ function clientButtons(o) {
       ? `<button class="secondary" data-download-action="update" title="Новая версия: ${esc(state.updates[librarySelection])}">⟳ Обновить</button>`
       : '') +
     (o.provider === 'epic' && state.settings.nexusDownloads !== false
-      ? '<button class="secondary" data-download-action="repair" title="Проверить файлы и докачать повреждённые">Проверить</button>'
+      ? '<button class="secondary" data-download-action="repair" title="Проверить файлы и докачать повреждённые">Проверить</button><button class="secondary" id="library-move" title="Перенести игру в другую папку или на другой диск">Переместить</button>'
       : `<button class="secondary" data-client-action="verify" title="Проверить файлы в ${names[o.provider]}">Проверить</button>`) +
     `<button class="secondary" id="library-uninstall" data-uninstall="${esc(o.provider)}" title="Удалить файлы игры с компьютера" ${state.progress?.[librarySelection]?.state === 'uninstalling' ? 'disabled' : ''}>Удалить</button>`
   );
@@ -1609,7 +1610,7 @@ function renderInstallDialog() {
             )
             .join('')}`
         : ''
-    }${o.thirdParty ? '<p class="notice warning">Эта игра работает через лаунчер издателя (EA, Ubisoft и т. п.): для игры понадобится он.</p>' : ''}${enough ? '' : '<p class="watch-error">На этом диске может не хватить места.</p>'}<div class="install-buttons"><button class="primary" data-install-start ${x.busy ? 'disabled' : ''}>↓ Установить</button><button class="secondary" data-install-client>Через Epic Games Launcher</button><button class="secondary" data-install-cancel>Отмена</button></div>`;
+    }${o.thirdParty ? '<p class="notice warning">Эта игра работает через лаунчер издателя (EA, Ubisoft и т. п.): для игры понадобится он.</p>' : ''}${enough ? '' : '<p class="watch-error">На этом диске может не хватить места.</p>'}<div class="install-buttons"><button class="primary" data-install-start ${x.busy ? 'disabled' : ''}>↓ Установить</button><button class="secondary" data-install-client>Через Epic Games Launcher</button><button class="secondary" data-install-cancel>Отмена</button></div><p class="hint install-import">Игра уже есть на диске (после переустановки Windows или с другого ПК)? <button class="link" data-install-import>Указать её папку…</button></p>`;
   }
   dlg.innerHTML = `<button class="close" data-install-cancel aria-label="Закрыть">×</button><h2>Установка «${esc(g.name)}»</h2><p class="hint">Nexus скачает игру с серверов Epic сам — без Epic Games Launcher. Пауза и очередь — на странице «Загрузки».</p>${body}`;
   if (!dlg.open) dlg.showModal();
@@ -2120,6 +2121,29 @@ document.addEventListener('click', event =>
         renderInstallDialog();
         throw e;
       }
+      return;
+    }
+    if (el.dataset.installImport !== undefined && installDlg) {
+      const gid = installDlg.id;
+      const r = await call('importGame', gid);
+      if (r.result.how === 'canceled') return;
+      installDlg = null;
+      renderInstallDialog();
+      state = r.state;
+      render();
+      toast(
+        r.result.missing
+          ? `Игра найдена. Не хватает или повреждено файлов: ${r.result.missing} — Nexus докачает их.`
+          : 'Игра найдена и добавлена — можно играть.'
+      );
+      return;
+    }
+    if (el.id === 'library-move') {
+      el.disabled = true;
+      const r = await call('moveGame', librarySelection);
+      state = r.state;
+      render();
+      if (r.result.how === 'moving') toast(`Переносим игру в ${r.result.to}…`);
       return;
     }
     if (el.dataset.dlcInstall) {

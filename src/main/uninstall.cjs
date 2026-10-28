@@ -115,6 +115,7 @@ class Uninstaller {
     const offer = game?.offers.find(o => o.provider === provider && o.installed);
     if (!game || !offer) throw Error('Игра не установлена');
     if (this.jobs.has(gameId)) throw Error('Игра уже удаляется');
+    if (this.ctx.epicInstall?.moves?.has(gameId)) throw Error('Игра сейчас переносится');
     if (this.ctx.epicInstall?.jobs.has(gameId))
       throw Error('Сначала остановите загрузку игры на странице «Загрузки»');
     if (this.ctx.running?.isRunning(gameId)) throw Error('Сначала закройте игру');
