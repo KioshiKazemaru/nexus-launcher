@@ -527,6 +527,24 @@ function registerIpc() {
     result: await ctx.epicInstall.checkUpdates(),
     state: ctx.hub.reply(),
   }));
+  // The install window: sizes, folder, optional parts and DLC of an Epic game.
+  const gameId = v => {
+    if (typeof v !== 'string' || v.length > 300) throw Error('Некорректная игра');
+    return v;
+  };
+  register('installOptions', v => ctx.epicInstall.options(gameId(v)));
+  register('chooseInstallRoot', v => ctx.epicInstall.chooseRoot(typeof v === 'string' ? v : ''));
+  register('startInstall', async p => {
+    const tags = p?.tags === null ? null : Array.isArray(p?.tags) ? p.tags.slice(0, 200).map(String) : null;
+    const dlcs = Array.isArray(p?.dlcs) ? p.dlcs.slice(0, 200).map(String) : [];
+    const result = await ctx.epicInstall.start(gameId(p?.id), { root: String(p?.root || ''), tags, dlcs });
+    return { result, state: ctx.hub.reply() };
+  });
+  register('gameDlcs', v => ctx.epicInstall.dlcs(gameId(v)), { quiet: true });
+  register('installDlc', async p => ({
+    result: await ctx.epicInstall.installDlc(gameId(p?.id), String(p?.appId || '')),
+    state: ctx.hub.reply(),
+  }));
   // Download settings: limit, allowed hours, auto-updates, notifications.
   register(
     'downloadSettings',

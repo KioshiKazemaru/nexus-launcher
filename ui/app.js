@@ -1319,7 +1319,9 @@ function downloadsPage() {
   const list = Object.entries(state.progress || {});
   const rows = list
     .map(([id, p]) => {
-      const g = game(id) || { id, name: 'Игра' };
+      const found = game(id) || game(p.dlc ? id.split('#')[0] : '') || { id, name: p.title || 'Игра' };
+      // A DLC row: the main game's picture with the DLC's own title.
+      const g = p.dlc ? { ...found, name: p.title || found.name } : found;
       // Epic: download size (compressed), plus the size on disk after installation.
       const size = Number.isFinite(p.total)
         ? `${bytesText(p.done)} из ${bytesText(p.total)}${p.installSize ? ` · на диске ${bytesText(p.installSize)}` : ''}`
@@ -1459,7 +1461,7 @@ function libraryGamePage() {
     steamHero = g.steam
       ? `https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/${g.steam}/library_hero.jpg`
       : '';
-  return `<div class="library-game-page" data-price-game="${esc(g.id)}"><div class="library-game-hero">${hero ? `<img src="${esc(steamHero || hero)}" data-fallback="${esc(hero)}" alt="Баннер ${esc(g.name)}" referrerpolicy="no-referrer">` : ''}<div class="library-game-hero-shade"></div><h1>${esc(g.name)}</h1></div><div class="library-game-actions">${isRunning(g.id) ? `<button class="play-main stop" id="library-stop" title="Закрыть игру; сохранения уйдут в облако">■ ЗАКРЫТЬ</button>` : `<button class="play-main" id="library-play" ${demo ? 'disabled' : ''}>${action}</button>`}<div class="library-game-launch"><div><small>СТАТУС</small><strong>${esc(status)}</strong></div><div><small>ПОСЛЕДНИЙ ЗАПУСК</small><strong>${played ? new Date(played).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Пока не запускалась'}</strong></div><div><small>ВЫ ИГРАЛИ</small><strong>${owned.playtime ? hours(owned.playtime) : '—'}</strong></div></div>${progressLine(owned)}<div class="library-game-right">${clientButtons(preferred)}<button class="secondary" id="library-hide" title="${owned.hidden ? 'Показать в библиотеке' : 'Скрыть из библиотеки'}">${owned.hidden ? '👁 Показать' : 'Скрыть'}</button><button class="secondary" id="library-favorite" aria-label="Избранное">${has('favorites', g.id) ? '★' : '☆'}</button><button class="secondary" id="library-wish" aria-label="Желаемое">${has('wishlist', g.id) ? '♥' : '♡'}</button></div></div><div class="library-game-links"><button data-library-back>← Все игры</button><button id="library-store">Страница в магазине</button><button data-page="tracking">Отслеживание скидок</button></div><div class="library-game-columns"><section><h2>ОБ ИГРЕ</h2><p>${esc(g.desc || g.storeOffers?.find(o => o.description)?.description || 'Описание пока не получено от магазина.')}</p><div class="preview-tags">${(g.tags || []).map(t => `<span>${esc(t)}</span>`).join('')}</div>${collectionsBox(owned)}${trackProcessBox(owned)}<h2>ПЛАТФОРМЫ</h2><div class="library-game-providers">${offers.map(o => `<button data-library-provider="${esc(o.provider)}" class="${p === o.provider ? 'active' : ''}"><strong>${names[o.provider]}</strong><span>${o.installed ? 'Установлена' : o.owned ? 'Имеется в аккаунте' : 'На диске'}${o.accountIds?.length > 1 ? ' · на ' + o.accountIds.length + ' аккаунтах' : ''}</span>${o.provider === 'custom' ? '' : `<span class="library-game-provider-price">${salePrice(g.storeOffers?.find(s => s.provider === o.provider))}</span>`}</button>`).join('')}</div></section><aside class="library-game-activity"><h2>АКТИВНОСТЬ</h2><div class="library-activity-box"><strong>${played ? 'Последний запуск' : 'Данных о запусках пока нет'}</strong><p>${played ? new Date(played).toLocaleString('ru-RU') : 'Дата появится после запуска через Nexus или из данных платформы.'}${last && last !== played ? '<br>Через Nexus: ' + new Date(last).toLocaleString('ru-RU') : ''}</p>${playtimeRows ? '<strong>Время в игре</strong>' + playtimeRows : ''}</div>${merged}${achievementsBox(owned)}<h2>СКРИНШОТЫ</h2><div class="library-gallery">${(g.storeOffers?.find(o => o.screenshots?.length)?.screenshots || []).map(src => `<img src="${esc(safeImage(src))}" alt="Скриншот ${esc(g.name)}" referrerpolicy="no-referrer" loading="lazy">`).join('') || `<div class="library-activity-box">${artTag(g)}</div>`}</div></aside></div></div>`;
+  return `<div class="library-game-page" data-price-game="${esc(g.id)}"><div class="library-game-hero">${hero ? `<img src="${esc(steamHero || hero)}" data-fallback="${esc(hero)}" alt="Баннер ${esc(g.name)}" referrerpolicy="no-referrer">` : ''}<div class="library-game-hero-shade"></div><h1>${esc(g.name)}</h1></div><div class="library-game-actions">${isRunning(g.id) ? `<button class="play-main stop" id="library-stop" title="Закрыть игру; сохранения уйдут в облако">■ ЗАКРЫТЬ</button>` : `<button class="play-main" id="library-play" ${demo ? 'disabled' : ''}>${action}</button>`}<div class="library-game-launch"><div><small>СТАТУС</small><strong>${esc(status)}</strong></div><div><small>ПОСЛЕДНИЙ ЗАПУСК</small><strong>${played ? new Date(played).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Пока не запускалась'}</strong></div><div><small>ВЫ ИГРАЛИ</small><strong>${owned.playtime ? hours(owned.playtime) : '—'}</strong></div></div>${progressLine(owned)}<div class="library-game-right">${clientButtons(preferred)}<button class="secondary" id="library-hide" title="${owned.hidden ? 'Показать в библиотеке' : 'Скрыть из библиотеки'}">${owned.hidden ? '👁 Показать' : 'Скрыть'}</button><button class="secondary" id="library-favorite" aria-label="Избранное">${has('favorites', g.id) ? '★' : '☆'}</button><button class="secondary" id="library-wish" aria-label="Желаемое">${has('wishlist', g.id) ? '♥' : '♡'}</button></div></div><div class="library-game-links"><button data-library-back>← Все игры</button><button id="library-store">Страница в магазине</button><button data-page="tracking">Отслеживание скидок</button></div><div class="library-game-columns"><section><h2>ОБ ИГРЕ</h2><p>${esc(g.desc || g.storeOffers?.find(o => o.description)?.description || 'Описание пока не получено от магазина.')}</p><div class="preview-tags">${(g.tags || []).map(t => `<span>${esc(t)}</span>`).join('')}</div>${collectionsBox(owned)}${trackProcessBox(owned)}<h2>ПЛАТФОРМЫ</h2><div class="library-game-providers">${offers.map(o => `<button data-library-provider="${esc(o.provider)}" class="${p === o.provider ? 'active' : ''}"><strong>${names[o.provider]}</strong><span>${o.installed ? 'Установлена' : o.owned ? 'Имеется в аккаунте' : 'На диске'}${o.accountIds?.length > 1 ? ' · на ' + o.accountIds.length + ' аккаунтах' : ''}</span>${o.provider === 'custom' ? '' : `<span class="library-game-provider-price">${salePrice(g.storeOffers?.find(s => s.provider === o.provider))}</span>`}</button>`).join('')}</div></section><aside class="library-game-activity"><h2>АКТИВНОСТЬ</h2><div class="library-activity-box"><strong>${played ? 'Последний запуск' : 'Данных о запусках пока нет'}</strong><p>${played ? new Date(played).toLocaleString('ru-RU') : 'Дата появится после запуска через Nexus или из данных платформы.'}${last && last !== played ? '<br>Через Nexus: ' + new Date(last).toLocaleString('ru-RU') : ''}</p>${playtimeRows ? '<strong>Время в игре</strong>' + playtimeRows : ''}</div>${merged}${achievementsBox(owned)}${dlcBox(owned)}<h2>СКРИНШОТЫ</h2><div class="library-gallery">${(g.storeOffers?.find(o => o.screenshots?.length)?.screenshots || []).map(src => `<img src="${esc(safeImage(src))}" alt="Скриншот ${esc(g.name)}" referrerpolicy="no-referrer" loading="lazy">`).join('') || `<div class="library-activity-box">${artTag(g)}</div>`}</div></aside></div></div>`;
 }
 function renderCollections() {
   const el = $('#collection-list');
@@ -1526,6 +1528,125 @@ function playToast(result) {
       canceled: 'Запуск отменён.',
     }[result?.how] || 'Запрос передан клиенту. Запуск и лицензию проверяет платформа.'
   );
+}
+// ---- the install window (Epic games downloaded by Nexus) -------------------------
+let installDlg = null; // { id, loading, error, opts, root, free, tags: Set, dlcs: Set, busy }
+// An Epic game of the account, not installed, downloaded by Nexus: the window opens.
+function wantsInstallWindow(g, provider) {
+  const o = g?.offers?.find(x => x.provider === provider);
+  return (
+    !demo &&
+    provider === 'epic' &&
+    o &&
+    !o.installed &&
+    o.namespace &&
+    o.itemId &&
+    state.settings.nexusDownloads !== false &&
+    !state.progress?.[g.id]?.nexus
+  );
+}
+async function openInstallDialog(id) {
+  installDlg = { id, loading: true };
+  renderInstallDialog();
+  try {
+    const o = await call('installOptions', id);
+    installDlg = {
+      id,
+      opts: o,
+      root: o.root,
+      free: o.free,
+      tags: new Set(o.components.map(c => c.tag)),
+      dlcs: new Set(),
+    };
+  } catch (e) {
+    installDlg = { id, error: e.message };
+  }
+  renderInstallDialog();
+}
+function installSize() {
+  const o = installDlg.opts;
+  if (!o.components.length) return o.installSize;
+  return o.baseSize + o.components.filter(c => installDlg.tags.has(c.tag)).reduce((n, c) => n + c.size, 0);
+}
+function renderInstallDialog() {
+  let dlg = $('#install-dialog');
+  if (!dlg) {
+    dlg = document.createElement('dialog');
+    dlg.id = 'install-dialog';
+    dlg.className = 'install-dialog';
+    dlg.addEventListener('close', () => (installDlg = null));
+    document.body.append(dlg);
+  }
+  if (!installDlg) {
+    if (dlg.open) dlg.close();
+    return;
+  }
+  const g = game(installDlg.id) || { name: 'Игра' };
+  const x = installDlg;
+  let body;
+  if (x.loading) body = '<p class="hint">Загружаем сведения о файлах игры с серверов Epic…</p>';
+  else if (x.error)
+    body = `<p class="watch-error">${esc(x.error)}</p><div class="install-buttons"><button class="secondary" data-install-client>Через Epic Games Launcher</button><button class="secondary" data-install-cancel>Закрыть</button></div>`;
+  else {
+    const o = x.opts;
+    const size = installSize();
+    const enough = !x.free || x.free > size + 512 * 1024 ** 2;
+    body = `<div class="install-sizes"><div><small>СКАЧАТЬ</small><strong>${bytesText(o.components.length ? Math.round((o.downloadSize * size) / Math.max(1, o.installSize)) : o.downloadSize)}</strong></div><div><small>НА ДИСКЕ</small><strong>${bytesText(size)}</strong></div><div><small>СВОБОДНО</small><strong class="${enough ? '' : 'warn'}">${x.free ? bytesText(x.free) : '—'}</strong></div></div><label class="field install-folder"><small>ПАПКА</small><span>${esc(x.root)}\\${esc(o.folderName)}</span><button class="secondary" data-install-root>Изменить…</button></label>${
+      o.components.length
+        ? `<h3>Компоненты</h3><p class="hint">Основные файлы игры ставятся всегда (${bytesText(o.baseSize)}).</p>${o.components
+            .map(
+              c =>
+                `<label class="check"><input type="checkbox" data-install-tag="${esc(c.tag)}" ${x.tags.has(c.tag) ? 'checked' : ''}> ${esc(c.label)} <small>${bytesText(c.size)}</small></label>`
+            )
+            .join('')}`
+        : ''
+    }${
+      o.dlcs.length
+        ? `<h3>Дополнения из вашей библиотеки</h3>${o.dlcs
+            .map(
+              d =>
+                `<label class="check"><input type="checkbox" data-install-dlc="${esc(d.appId)}" ${x.dlcs.has(d.appId) ? 'checked' : ''} ${d.installed ? 'disabled' : ''}> ${esc(d.title)}${d.installed ? ' <small>установлено</small>' : ''}</label>`
+            )
+            .join('')}`
+        : ''
+    }${o.thirdParty ? '<p class="notice warning">Эта игра работает через лаунчер издателя (EA, Ubisoft и т. п.): для игры понадобится он.</p>' : ''}${enough ? '' : '<p class="watch-error">На этом диске может не хватить места.</p>'}<div class="install-buttons"><button class="primary" data-install-start ${x.busy ? 'disabled' : ''}>↓ Установить</button><button class="secondary" data-install-client>Через Epic Games Launcher</button><button class="secondary" data-install-cancel>Отмена</button></div>`;
+  }
+  dlg.innerHTML = `<button class="close" data-install-cancel aria-label="Закрыть">×</button><h2>Установка «${esc(g.name)}»</h2><p class="hint">Nexus скачает игру с серверов Epic сам — без Epic Games Launcher. Пауза и очередь — на странице «Загрузки».</p>${body}`;
+  if (!dlg.open) dlg.showModal();
+}
+// The DLC of an installed Epic game (game page).
+const ownedDlcState = new Map();
+async function requestDlcs(id) {
+  if (!api?.gameDlcs || demo || ownedDlcState.has(id)) return;
+  ownedDlcState.set(id, null);
+  try {
+    ownedDlcState.set(id, await call('gameDlcs', id));
+  } catch (e) {
+    ownedDlcState.set(id, { error: e.message });
+  }
+  if (librarySelection === id) render();
+}
+function dlcBox(g) {
+  const o = g.offers?.find(x => x.provider === 'epic');
+  if (!o?.installed || !o.namespace || demo) return '';
+  requestDlcs(g.id);
+  const list = ownedDlcState.get(g.id);
+  if (!list)
+    return '<h2>ДОПОЛНЕНИЯ</h2><div class="library-activity-box"><p class="hint">Загружаем…</p></div>';
+  if (list.error) return '';
+  if (!list.length) return '';
+  return `<h2>ДОПОЛНЕНИЯ</h2><div class="library-activity-box dlc-list">${list
+    .map(
+      d =>
+        `<div class="dlc-row"><span>${esc(d.title)}</span>${
+          d.installed
+            ? '<small>Установлено</small>'
+            : d.downloading || state.progress?.[`${g.id}#${d.appId}`]
+              ? '<small>В загрузках</small>'
+              : `<button class="secondary" data-dlc-install="${esc(d.appId)}">↓ Установить</button>`
+        }</div>`
+    )
+    .join('')}</div>`;
 }
 // "Запуск игр": Epic without its launcher, cloud saves, Steam hidden in the tray.
 function launchCard() {
@@ -1952,6 +2073,64 @@ document.addEventListener('click', event =>
       await call('openProfile', { provider: 'steam', id: el.dataset.friend });
       return;
     }
+    if (el.dataset.installCancel !== undefined) {
+      installDlg = null;
+      renderInstallDialog();
+      return;
+    }
+    if (el.dataset.installRoot !== undefined && installDlg?.opts) {
+      const r = await call('chooseInstallRoot', installDlg.root);
+      if (r) Object.assign(installDlg, r);
+      renderInstallDialog();
+      return;
+    }
+    if (el.dataset.installClient !== undefined && installDlg) {
+      const gid = installDlg.id;
+      installDlg = null;
+      renderInstallDialog();
+      const r = await call('clientAction', { id: gid, provider: 'epic', action: 'install' });
+      state = r.state;
+      render();
+      toast(
+        r.result.viaLibrary
+          ? 'Открыта библиотека Epic Games: выберите игру там.'
+          : 'Установка передана Epic Games Launcher.'
+      );
+      return;
+    }
+    if (el.dataset.installStart !== undefined && installDlg?.opts) {
+      const x = installDlg;
+      x.busy = true;
+      renderInstallDialog();
+      try {
+        const r = await call('startInstall', {
+          id: x.id,
+          root: x.root,
+          tags: x.opts.components.length ? [...x.tags] : null,
+          dlcs: [...x.dlcs],
+        });
+        state = r.state;
+        installDlg = null;
+        renderInstallDialog();
+        render();
+        toast('Загрузка началась — прогресс на странице «Загрузки».');
+      } catch (e) {
+        x.busy = false;
+        x.error = '';
+        renderInstallDialog();
+        throw e;
+      }
+      return;
+    }
+    if (el.dataset.dlcInstall) {
+      el.disabled = true;
+      const r = await call('installDlc', { id: librarySelection, appId: el.dataset.dlcInstall });
+      state = r.state;
+      ownedDlcState.delete(librarySelection);
+      render();
+      toast('Дополнение добавлено в загрузки.');
+      return;
+    }
     if (el.dataset.downloadAction) {
       el.disabled = true;
       const action = el.dataset.downloadAction;
@@ -2171,6 +2350,11 @@ document.addEventListener('click', event =>
         break;
       }
       case 'library-play':
+        {
+          const lg = activeGames().find(g => g.id === librarySelection);
+          if (wantsInstallWindow(lg, selectedLibraryOffer(lg)?.provider))
+            return openInstallDialog(librarySelection);
+        }
         el.disabled = true;
         try {
           const r = await call('play', {
@@ -2422,6 +2606,10 @@ document.addEventListener('click', event =>
         renderDetail();
         break;
       case 'play':
+        if (wantsInstallWindow(game(detailId), selectedProvider)) {
+          $('#details').close();
+          return openInstallDialog(detailId);
+        }
         el.disabled = true;
         try {
           const r = await call('play', { id: detailId, provider: selectedProvider });
@@ -2516,6 +2704,15 @@ document.addEventListener('change', event =>
     }
     if (el.id === 'notify-giveaways') state = await call('notifyGiveaways', el.checked);
     if (el.id === 'auto-update') state = await call('autoUpdate', el.checked);
+    if (el.dataset.installTag && installDlg?.opts) {
+      installDlg.tags[el.checked ? 'add' : 'delete'](el.dataset.installTag);
+      renderInstallDialog();
+      return;
+    }
+    if (el.dataset.installDlc && installDlg?.opts) {
+      installDlg.dlcs[el.checked ? 'add' : 'delete'](el.dataset.installDlc);
+      return;
+    }
     if (el.dataset.launchSetting)
       state = await call('launchSetting', { name: el.dataset.launchSetting, value: el.checked });
     if (el.id === 'download-limit') {

@@ -330,9 +330,10 @@ function readManifest(buf) {
   for (const f of files) f.symlinkTarget = b.fstring();
   for (const f of files) f.hash = b.bytes(20);
   for (const f of files) f.flags = b.u8();
-  for (let n = 0; n < files.length; n++) {
+  // Install tags: optional parts of a game (languages, high-resolution textures, …).
+  for (const f of files) {
     const tags = b.u32();
-    for (let i = 0; i < tags; i++) b.fstring();
+    f.installTags = Array.from({ length: tags }, () => b.fstring());
   }
   for (const f of files) {
     const parts = b.u32();

@@ -99,7 +99,14 @@ class Uninstaller {
     if (offer.provider === 'epic') {
       const dir = offer.installLocation;
       if (!dir || !offer.manifestFile) throw Error('Nexus не нашёл папку игры Epic');
-      return { dir, files: [offer.manifestFile], extraDirs: [], roots: [], epicApp: offer.appId };
+      return {
+        dir,
+        files: [offer.manifestFile],
+        extraDirs: [],
+        roots: [],
+        epicApp: offer.appId,
+        dlcOf: offer.appId,
+      };
     }
     throw Error('Удалять с диска можно только игры Steam и Epic Games');
   }
@@ -143,6 +150,18 @@ class Uninstaller {
     try {
       // The manifests first: the clients stop treating the game as installed.
       for (const file of plan.files) await fsp.rm(file, { force: true });
+      // Records of the game's DLC (their files are inside the game folder).
+      if (plan.dlcOf)
+        for (const dir of new Set(plan.files.map(f => path.dirname(f))))
+          for (const n of await fsp.readdir(dir).catch(() => [])) {
+            if (!n.endsWith('.item')) continue;
+            const p = path.join(dir, n);
+            try {
+              const v = JSON.parse(await fsp.readFile(p, 'utf8'));
+              if (v.MainGameAppName === plan.dlcOf && v.AppName !== plan.dlcOf)
+                await fsp.rm(p, { force: true });
+            } catch {}
+          }
       if (plan.epicApp) await this.removeFromLauncherInstalled(plan.epicApp);
       await this.removeFolder(plan.dir, job);
       for (const extra of plan.extraDirs)

@@ -102,6 +102,7 @@ function parseJsonManifest(json) {
       symlinkTarget: String(f.SymlinkTarget || ''),
       hash: blobBytes(f.FileHash || ''),
       flags: 0,
+      installTags: Array.isArray(f.InstallTags) ? f.InstallTags.map(String) : [],
       parts,
       size: parts.reduce((n, p) => n + p.size, 0),
     };
@@ -184,6 +185,55 @@ function plan(manifest, filenames = null) {
   };
 }
 
+// Optional parts of a game: files with install tags. Files without tags are
+// always installed; a tagged file is installed when one of its tags is chosen.
+const TAG_NAMES = {
+  de: 'Немецкий язык',
+  fr: 'Французский язык',
+  es: 'Испанский язык',
+  'es-mx': 'Испанский (Латинская Америка)',
+  it: 'Итальянский язык',
+  ja: 'Японский язык',
+  ko: 'Корейский язык',
+  pl: 'Польский язык',
+  pt: 'Португальский язык',
+  'pt-br': 'Португальский (Бразилия)',
+  ru: 'Русский язык',
+  en: 'Английский язык',
+  tr: 'Турецкий язык',
+  ar: 'Арабский язык',
+  zh: 'Китайский язык',
+  'zh-hans': 'Китайский (упрощённый)',
+  'zh-hant': 'Китайский (традиционный)',
+};
+function tagLabel(tag) {
+  const t = String(tag).toLowerCase();
+  if (TAG_NAMES[t]) return TAG_NAMES[t];
+  const lang = /(?:^|[_-])(?:lang(?:uage)?|vo|audio|voice)[_-]?([a-z]{2}(?:-[a-z]{2,4})?)$/i.exec(t);
+  if (lang && TAG_NAMES[lang[1]]) return TAG_NAMES[lang[1]] + ' (озвучка)';
+  if (/hd|highres|4k|texture/i.test(t)) return `Текстуры высокого разрешения (${tag})`;
+  return tag;
+}
+function components(manifest) {
+  const byTag = new Map();
+  for (const f of manifest.files)
+    for (const t of f.installTags || []) {
+      const c = byTag.get(t) || { tag: t, label: tagLabel(t), size: 0, files: 0 };
+      c.size += f.size;
+      c.files++;
+      byTag.set(t, c);
+    }
+  return [...byTag.values()].sort((a, b) => b.size - a.size);
+}
+// The files of the chosen parts (null tags = everything, like Legendary).
+function selectFiles(manifest, tags) {
+  if (!Array.isArray(tags)) return null;
+  const chosen = new Set(tags);
+  return manifest.files
+    .filter(f => !(f.installTags || []).length || f.installTags.some(t => chosen.has(t)))
+    .map(f => f.filename);
+}
+
 // An update: files that are new or changed, and old files that are gone.
 function diff(oldManifest, newManifest) {
   const old = new Map((oldManifest?.files || []).map(f => [f.filename.toLowerCase(), f]));
@@ -220,6 +270,7 @@ function launcherItem({
   installGuid,
   ownershipToken,
   canRunOffline,
+  tags = null,
 }) {
   return {
     FormatVersion: 0,
@@ -255,7 +306,7 @@ function launcherItem({
     TechnicalType: '',
     VaultThumbnailUrl: '',
     VaultTitleText: '',
-    InstallSize: plan(manifest).installSize,
+    InstallSize: plan(manifest, selectFiles(manifest, tags)).installSize,
     MainWindowProcessName: '',
     ProcessNames: [],
     BackgroundProcessNames: [],
@@ -286,6 +337,9 @@ module.exports = {
   safeTarget,
   plan,
   diff,
+  tagLabel,
+  components,
+  selectFiles,
   folderName,
   launcherItem,
 };

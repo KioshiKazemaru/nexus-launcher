@@ -71,7 +71,16 @@ function mockStore(options = {}) {
             id: 'epic:Salt',
             name: 'Slay the Spire',
             tags: [],
-            offers: [{ provider: 'epic', appId: 'Salt', owned: true, playtime: 1500 }],
+            offers: [
+              {
+                provider: 'epic',
+                appId: 'Salt',
+                namespace: 'ns',
+                itemId: 'salt1',
+                owned: true,
+                playtime: 1500,
+              },
+            ],
           },
         ]
       : options.friends
@@ -234,6 +243,27 @@ function mockStore(options = {}) {
               if (k === 'browseDlc') return { items: [], checkedAt: Date.now() };
               if (k === 'getArtwork') throw Error('offline');
               if (k === 'closeGame') return { result: 'closed', state: { ...state, running: {} } };
+              if (k === 'installOptions')
+                return {
+                  title: 'Slay the Spire',
+                  root: 'D:\\Games\\Epic',
+                  folderName: 'SlayTheSpire',
+                  free: 500 * 1024 ** 3,
+                  downloadSize: 6 * 1024 ** 3,
+                  installSize: 10 * 1024 ** 3,
+                  baseSize: 7 * 1024 ** 3,
+                  components: [
+                    { tag: 'de', label: 'Немецкий язык', size: 2 * 1024 ** 3 },
+                    { tag: 'hd', label: 'Текстуры высокого разрешения (hd)', size: 1024 ** 3 },
+                  ],
+                  dlcs: [
+                    { appId: 'SaltDlc', title: 'Bonus Pack', installed: false },
+                    { appId: 'SaltOld', title: 'Old Pack', installed: true },
+                  ],
+                  thirdParty: false,
+                };
+              if (k === 'chooseInstallRoot') return { root: 'E:\\Games', free: 100 * 1024 ** 3 };
+              if (k === 'startInstall') return { result: { how: 'started' }, state };
               if (k === 'friends')
                 return {
                   steam: [
@@ -733,6 +763,51 @@ test(
       // Closed: "Играть" again, and the account is no longer "В игре".
       await p.waitForSelector('#details #play');
       assert.doesNotMatch(await p.locator('.profile-chip').first().getAttribute('class'), /in-game/);
+      assert.deepEqual(errors, []);
+    } finally {
+      await browser.close();
+    }
+  }
+);
+
+test(
+  'Epic install window: sizes, folder, optional parts and DLC',
+  { skip: !chromium && 'playwright is not installed' },
+  async () => {
+    const browser = await chromium.launch();
+    try {
+      const p = await browser.newPage({ viewport: { width: 1440, height: 940 } });
+      const errors = [];
+      p.on('pageerror', e => errors.push(e.message));
+      await p.addInitScript(mockStore, { library: true });
+      await p.goto(page);
+      await p.waitForSelector('#showcase-block');
+      await p.evaluate(() => {
+        page = 'library';
+        showDetail('epic:Salt');
+      });
+      await p.click('#library-play');
+      const dlg = p.locator('#install-dialog');
+      await dlg.locator('[data-install-start]').waitFor();
+      const text = await dlg.textContent();
+      assert.match(text, /Установка «Slay the Spire»/);
+      assert.match(text, /D:\\Games\\Epic\\SlayTheSpire/);
+      assert.match(text, /Немецкий язык/);
+      assert.match(text, /Bonus Pack/);
+      assert.equal(await dlg.locator('[data-install-dlc="SaltOld"]').isDisabled(), true);
+      // Everything: 10 GB; without German: 8 GB.
+      assert.match(await dlg.locator('.install-sizes').textContent(), /10(,0)? ГБ/);
+      await dlg.locator('[data-install-tag="de"]').uncheck();
+      assert.match(await dlg.locator('.install-sizes').textContent(), /8(,0)? ГБ/);
+      await dlg.locator('[data-install-dlc="SaltDlc"]').check();
+      await dlg.locator('[data-install-root]').click();
+      await p.waitForFunction(() =>
+        /E:\\Games/.test(document.querySelector('.install-folder')?.textContent || '')
+      );
+      await dlg.locator('[data-install-start]').click();
+      await p.waitForFunction(() => !document.querySelector('#install-dialog')?.open);
+      const sent = await p.evaluate(() => window.__calls.filter(c => c[0] === 'startInstall').map(c => c[1]));
+      assert.deepEqual(sent, [{ id: 'epic:Salt', root: 'E:\\Games', tags: ['hd'], dlcs: ['SaltDlc'] }]);
       assert.deepEqual(errors, []);
     } finally {
       await browser.close();

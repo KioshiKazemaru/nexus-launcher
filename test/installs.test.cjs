@@ -142,6 +142,25 @@ function fakeEpic() {
           },
         ],
       });
+    if (url.includes('library-service.live'))
+      return ok({
+        records: [
+          { appName: 'Fennec', namespace: 'ns', catalogItemId: 'item1', metadata: { title: 'Fennec' } },
+          {
+            appName: 'FennecDlc',
+            namespace: 'ns',
+            catalogItemId: 'dlc1',
+            metadata: { title: 'Bonus', mainGameItem: { id: 'item1' } },
+          },
+          {
+            appName: 'OtherDlc',
+            namespace: 'x',
+            catalogItemId: 'dlc2',
+            metadata: { title: 'Other', mainGameItem: { id: 'zzz' } },
+          },
+        ],
+        responseMetadata: {},
+      });
     if (url.includes('/bulk/items'))
       return ok({ item1: { title: 'Fennec', customAttributes: { FolderName: { value: 'Fennec' } } } });
     const clean = url.split('?')[0];
@@ -609,5 +628,95 @@ test('Epic downloads: allowed hours (also over midnight), "Загрузить с
     }
     assert.equal(waits.length, 1);
     assert.ok(waits[0] > 1900 && waits[0] <= 2000, String(waits[0]));
+  });
+});
+
+test('optional parts of a game: components with sizes, files of the chosen tags', () => {
+  const m = {
+    files: [
+      { filename: 'Game.exe', size: 10, installTags: [] },
+      { filename: 'de/voice.pak', size: 20, installTags: ['de'] },
+      { filename: 'hd/tex.pak', size: 30, installTags: ['hd_textures'] },
+      { filename: 'both.pak', size: 5, installTags: ['de', 'hd_textures'] },
+    ],
+  };
+  assert.deepEqual(
+    d.components(m).map(c => [c.tag, c.label, c.size]),
+    [
+      ['hd_textures', 'Текстуры высокого разрешения (hd_textures)', 35],
+      ['de', 'Немецкий язык', 25],
+    ]
+  );
+  assert.equal(d.selectFiles(m, null), null);
+  assert.deepEqual(d.selectFiles(m, []), ['Game.exe']);
+  assert.deepEqual(d.selectFiles(m, ['de']), ['Game.exe', 'de/voice.pak', 'both.pak']);
+  assert.equal(d.tagLabel('VO_ru'), 'Русский язык (озвучка)');
+});
+
+test('Epic install window: options, start with DLC into the game folder, DLC records', () => {
+  const dir = tmp();
+  return withProgramData(dir, async () => {
+    const srv = fakeEpic();
+    srv.publish({ 'Game.exe': rnd(200 * 1024) }, 1);
+    const { ctx } = epicCtx(dir, ownedGame());
+    const e = new EpicInstaller(ctx, { fetcher: srv.fetch });
+    const o = await e.options('epic:fennec');
+    assert.equal(o.title, 'Fennec');
+    assert.equal(o.folderName, 'Fennec');
+    assert.ok(o.downloadSize > 0 && o.installSize > 0 && o.free > 0);
+    assert.deepEqual(o.components, []);
+    assert.deepEqual(o.dlcs, [{ appId: 'FennecDlc', title: 'Bonus', installed: false }]);
+    await assert.rejects(
+      e.start('epic:fennec', { root: path.join(dir, 'Games'), tags: ['nope'] }),
+      /Неизвестный компонент/
+    );
+    await assert.rejects(
+      e.start('epic:fennec', { root: path.join(dir, 'Games'), dlcs: ['OtherDlc'] }),
+      /недоступно/
+    );
+    await assert.rejects(e.start('epic:fennec', { root: 'C:\\Program Files\\Games' }), /Program Files/);
+    assert.deepEqual(await e.start('epic:fennec', { root: path.join(dir, 'Games'), dlcs: ['FennecDlc'] }), {
+      how: 'started',
+    });
+    assert.equal(e.progress()['epic:fennec#FennecDlc'].state, 'queued');
+    assert.equal(e.progress()['epic:fennec#FennecDlc'].title, 'Fennec: Bonus');
+    await e.jobs.get('epic:fennec').running;
+    for (
+      let i = 0;
+      i < 100 && e.jobs.has('epic:fennec#FennecDlc') && !e.jobs.get('epic:fennec#FennecDlc').running;
+      i++
+    )
+      await new Promise(r => setTimeout(r, 10));
+    await e.jobs.get('epic:fennec#FennecDlc')?.running;
+    assert.equal(e.jobs.size, 0);
+    const itemsDir = path.join(dir, 'ProgramData', 'Epic', 'EpicGamesLauncher', 'Data', 'Manifests');
+    const items = fs
+      .readdirSync(itemsDir)
+      .map(n => JSON.parse(fs.readFileSync(path.join(itemsDir, n), 'utf8')));
+    const dlc = items.find(x => x.AppName === 'FennecDlc');
+    assert.equal(dlc.MainGameAppName, 'Fennec');
+    assert.equal(dlc.InstallLocation, path.join(dir, 'Games', 'Fennec'));
+    // Only the main game is listed in LauncherInstalled.dat; both manifests stay in .egstore.
+    const dat = JSON.parse(
+      fs.readFileSync(
+        path.join(dir, 'ProgramData', 'Epic', 'UnrealEngineLauncher', 'LauncherInstalled.dat'),
+        'utf8'
+      )
+    );
+    assert.deepEqual(
+      dat.InstallationList.map(x => x.AppName),
+      ['Fennec']
+    );
+    assert.equal(
+      fs.readdirSync(path.join(dir, 'Games', 'Fennec', '.egstore')).filter(n => n.endsWith('.manifest'))
+        .length,
+      2
+    );
+    // The DLC list now shows it installed.
+    e.dlcCache.clear();
+    assert.equal(
+      (await e.ownedDlcs('tok', { id: ACCOUNT }, ctx.library.games[0].offers[0]))[0].installed,
+      true
+    );
   });
 });

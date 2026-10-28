@@ -4587,3 +4587,87 @@ body[data-page='downloads'] main {
 .download-row.scheduled .download-bar i {
   opacity: 0.4;
 }
+.install-dialog {
+  width: min(560px, 92vw);
+  max-height: 86vh;
+  overflow: auto;
+  padding: 22px 24px;
+  border: 1px solid #000;
+  border-radius: 4px;
+  background: linear-gradient(180deg, #2a3039, #1b2026);
+  color: #dcdedf;
+  box-shadow: 0 10px 40px #000c;
+}
+.install-dialog::backdrop {
+  background: #0009;
+}
+.install-dialog h2 {
+  margin: 0 30px 6px 0;
+  font-weight: 500;
+}
+.install-dialog h3 {
+  margin: 16px 0 6px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8b929a;
+}
+.install-dialog .close {
+  position: absolute;
+  right: 12px;
+  top: 8px;
+}
+.install-sizes {
+  display: flex;
+  gap: 24px;
+  margin: 14px 0;
+}
+.install-sizes small,
+.install-folder small {
+  display: block;
+  color: #8b929a;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+.install-sizes strong {
+  font-size: 18px;
+  font-weight: 500;
+}
+.install-sizes .warn {
+  color: #e5b567;
+}
+.install-folder {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.install-folder small {
+  width: 100%;
+}
+.install-folder span {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-family: Consolas, monospace;
+  font-size: 12px;
+}
+.install-dialog .check small {
+  color: #8b929a;
+  margin-left: 6px;
+}
+.install-buttons {
+  display: flex;
+  gap: 8px;
+  margin-top: 18px;
+}
+.dlc-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 0;
+}
+.dlc-row small {
+  color: #8b929a;
+}

@@ -72,6 +72,8 @@ class EpicInstaller {
     this.fetch = fetcher || ((u, o) => ctx.publicFetch(u, o));
     this.jobs = new Map(); // gameId → job
     this.updates = new Map(); // gameId → new build version
+    this.prepared = new Map(); // gameId → what the install window showed
+    this.dlcCache = new Map(); // account id → { at, records }
   }
   get saved() {
     return (this.ctx.settings.epicJobs ||= {});
@@ -96,6 +98,8 @@ class EpicInstaller {
         provider: 'epic',
         nexus: true,
         kind: j.kind,
+        title: j.title,
+        dlc: j.dlc || undefined,
         done: j.done || 0,
         total: j.total || undefined,
         installSize: j.installSize || undefined,
@@ -307,6 +311,189 @@ class EpicInstaller {
       });
     }
   }
+  // ---- the install window in Nexus -------------------------------------------------
+  async freeBytes(dir) {
+    try {
+      const st = await fsp.statfs(path.parse(dir).root);
+      return st.bavail * st.bsize;
+    } catch {
+      return 0;
+    }
+  }
+  // Sizes, folder, optional parts (languages, …) and the DLC of the account.
+  async options(gameId) {
+    const g = this.game(gameId);
+    if (this.jobs.has(gameId)) throw Error('Игра уже в загрузках');
+    const offer = this.ownedOffer(g);
+    if (offer.installed) throw Error('Игра уже установлена');
+    const account = this.account(offer);
+    const token = await this.token(account.id);
+    const [assets, info] = await Promise.all([this.assets(token, offer), this.catalogInfo(token, offer)]);
+    const { manifest } = await this.manifest(assets);
+    const all = d.plan(manifest);
+    const base = d.plan(manifest, d.selectFiles(manifest, []));
+    const dlcs = await this.ownedDlcs(token, account, offer).catch(e => {
+      this.ctx.log.debug?.('epic-install', `dlc list: ${e.message}`);
+      return [];
+    });
+    const title = g.name || info.title || offer.appId;
+    const root = this.defaultRoot();
+    this.prepared.set(gameId, { at: Date.now(), offer, account, info, title, manifest, dlcs });
+    return {
+      title,
+      root,
+      folderName: d.folderName(title, info.folder),
+      free: await this.freeBytes(root),
+      downloadSize: all.downloadSize,
+      installSize: all.installSize,
+      baseSize: base.installSize,
+      components: d.components(manifest).map(c => ({ tag: c.tag, label: c.label, size: c.size })),
+      dlcs: dlcs.map(x => ({ appId: x.appId, title: x.title, installed: x.installed })),
+      thirdParty: !!info.thirdParty,
+    };
+  }
+  async chooseRoot(current) {
+    const r = await dialog.showOpenDialog(this.ctx.mainWindow?.() || null, {
+      title: 'Папка для игр Epic',
+      defaultPath: current || this.defaultRoot(),
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    if (r.canceled || !r.filePaths[0]) return null;
+    return { root: r.filePaths[0], free: await this.freeBytes(r.filePaths[0]) };
+  }
+  async start(gameId, { root, tags = null, dlcs = [] } = {}) {
+    const prep = this.prepared.get(gameId);
+    if (!prep || Date.now() - prep.at > 30 * 60000) throw Error('Откройте окно установки ещё раз');
+    if (this.jobs.has(gameId)) throw Error('Игра уже в загрузках');
+    const known = new Set(d.components(prep.manifest).map(c => c.tag));
+    if (tags !== null && (!Array.isArray(tags) || tags.some(t => !known.has(t))))
+      throw Error('Неизвестный компонент игры');
+    const wanted = (Array.isArray(dlcs) ? dlcs : []).map(String);
+    const dlcList = prep.dlcs.filter(x => wanted.includes(x.appId) && !x.installed);
+    if (dlcList.length !== new Set(wanted).size) throw Error('Это дополнение недоступно');
+    const files = d.selectFiles(prep.manifest, tags);
+    const need = d.plan(prep.manifest, files).installSize;
+    const dir = String(root || '');
+    const problem = await this.folderProblem(dir, need);
+    if (problem) throw Error(problem);
+    const folder = path.join(dir, d.folderName(prep.title, prep.info.folder));
+    if (
+      fs.existsSync(folder) &&
+      (await fsp.readdir(folder)).length &&
+      !fs.existsSync(path.join(folder, '.egstore'))
+    )
+      throw Error(`Папка ${folder} уже занята другими файлами — выберите другую`);
+    this.ctx.settings.epicInstallRoot = dir;
+    this.prepared.delete(gameId);
+    const r = this.begin(gameId, {
+      kind: 'install',
+      appId: prep.offer.appId,
+      namespace: prep.offer.namespace,
+      itemId: prep.offer.itemId,
+      accountId: prep.account.id,
+      title: prep.title,
+      installDir: folder,
+      tags: tags === null ? null : [...tags],
+      ownershipToken: !!prep.info.ownershipToken,
+      canRunOffline: prep.info.canRunOffline !== false,
+    });
+    for (const x of dlcList) this.beginDlc(gameId, prep.offer, prep.account, prep.title, folder, x);
+    return r;
+  }
+  // DLC with their own files (the account's library lists them with the main game).
+  async ownedDlcs(token, account, offer) {
+    let cache = this.dlcCache.get(account.id);
+    if (!cache || Date.now() - cache.at > 10 * 60000) {
+      const records = [];
+      let cursor = null;
+      for (let page = 0; page < 50; page++) {
+        const u = new URL('https://library-service.live.use1a.on.epicgames.com/library/api/public/items');
+        u.search = new URLSearchParams({ includeMetadata: 'true', ...(cursor ? { cursor } : {}) });
+        const r = await this.fetch(u.href, {
+          headers: { Authorization: `bearer ${token}`, Accept: 'application/json' },
+          signal: AbortSignal.timeout(15000),
+        });
+        if (!r.ok) throw Error(`HTTP ${r.status}`);
+        const j = await r.json();
+        records.push(...(j.records || []));
+        cursor = j.responseMetadata?.nextCursor;
+        if (!cursor) break;
+      }
+      cache = { at: Date.now(), records };
+      this.dlcCache.set(account.id, cache);
+    }
+    const installed = await this.installedApps();
+    return cache.records
+      .filter(r => r?.appName && r.metadata?.mainGameItem?.id === offer.itemId && r.appName !== offer.appId)
+      .map(r => ({
+        appId: String(r.appName),
+        namespace: String(r.namespace || offer.namespace),
+        itemId: String(r.catalogItemId || ''),
+        title: String(r.metadata?.title || r.appName).slice(0, 120),
+        installed: installed.has(r.appName),
+      }))
+      .filter(x => x.itemId);
+  }
+  // AppNames with an install record (games and DLC).
+  async installedApps() {
+    const out = new Set();
+    for (const dir of [epicManifestDir(), this.ctx.storage.file('epic-manifests')]) {
+      for (const n of await fsp.readdir(dir).catch(() => [])) {
+        if (!n.endsWith('.item')) continue;
+        try {
+          const v = JSON.parse(await fsp.readFile(path.join(dir, n), 'utf8'));
+          if (v.AppName && !v.bIsIncompleteInstall) out.add(v.AppName);
+        } catch {}
+      }
+    }
+    return out;
+  }
+  // DLC of an installed game: the list for its page, and installing one.
+  async dlcs(gameId) {
+    const g = this.game(gameId);
+    const inst = g.offers.find(o => o.provider === 'epic' && o.installed);
+    const offer = this.ownedOffer(g);
+    const account = this.account(offer);
+    const list = await this.ownedDlcs(await this.token(account.id), account, offer);
+    return list.map(x => ({
+      appId: x.appId,
+      title: x.title,
+      installed: x.installed,
+      downloading: this.jobs.has(`${gameId}#${x.appId}`),
+      canInstall: !!inst?.installLocation,
+    }));
+  }
+  async installDlc(gameId, appId) {
+    const g = this.game(gameId);
+    const inst = g.offers.find(o => o.provider === 'epic' && o.installed);
+    if (!inst?.installLocation) throw Error('Сначала установите игру');
+    const offer = this.ownedOffer(g);
+    const account = this.account(offer);
+    const list = await this.ownedDlcs(await this.token(account.id), account, offer);
+    const x = list.find(y => y.appId === String(appId));
+    if (!x) throw Error('Это дополнение не найдено в аккаунте');
+    if (x.installed) throw Error('Дополнение уже установлено');
+    this.beginDlc(gameId, offer, account, g.name, inst.installLocation, x);
+    return { how: 'started' };
+  }
+  beginDlc(gameId, offer, account, gameTitle, folder, x) {
+    const key = `${gameId}#${x.appId}`;
+    if (this.jobs.has(key)) return;
+    this.begin(key, {
+      kind: 'install',
+      dlc: true,
+      mainGameId: gameId,
+      mainAppId: offer.appId,
+      mainNamespace: offer.namespace,
+      mainItemId: offer.itemId,
+      appId: x.appId,
+      namespace: x.namespace,
+      itemId: x.itemId,
+      accountId: account.id,
+      title: `${gameTitle}: ${x.title}`,
+      installDir: folder,
+    });
+  }
   // Update to the current build: only new and changed files are downloaded.
   async update(gameId) {
     const g = this.game(gameId);
@@ -315,7 +502,16 @@ class EpicInstaller {
     if (this.ctx.running?.isRunning(gameId)) throw Error('Сначала закройте игру');
     if (this.jobs.has(gameId)) return this.resume(gameId);
     const owned = this.ownedOffer(g);
+    const tagsOf = async () => {
+      try {
+        const v = JSON.parse(await fsp.readFile(offer.manifestFile, 'utf8'));
+        return Array.isArray(v.InstallTags) && v.InstallTags.length ? v.InstallTags.map(String) : null;
+      } catch {
+        return null;
+      }
+    };
     return this.begin(gameId, {
+      tags: await tagsOf(),
       kind: 'update',
       appId: offer.appId,
       namespace: offer.namespace || owned.namespace,
@@ -512,7 +708,11 @@ class EpicInstaller {
   }
   // ---- the job ---------------------------------------------------------------------
   stateFile(job) {
-    return path.join(job.installDir, '.egstore', 'nexus-download.json');
+    return path.join(
+      job.installDir,
+      '.egstore',
+      job.dlc ? `nexus-download-${job.appId}.json` : 'nexus-download.json'
+    );
   }
   async readState(job) {
     try {
@@ -538,7 +738,7 @@ class EpicInstaller {
     return { item, manifest: d.parseManifest(await fsp.readFile(path.join(dir, pick))) };
   }
   async run(job) {
-    if (this.ctx.running?.isRunning(job.gameId)) throw Error('Сначала закройте игру');
+    if (this.ctx.running?.isRunning(job.mainGameId || job.gameId)) throw Error('Сначала закройте игру');
     const token = await this.token(job.accountId);
     const assets = await this.assets(token, job);
     const { bytes, manifest } = await this.manifest(assets);
@@ -546,16 +746,21 @@ class EpicInstaller {
     let files = null; // all
     let removed = [];
     let old = { item: {}, manifest: null };
-    if (job.kind === 'update') {
+    // Only the chosen optional parts (languages, …); null = everything.
+    const tags = Array.isArray(job.tags) ? job.tags : null;
+    const chosen = d.selectFiles(manifest, tags);
+    if (job.kind === 'install') files = chosen;
+    else if (job.kind === 'update') {
       old = await this.oldManifest(job);
       const diff = d.diff(old.manifest, manifest);
-      files = diff.changed;
+      const keep = chosen && new Set(chosen);
+      files = keep ? diff.changed.filter(f => keep.has(f)) : diff.changed;
       removed = diff.removed;
     } else if (job.kind === 'repair') {
       old = await this.oldManifest(job);
       job.state = 'verifying';
       this.publish();
-      files = await this.badFiles(job, manifest, null, false);
+      files = await this.badFiles(job, manifest, chosen, false);
     }
     const temp = job.kind !== 'install';
     for (let attempt = 0; ; attempt++) {
@@ -758,9 +963,6 @@ class EpicInstaller {
       : crypto.randomBytes(16).toString('hex').toUpperCase();
     const egstore = path.join(job.installDir, '.egstore');
     await fsp.mkdir(egstore, { recursive: true });
-    for (const n of await fsp.readdir(egstore))
-      if (n.endsWith('.manifest') && n.toUpperCase() !== `${installGuid}.MANIFEST`)
-        await fsp.rm(path.join(egstore, n), { force: true });
     await fsp.writeFile(path.join(egstore, `${installGuid}.manifest`), bytes);
     await fsp.writeFile(
       path.join(egstore, `${installGuid}.mancpn`),
@@ -782,7 +984,18 @@ class EpicInstaller {
         installGuid,
         ownershipToken: job.ownershipToken ?? String(oldItem.OwnershipToken).toLowerCase() === 'true',
         canRunOffline: job.canRunOffline ?? oldItem.bCanRunOffline !== false,
+        tags: Array.isArray(job.tags) ? job.tags : null,
       }),
+      ...(Array.isArray(job.tags) ? { InstallTags: job.tags } : {}),
+      // DLC: the record names its main game (the Epic launcher and Nexus list it under it).
+      ...(job.dlc
+        ? {
+            MainGameAppName: job.mainAppId,
+            MainGameCatalogNamespace: job.mainNamespace,
+            MainGameCatalogItemId: job.mainItemId,
+            bIsExecutable: false,
+          }
+        : {}),
     };
     const itemFile = job.itemFile || path.join(epicManifestDir(), `${installGuid}.item`);
     try {
@@ -795,9 +1008,10 @@ class EpicInstaller {
       await fsp.writeFile(own, JSON.stringify(item, null, '\t'));
       this.ctx.log.warn('epic-install', `item in Nexus folder (${e.code || e.message})`);
     }
-    await this.updateLauncherInstalled(job, assets).catch(e =>
-      this.ctx.log.warn('epic-install', `dat: ${e.message}`)
-    );
+    if (!job.dlc)
+      await this.updateLauncherInstalled(job, assets).catch(e =>
+        this.ctx.log.warn('epic-install', `dat: ${e.message}`)
+      );
   }
   async updateLauncherInstalled(job, assets) {
     const file = launcherInstalledFile();
