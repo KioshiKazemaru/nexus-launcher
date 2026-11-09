@@ -167,7 +167,7 @@ test('an app installed while Nexus runs is classified (tools leave the library)'
   });
   lib.localSignature = LibraryService.signature(lib.local);
   lib.classifyLocalSteam = async l => {
-    lib.steamTypes.set('999', 6); // the store says: application, not a game
+    lib.steamTypes.set('999', 13); // the store says: a tool, not a game
     return l.offers.some(o => !lib.isGameOffer(o));
   };
   await lib.pollProgress();

@@ -154,13 +154,16 @@ class LibraryService {
         .map(o => o.appId),
     };
   }
-  // Installed Steam apps include tools (redistributables, Proton, SteamVR) and
-  // software. Known tools are dropped at once; others once the store says so.
+  // Installed Steam apps include tools (redistributables, Proton, SteamVR),
+  // DLC, soundtracks and videos. Known tools are dropped at once; others once
+  // the store says so. Games, demos and software (OBS, Wallpaper Engine…) stay:
+  // Steam's own library lists them, and an owned program must not look
+  // "not installed" next to its installed copy.
   isGameOffer(o) {
     if (o.provider !== 'steam') return true;
     if (steamLib.STEAM_TOOL_IDS.has(String(o.appId))) return false;
     const type = this.steamTypes.get(String(o.appId));
-    return type === undefined || type === null || type === 0;
+    return type === undefined || type === null || steamLib.LIBRARY_APP_TYPES.has(type);
   }
   rememberAssets(items) {
     for (const [id, info] of items) {

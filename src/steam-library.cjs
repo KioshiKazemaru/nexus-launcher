@@ -124,8 +124,11 @@ async function fetchOwnedWithToken(fetcher, accountId) {
 
 // --- 2. userdata + type filter -------------------------------------------
 
-// EStoreAppType: 0 = game. Everything else (DLC, software, music, video,
-// demo, hardware, beta) is not a library game.
+// EStoreAppType (steammessages_storebrowse): 0 game, 1 demo, 2 mod, 3 movie,
+// 4 DLC, 5 guide, 6 software, 7 video, 8 series, 9 episode, 10 hardware,
+// 11 music, 12 beta, 13 tool, 14 advertising. The library keeps what can be
+// launched and what Steam's library lists: games, demos and software.
+const LIBRARY_APP_TYPES = new Set([0, 1, 6]);
 function parseStoreItems(json) {
   const items = json?.response?.store_items;
   if (!Array.isArray(items)) throw Error('Steam не вернул сведения о приложениях');
@@ -344,7 +347,7 @@ function filterGames(offers, items) {
     .filter(o => {
       const info = items.get(o.appId);
       // Unknown to the store (delisted) apps are kept: they are usually old games.
-      return !info || !info.ok || info.type === 0;
+      return !info || !info.ok || LIBRARY_APP_TYPES.has(info.type);
     })
     .map(o => {
       const info = items.get(o.appId);
@@ -483,6 +486,7 @@ module.exports = {
   steamTagNames,
   filterGames,
   STEAM_TOOL_IDS,
+  LIBRARY_APP_TYPES,
   storeAssets,
   decodeEntities,
   parseCommunityGamesList,

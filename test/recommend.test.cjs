@@ -65,7 +65,7 @@ test('ranking: similar and well reviewed first; owned on either store, hidden an
       candidate('13', 'Farming Sim', ['Симулятор фермы', 'Расслабляющая']),
       candidate('1145360', 'Hades', ['Экшен-рогалик']), // owned on Steam
       candidate('646570', 'Slay the Spire', ['Карточный рогалик']), // owned on Epic (by title)
-      candidate('14', 'Hades II Soundtrack', ['Экшен-рогалик', 'Рогалик'], { type: 6 }), // not a game
+      candidate('14', 'Hades II Soundtrack', ['Экшен-рогалик', 'Рогалик'], { type: 11 }), // music, not a game
       candidate('15', 'Hidden One', ['Экшен-рогалик', 'Рогалик']),
       candidate('10', 'Hades II', ['Экшен-рогалик']), // duplicate
     ],

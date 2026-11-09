@@ -56,16 +56,17 @@ test('licences are filtered to games: DLC, soundtracks and tools are dropped', (
       store_items: [
         { appid: 10, success: 1, type: 0, name: 'Game' },
         { appid: 11, success: 1, type: 4, name: 'DLC' },
-        { appid: 12, success: 1, type: 6, name: 'Soundtrack' },
+        { appid: 12, success: 1, type: 11, name: 'Soundtrack' },
+        { appid: 14, success: 1, type: 6, name: 'OBS Studio' },
         { appid: 13, success: 2 },
       ],
     },
   });
-  const licences = [10, 11, 12, 13].map(a => s.ownedOffer(a, id));
+  const licences = [10, 11, 12, 13, 14].map(a => s.ownedOffer(a, id));
   const games = s.filterGames(licences, items);
   assert.deepEqual(
     games.map(o => o.appId),
-    ['10', '13']
+    ['10', '13', '14']
   );
   assert.equal(games[0].name, 'Game');
 });
@@ -124,7 +125,7 @@ test('library cache covers: flat and per-app folder layouts, only numeric ids', 
   }
 });
 
-test('installed tools and software are not games; delisted apps stay', async () => {
+test('installed tools, DLC and soundtracks are dropped; games, software (OBS) and delisted apps stay', async () => {
   const { LibraryService } = require('../src/main/library.cjs');
   const urls = [];
   const lib = new LibraryService({
@@ -134,7 +135,7 @@ test('installed tools and software are not games; delisted apps stay', async () 
     publicFetch: async url => {
       urls.push(url);
       const ids = JSON.parse(new URL(url).searchParams.get('input_json')).ids.map(x => String(x.appid));
-      const types = { 892970: 0, 1905180: 6, 2420510: 4 };
+      const types = { 892970: 0, 1905180: 6, 2420510: 4, 1171610: 11 };
       return {
         ok: true,
         status: 200,
@@ -151,13 +152,13 @@ test('installed tools and software are not games; delisted apps stay', async () 
   const offer = appId => ({ provider: 'steam', appId });
   assert.equal(lib.isGameOffer(offer('228980')), false, 'redistributables are a known tool');
   const local = {
-    offers: ['892970', '1905180', '2420510', '999'].map(offer),
-    steamAll: ['892970', '1905180', '2420510', '999', '228980'],
+    offers: ['892970', '1905180', '2420510', '1171610', '999'].map(offer),
+    steamAll: ['892970', '1905180', '2420510', '1171610', '999', '228980'],
   };
   assert.equal(await lib.classifyLocalSteam(local), true);
   assert.deepEqual(
     local.offers.filter(o => lib.isGameOffer(o)).map(o => o.appId),
-    ['892970', '999']
+    ['892970', '1905180', '999']
   );
   assert.equal(urls.length, 1);
   assert.equal(await lib.classifyLocalSteam(local), false, 'classified apps are not asked again');

@@ -4001,7 +4001,10 @@ input[type='checkbox'] {
 /* ---- bottom bar: Steam client footer ---- */
 footer {
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  /* The side groups take what they need; the middle (downloads) gets the rest.
+     With "1fr auto 1fr" the right group got under half the width, and its
+     items wrapped onto a second line out of the 34px bar. */
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 16px;
   background: linear-gradient(180deg, #1b1f26, #12151b);
@@ -4023,6 +4026,8 @@ footer {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-self: center;
+  max-width: 100%;
   line-height: 1.2;
 }
 .footer-downloads strong {
@@ -4046,11 +4051,18 @@ footer {
   min-width: 0;
   font-size: 11px;
 }
+.footer-right > *,
+.footer-add {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
 .footer-right #footer-status {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 260px;
+  flex-shrink: 1;
+  min-width: 0;
 }
 footer #scan {
   background: transparent;
@@ -4059,7 +4071,7 @@ footer #scan {
 footer #scan:hover {
   color: var(--st-bright);
 }
-@media (max-width: 1250px) {
+@media (max-width: 1450px) {
   .footer-right #footer-status {
     display: none;
   }
