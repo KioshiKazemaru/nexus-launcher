@@ -63,7 +63,11 @@ class StoreService {
     this.recFile = new JsonFile(ctx.storage.file('recommend-cache.json'), 2000);
     const saved = this.recFile.readSync({}) || {};
     this.recCache = { tags: saved.tags || {}, epicSteam: saved.epicSteam || {} };
-    this.recResults = new Map(); // country → { key, at, value }
+    // country → { key, at, value }; the last results are kept between runs, so the
+    // store shows them at once after start while the library is still syncing.
+    this.recResults = new Map(
+      Object.entries(saved.results || {}).filter(([, r]) => r && typeof r.key === 'string' && r.value)
+    );
     this.recRunning = new Map();
     this.prices = new CatalogPrices(ctx.routedFetch);
     // Epic catalog is fetched directly; after HTTP 403 it goes through a hidden store page.
@@ -359,7 +363,9 @@ class StoreService {
           .slice(0, keys.length - CACHE_LIMIT)
           .forEach(k => delete map[k]);
     }
-    this.recFile.schedule(() => JSON.stringify(this.recCache));
+    this.recFile.schedule(() =>
+      JSON.stringify({ ...this.recCache, results: Object.fromEntries(this.recResults) })
+    );
   }
   // Epic-only games get the tags of the same game on Steam (found by title).
   async mapEpicToSteam(owned, country) {
@@ -399,16 +405,26 @@ class StoreService {
       .sort()
       .join(',');
     const old = this.recResults.get(country);
-    if (!force && old && old.key === key && Date.now() - old.at < REC_TTL) return old.value;
-    if (this.recRunning.has(country)) return this.recRunning.get(country);
-    const run = this.computeRecommendations(owned, country)
-      .then(value => {
-        this.recResults.set(country, { key, at: Date.now(), value });
-        return value;
-      })
-      .finally(() => this.recRunning.delete(country));
-    this.recRunning.set(country, run);
-    return run;
+    const start = () => {
+      if (this.recRunning.has(country)) return this.recRunning.get(country);
+      const run = this.computeRecommendations(owned, country)
+        .then(value => {
+          this.recResults.set(country, { key, at: Date.now(), value });
+          this.saveRecCache();
+          return value;
+        })
+        .finally(() => this.recRunning.delete(country));
+      this.recRunning.set(country, run);
+      return run;
+    };
+    if (!force && old && Date.now() - old.at < REC_TTL) {
+      // The library changed (a sync step, a purchase): the last selection is shown
+      // now and a fresh one is prepared for the next request.
+      if (old.key === key) return old.value;
+      start().catch(e => this.ctx.log?.warn('recommend', e.message));
+      return { ...old.value, refreshing: true };
+    }
+    return start();
   }
   async computeRecommendations(owned, country) {
     const basedOn = {
@@ -417,6 +433,8 @@ class StoreService {
       epicMatched: 0,
     };
     if (!owned.length) return { items: [], profile: [], basedOn, checkedAt: Date.now() };
+    // Steam's tag names are needed later; they load while the owned games are matched.
+    const namesJob = steamLib.steamTagNames(this.ctx.publicFetch).catch(() => new Map());
     await this.mapEpicToSteam(owned, country);
     basedOn.epicMatched = owned.filter(g => g.tagSource).length;
     // Tags of the owned games that tell most about the player (by playtime).
@@ -440,7 +458,7 @@ class StoreService {
     const profile = recommend.buildProfile(owned);
     if (!profile.games) return { items: [], profile: [], basedOn, checkedAt: Date.now() };
     // Candidates: popular games with the player's main tags (single tags and the top pair).
-    const names = await steamLib.steamTagNames(this.ctx.publicFetch).catch(() => new Map());
+    const names = await namesJob;
     const idOf = new Map([...names].map(([id, name]) => [name, id]));
     // Specific tags make better queries; broad ones only if nothing else is known.
     const ordered = [
@@ -777,7 +795,7 @@ class StoreService {
         const s = this.ctx.accounts.session(account.key);
         // A private wishlist needs the session token; a public one works without it.
         const token = await steamLib
-          .sessionToken((url, o) => s.fetch(url, o), account.id)
+          .cachedSessionToken((url, o) => s.fetch(url, o), account.id)
           .catch(e => {
             this.ctx.log.debug('wishlist', e.message);
             return '';

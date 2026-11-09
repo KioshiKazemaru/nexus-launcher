@@ -198,3 +198,32 @@ test('programs from a backup are added only after the user agrees', async () => 
     electron.dialog.showMessageBox = original;
   }
 });
+
+test('recommendations: the last selection is answered at once while a changed library is recomputed', async () => {
+  const { StoreService } = require('../src/main/store.cjs');
+  const store = Object.create(StoreService.prototype);
+  let owned = [{ id: 'a' }];
+  let runs = 0;
+  let release;
+  Object.assign(store, {
+    ctx: { log: { warn() {} } },
+    recResults: new Map([['US', { key: 'a', at: Date.now(), value: { items: ['old'] } }]]),
+    recRunning: new Map(),
+    checkCountry() {},
+    ownedForRecommendations: () => owned,
+    saveRecCache() {},
+    computeRecommendations: () => {
+      runs++;
+      return new Promise(r => (release = r));
+    },
+  });
+  assert.deepEqual(await store.recommendations({ country: 'US' }), { items: ['old'] });
+  assert.equal(runs, 0, 'same library: cached');
+  owned = [{ id: 'a' }, { id: 'b' }];
+  assert.deepEqual(await store.recommendations({ country: 'US' }), { items: ['old'], refreshing: true });
+  assert.deepEqual(await store.recommendations({ country: 'US' }), { items: ['old'], refreshing: true });
+  assert.equal(runs, 1, 'one recomputation at a time');
+  release({ items: ['new'] });
+  await new Promise(r => setImmediate(r));
+  assert.deepEqual(await store.recommendations({ country: 'US' }), { items: ['new'] });
+});

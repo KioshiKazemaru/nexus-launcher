@@ -368,6 +368,9 @@ function treeRow(g, playing) {
     isRunning(g.id) ? '<small>Запущено</small>' : g.progress ? '<small>Загрузка</small>' : ''
   }</button>`;
 }
+// Pages whose layout hides the library panel (see style.css).
+const TREE_HIDDEN = ['store', 'game', 'wishlist', 'accounts', 'tracking'];
+let treeHtml = null;
 function renderLibraryTree() {
   const el = $('#library-tree');
   if (!el) return;
@@ -385,6 +388,8 @@ function renderLibraryTree() {
   }
   const sort = $('#side-sort');
   if (sort) sort.title = 'Порядок: ' + SORT_NAMES[librarySort];
+  // The panel is hidden on these pages: it is built when it is shown again.
+  if (TREE_HIDDEN.includes(page)) return;
   const q = treeQuery.trim().toLowerCase();
   const shown = filteredLibrary().filter(g => !q || g.name.toLowerCase().includes(q));
   // Totals like Steam's "(30/386)": every game of the account, installed or not.
@@ -431,9 +436,13 @@ function renderLibraryTree() {
       return `<div class="tree-head"><button class="tree-group" data-tree-group="${esc(x.id)}" aria-expanded="${open}"><b>${open ? '—' : '+'}</b> ${esc(x.name)} <span>(${count})</span></button>${grid}</div>${body}`;
     })
     .join('');
-  el.innerHTML =
+  const next =
     (shown.length ? html : html + '<p class="tree-empty">Нет игр в выбранном списке</p>') +
     (rows >= 2000 ? '<p class="tree-empty">Показаны первые 2000 — используйте поиск</p>' : '');
+  // Unchanged rows are not rebuilt (keeps hover and scrolling, saves layout).
+  if (next === treeHtml && el.childElementCount) return;
+  treeHtml = next;
+  el.innerHTML = next;
 }
 document.addEventListener('click', event => {
   const el = event.target.closest('#library-tree [data-tree-group], #side-sort');

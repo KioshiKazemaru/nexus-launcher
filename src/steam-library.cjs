@@ -101,6 +101,44 @@ async function sessionToken(fetcher, accountId) {
   return token;
 }
 
+// The session token lives about a day: it is asked once and kept until shortly
+// before it expires (never longer than 6 hours). Parallel requests share one ask.
+const tokenCache = new Map(); // account id → { token, until } | { pending }
+function tokenExpiry(token) {
+  try {
+    const part = token.split('.')[1];
+    const json = JSON.parse(
+      Buffer.from(part.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8')
+    );
+    return Number(json.exp) > 0 ? Number(json.exp) * 1000 : 0;
+  } catch {
+    return 0;
+  }
+}
+async function cachedSessionToken(fetcher, accountId, { force = false } = {}) {
+  const hit = tokenCache.get(accountId);
+  if (!force && hit?.pending) return hit.pending;
+  if (!force && hit?.token && Date.now() < hit.until) return hit.token;
+  const pending = sessionToken(fetcher, accountId).then(
+    token => {
+      const exp = tokenExpiry(token);
+      const until = Math.min(Date.now() + 6 * 3600000, exp ? exp - 600000 : Date.now() + 3600000);
+      tokenCache.set(accountId, { token, until });
+      return token;
+    },
+    e => {
+      tokenCache.delete(accountId);
+      throw e;
+    }
+  );
+  tokenCache.set(accountId, { pending });
+  return pending;
+}
+function forgetSessionToken(accountId) {
+  if (accountId === undefined) tokenCache.clear();
+  else tokenCache.delete(accountId);
+}
+
 async function fetchOwnedWithToken(fetcher, accountId) {
   const token = await sessionToken(fetcher, accountId);
   const u = new URL('https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/');
@@ -469,6 +507,8 @@ async function findLibraryCover(fsp, path, cacheDir, appId, kind) {
 }
 
 module.exports = {
+  cachedSessionToken,
+  forgetSessionToken,
   STEAM_ID,
   steamImage,
   toAccountId32,

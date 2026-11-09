@@ -246,3 +246,35 @@ test('store front details: description, named tags, reviews, screenshot thumbnai
   assert.deepEqual(empty.get('12').screenshots, []);
   assert.throws(() => s.parseStoreDetails({}), /не вернул/);
 });
+
+test('session token: asked once for parallel calls, kept until it nearly expires, forgotten on demand', async () => {
+  const acc = '76561198000000077';
+  const jwt = (exp, n) =>
+    'eyJhbGciOiJFZERTQSJ9.' +
+    Buffer.from(JSON.stringify({ sub: acc, exp, n })).toString('base64url') +
+    '.c2lnbmF0dXJlc2lnbmF0dXJl';
+  let asks = 0;
+  let exp = Math.floor(Date.now() / 1000) + 86400;
+  const fetcher = async () => {
+    asks++;
+    return { ok: true, json: async () => ({ success: 1, data: { webapi_token: jwt(exp, asks) } }) };
+  };
+  s.forgetSessionToken();
+  const [a, b] = await Promise.all([s.cachedSessionToken(fetcher, acc), s.cachedSessionToken(fetcher, acc)]);
+  assert.equal(a, b);
+  assert.equal(asks, 1, 'parallel calls share one request');
+  assert.equal(await s.cachedSessionToken(fetcher, acc), a);
+  assert.equal(asks, 1, 'kept');
+  s.forgetSessionToken(acc);
+  exp = Math.floor(Date.now() / 1000) + 60; // expires within the safety margin
+  const c = await s.cachedSessionToken(fetcher, acc);
+  assert.notEqual(c, a);
+  await s.cachedSessionToken(fetcher, acc);
+  assert.equal(asks, 3, 'a token about to expire is asked again');
+  s.forgetSessionToken();
+  await assert.rejects(
+    s.cachedSessionToken(async () => ({ ok: false, status: 500 }), acc),
+    /HTTP 500/
+  );
+  assert.equal(asks, 3);
+});

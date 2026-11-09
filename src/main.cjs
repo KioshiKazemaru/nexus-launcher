@@ -983,6 +983,19 @@ async function start() {
   whenOnline('prices', () => ctx.store.initialPrices())();
   whenOnline('watch', () => ctx.store.watcher.check())();
   whenOnline('free', () => ctx.store.freeGames())();
+  // Pages that wait on the network (friends, recommendations, profile) are
+  // prepared in the background shortly after start: their first opening is instant.
+  if (process.env.NEXUS_TEST !== '1')
+    setTimeout(
+      whenOnline('prefetch', async () => {
+        await Promise.allSettled([
+          ctx.friends.list(),
+          ctx.store.recommendations({ country: ctx.settings.storeCountry || 'US' }),
+        ]);
+        await ctx.profile.info();
+      }),
+      8000
+    ).unref();
   if (ctx.settings.autoUpdate)
     setTimeout(
       whenOnline('update', () => ctx.updater.check()),

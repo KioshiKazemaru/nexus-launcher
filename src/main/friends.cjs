@@ -76,37 +76,42 @@ class FriendsService {
   }
   async load() {
     const out = { steam: [], epic: [], errors: [], checkedAt: Date.now() };
-    for (const account of this.ctx.accounts.connected('steam')) {
-      try {
-        out.steam.push({
-          account: { key: account.key, id: account.id, name: account.name },
-          friends: f.sortFriends(await this.steamFriends(account)),
-        });
-      } catch (e) {
-        out.errors.push(`Steam (${account.name}): ${e.message}`);
-      }
-    }
-    for (const account of this.ctx.accounts.connected('epic')) {
-      try {
-        out.epic.push({
-          account: { key: account.key, id: account.id, name: account.name },
-          friends: f.sortFriends(await this.epicFriends(account)),
-        });
-      } catch (e) {
-        out.errors.push(`Epic Games (${account.name}): ${e.message}`);
-      }
+    // Every account at once; the order of the lists stays the order of the accounts.
+    const one = (provider, account) =>
+      (provider === 'steam' ? this.steamFriends(account) : this.epicFriends(account)).then(
+        friends => ({
+          provider,
+          group: {
+            account: { key: account.key, id: account.id, name: account.name },
+            friends: f.sortFriends(friends),
+          },
+        }),
+        e => ({
+          provider,
+          error: `${provider === 'steam' ? 'Steam' : 'Epic Games'} (${account.name}): ${e.message}`,
+        })
+      );
+    const results = await Promise.all([
+      ...this.ctx.accounts.connected('steam').map(a => one('steam', a)),
+      ...this.ctx.accounts.connected('epic').map(a => one('epic', a)),
+    ]);
+    for (const r of results) {
+      if (r.error) out.errors.push(r.error);
+      else out[r.provider].push(r.group);
     }
     return out;
   }
   // Steam Web API with the account's session token (IPlayerService etc. take it).
   async steamApi(account) {
     const s = this.ctx.accounts.session(account.key);
-    const token = await steamLib.sessionToken((url, o) => s.fetch(url, o), account.id);
+    const token = await steamLib.cachedSessionToken((url, o) => s.fetch(url, o), account.id);
     return async (method, params) => {
       const u = new URL(`https://api.steampowered.com/${method}`);
       u.search = new URLSearchParams({ access_token: token, ...params });
       const r = await this.ctx.publicFetch(u.href, { signal: AbortSignal.timeout(15000) });
       if (!r.ok) {
+        // A rejected token is asked again next time.
+        if (r.status === 401 || r.status === 403) steamLib.forgetSessionToken(account.id);
         const text = await r.text().catch(() => '');
         const why = text
           .replace(/<[^>]+>/g, ' ')
@@ -186,18 +191,31 @@ class FriendsService {
     (this.badgeCache ||= new Map()).set(id, { at: Date.now(), value });
     return value;
   }
-  comments(id, start = 0) {
+  async comments(id, start = 0) {
     const n = Math.max(0, Math.min(100000, Number(start) || 0));
-    return this.commentCall(id, 'render', { start: String(n) });
+    const key = id + ':' + n;
+    this.commentCache ||= new Map();
+    const hit = this.commentCache.get(key);
+    if (hit && Date.now() - hit.at < 60000) return hit.value;
+    const value = await this.commentCall(id, 'render', { start: String(n) });
+    if (this.commentCache.size > 100) this.commentCache.delete(this.commentCache.keys().next().value);
+    this.commentCache.set(key, { at: Date.now(), value });
+    return value;
+  }
+  forgetComments(id) {
+    for (const k of [...(this.commentCache?.keys() || [])])
+      if (k.startsWith(id + ':')) this.commentCache.delete(k);
   }
   postComment(id, text) {
     const comment = String(text || '').trim();
     if (!comment) throw Error('Комментарий пустой');
     if (comment.length > 1000) throw Error('Steam принимает комментарии до 1000 символов');
+    this.forgetComments(String(id));
     return this.commentCall(id, 'post', { comment, start: '0' });
   }
   deleteComment(id, commentId) {
     if (!/^\d{1,25}$/.test(String(commentId || ''))) throw Error('Комментарий не найден');
+    this.forgetComments(String(id));
     return this.commentCall(id, 'delete', { gidcomment: String(commentId), start: '0' });
   }
   // "Играющие друзья" for a Steam game, like the game page of the Steam client.
@@ -282,7 +300,9 @@ class FriendsService {
     const accounts = this.ctx.accounts.connected('steam');
     if (!accounts.length) throw Error('Подключите Steam в «Аккаунтах»');
     // The account this person is a friend of (their friends-only details are visible to it).
-    await this.list().catch(() => {});
+    // Only needed with several Steam accounts, and only when the list is not loaded yet.
+    if (accounts.length > 1 && !accounts.some(a => a.id === id) && !this.cache)
+      await this.list().catch(() => {});
     const isFriend = a =>
       !!this.cache?.steam.some(g => g.account.id === a.id && g.friends.some(x => x.id === id));
     // My own profile: through my own account.

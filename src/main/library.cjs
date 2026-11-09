@@ -1097,7 +1097,7 @@ class LibraryService {
     let api = null,
       xml = null;
     try {
-      const token = await steamLib.sessionToken((url, o) => s.fetch(url, o), account.id);
+      const token = await steamLib.cachedSessionToken((url, o) => s.fetch(url, o), account.id);
       const u = new URL('https://api.steampowered.com/ISteamUserStats/GetPlayerAchievements/v1/');
       u.search = new URLSearchParams({
         access_token: token,

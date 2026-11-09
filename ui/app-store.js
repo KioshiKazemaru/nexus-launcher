@@ -438,6 +438,13 @@ async function requestRecommendations(force = false) {
     const result = await call('recommendations', { country, force });
     // checkedAt always set: it is what stops the next render from asking again.
     recState.set(country, { ...result, checkedAt: result?.checkedAt || Date.now(), loading: false });
+    // The last selection while a fresh one is computed: ask again shortly.
+    if (result?.refreshing)
+      setTimeout(() => {
+        const cur = recState.get(country);
+        if (cur && !cur.loading) recState.set(country, { ...cur, checkedAt: 0 });
+        requestRecommendations();
+      }, 20000);
   } catch (e) {
     recState.set(country, { ...old, loading: false, error: e.message, checkedAt: Date.now() });
   }

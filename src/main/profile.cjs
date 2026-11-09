@@ -16,11 +16,14 @@ class ProfileService {
     const hit = this.badges.get(account.id);
     if (hit && Date.now() - hit.at < CACHE_MS) return hit.value;
     const s = this.ctx.accounts.session(account.key);
-    const token = await steamLib.sessionToken((u, o) => s.fetch(u, o), account.id);
+    const token = await steamLib.cachedSessionToken((u, o) => s.fetch(u, o), account.id);
     const u = new URL('https://api.steampowered.com/IPlayerService/GetBadges/v1/');
     u.search = new URLSearchParams({ access_token: token, steamid: account.id });
     const r = await this.ctx.publicFetch(u.href, { signal: AbortSignal.timeout(15000) });
-    if (!r.ok) throw Error(`Steam: HTTP ${r.status}`);
+    if (!r.ok) {
+      if (r.status === 401 || r.status === 403) steamLib.forgetSessionToken(account.id);
+      throw Error(`Steam: HTTP ${r.status}`);
+    }
     const value = pr.parseBadges(await r.json());
     this.badges.set(account.id, { at: Date.now(), value });
     return value;
@@ -70,36 +73,41 @@ class ProfileService {
       this.ctx.friends?.profiles?.delete(mine.id);
     }
     const games = this.ctx.library.games || [];
-    const accounts = [];
-    for (const provider of ['steam', 'epic'])
-      for (const a of this.ctx.accounts.connected(provider)) {
-        const x = {
-          provider,
-          name: a.name || '',
-          avatar: a.avatar || '',
-          id: provider === 'steam' ? a.id : '',
-        };
-        if (provider === 'steam')
-          try {
-            Object.assign(x, (await this.steamBadges(a)) || {});
-          } catch (e) {
-            this.ctx.log.debug?.('profile', e.message);
-          }
-        accounts.push(x);
-      }
+    // Level and badges, the Steam page and the Epic accounts load at the same time.
+    const accountsJob = Promise.all(
+      ['steam', 'epic'].flatMap(provider =>
+        this.ctx.accounts.connected(provider).map(async a => {
+          const x = {
+            provider,
+            name: a.name || '',
+            avatar: a.avatar || '',
+            id: provider === 'steam' ? a.id : '',
+          };
+          if (provider === 'steam')
+            try {
+              Object.assign(x, (await this.steamBadges(a)) || {});
+            } catch (e) {
+              this.ctx.log.debug?.('profile', e.message);
+            }
+          return x;
+        })
+      )
+    );
     const nameOf = appId =>
       games.find(g => g.offers.some(o => o.provider === 'steam' && String(o.appId) === String(appId)))
         ?.name || '';
     // The Steam page of my first Steam account: background, frame, «О себе», recent games.
-    let steamProfile = null;
-    if (mine && this.ctx.friends)
-      try {
-        steamProfile = await this.ctx.friends.profile(mine.id);
-      } catch (e) {
-        this.ctx.log.debug?.('profile', 'steam page: ' + e.message);
-      }
-    const epic = [];
-    for (const a of this.ctx.accounts.connected('epic')) epic.push(await this.epicProfile(a, games, force));
+    const steamJob =
+      mine && this.ctx.friends
+        ? this.ctx.friends.profile(mine.id).catch(e => {
+            this.ctx.log.debug?.('profile', 'steam page: ' + e.message);
+            return null;
+          })
+        : Promise.resolve(null);
+    const epicJob = Promise.all(
+      this.ctx.accounts.connected('epic').map(a => this.epicProfile(a, games, force))
+    );
+    const [accounts, steamProfile, epic] = await Promise.all([accountsJob, steamJob, epicJob]);
     return {
       steamProfile,
       epic,

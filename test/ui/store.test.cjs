@@ -472,6 +472,15 @@ test(
       await p.addInitScript(mockStore);
       await p.goto(page);
       await p.waitForSelector('#showcase-block');
+      // The carousel turns by itself every 8 s; a slow first start could see the
+      // second game. Hold the rotation (as a recent click does) and start at the first.
+      await p.evaluate(() => {
+        lastStoreInput = Date.now() + 3600000;
+        if (featuredIndex !== 0) {
+          featuredIndex = 0;
+          render();
+        }
+      });
       // Carousel: at most 12 games, large capsule, screenshots, reviews and tags.
       assert.equal(await p.locator('.carousel-dots button').count(), 12);
       const main = p.locator('#showcase-main');
