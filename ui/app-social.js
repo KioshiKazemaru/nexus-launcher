@@ -575,6 +575,10 @@ function commentsBox(id) {
           safeImage(c.avatar)
             ? `<img src="${esc(safeImage(c.avatar))}" alt="" loading="lazy" referrerpolicy="no-referrer">`
             : '<span>?</span>'
+        }${
+          safeImage(c.frame)
+            ? `<img class="sp-comment-frame" src="${esc(safeImage(c.frame))}" alt="" loading="lazy" referrerpolicy="no-referrer">`
+            : ''
         }</button><div class="sp-comment-body"><div class="sp-comment-head"><button class="sp-comment-author" ${who(c)}>${esc(c.author)}</button><small>${esc(date(c.at))}</small>${
           c.canDelete
             ? `<button class="sp-comment-del ${st.armed === c.id ? 'armed' : ''}" data-comment-del="${esc(c.id)}" data-comment-profile="${esc(id)}" title="Удалить комментарий">${st.armed === c.id ? 'Удалить?' : '✕'}</button>`

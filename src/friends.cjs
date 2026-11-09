@@ -198,6 +198,8 @@ function parseGameplayInfo(json) {
 }
 
 // Steam's profile comments (comment/Profile/render and /post answer with comments_html).
+const steamImage = u =>
+  /^https:\/\/[\w.-]+\.(?:steamstatic\.com|akamaihd\.net)\/[^\s"'<>]*$/.test(u) ? u : '';
 const STEAM_ID_BASE = 76561197960265728n;
 function parseProfileComments(json) {
   if (!json || typeof json !== 'object') throw Error('Steam не отдал комментарии');
@@ -216,14 +218,28 @@ function parseProfileComments(json) {
     const text = c.find('.commentthread_comment_text').first().clone();
     text.find('br').replaceWith('\n');
     text.find('img').each((_, img) => $(img).replaceWith($(img).attr('alt') || ''));
-    const avatar = c.find('.commentthread_comment_avatar img').first().attr('src') || '';
+    // A profile frame comes first (<picture> with its PNG), the avatar last; an
+    // animated avatar has its address only in srcset.
+    const imgs = c
+      .find('.commentthread_comment_avatar img')
+      .toArray()
+      .map(
+        e =>
+          String($(e).attr('src') || $(e).attr('srcset') || '')
+            .trim()
+            .split(/[\s,]+/)[0]
+      )
+      .filter(Boolean);
+    const avatar = imgs.at(-1) || '';
+    const frame = imgs.length > 1 ? imgs[0] : '';
     const at =
       Number(c.find('.commentthread_comment_timestamp[data-timestamp]').first().attr('data-timestamp')) || 0;
     comments.push({
       id,
       authorId,
       author: link.text().trim().slice(0, 100) || 'Пользователь Steam',
-      avatar: /^https:\/\/[\w.-]+\.(?:steamstatic\.com|akamaihd\.net)\//.test(avatar) ? avatar : '',
+      avatar: steamImage(avatar),
+      frame: steamImage(frame),
       text: text
         .text()
         .replace(/[ \t]+\n/g, '\n')

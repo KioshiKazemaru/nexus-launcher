@@ -460,7 +460,7 @@ test('profile background and avatar frame come from the Steam community CDN', ()
 test('Steam profile comments: author, text with line breaks and emoticons, time, delete right', () => {
   const html = `
     <div class="commentthread_comment" id="comment_4000000000000000001">
-      <div class="commentthread_comment_avatar"><a data-miniprofile="39734273"><img src="https://avatars.akamai.steamstatic.com/abc_medium.jpg"></a></div>
+      <div class="commentthread_comment_avatar"><a data-miniprofile="39734273"><picture><source media="(prefers-reduced-motion: reduce)" srcset="https://shared.akamai.steamstatic.com/community_assets/images/items/1/frame.png"><img src="https://shared.akamai.steamstatic.com/community_assets/images/items/1/frame.png"></picture><img src="https://avatars.akamai.steamstatic.com/abc_medium.jpg" srcset="https://avatars.akamai.steamstatic.com/abc_medium.jpg 1x"></a></div>
       <div class="commentthread_comment_content">
         <a class="commentthread_author_link" data-miniprofile="39734273"><bdi>Tester One</bdi></a>
         <div class="commentthread_comment_timestamp"><div class="commentthread_comment_timestamp" title="1 Nov" data-timestamp="1700000000">1 Nov</div></div>
@@ -469,7 +469,7 @@ test('Steam profile comments: author, text with line breaks and emoticons, time,
       </div>
     </div>
     <div class="commentthread_comment" id="comment_4000000000000000002">
-      <div class="commentthread_comment_avatar"><img src="http://evil.example/a.jpg"></div>
+      <div class="commentthread_comment_avatar"><img src="http://evil.example/a.jpg"></div><div class="commentthread_comment_avatar"><picture><img srcset="https://shared.akamai.steamstatic.com/community_assets/images/items/2/anim.gif 1x"></picture></div>
       <a class="commentthread_author_link" data-miniprofile="39734274">Tester Two</a>
       <div class="commentthread_comment_text"> plain </div>
     </div>
@@ -486,7 +486,10 @@ test('Steam profile comments: author, text with line breaks and emoticons, time,
   assert.equal(a.canDelete, true);
   assert.match(a.avatar, /^https:\/\/avatars\.akamai\.steamstatic\.com\//);
   assert.equal(b.text, 'plain');
-  assert.equal(b.avatar, '');
+  assert.equal(a.frame, 'https://shared.akamai.steamstatic.com/community_assets/images/items/1/frame.png');
+  // An animated avatar has its address only in srcset; a foreign host is dropped.
+  assert.equal(b.avatar, 'https://shared.akamai.steamstatic.com/community_assets/images/items/2/anim.gif');
+  assert.equal(b.frame, '');
   assert.equal(b.at, null);
   assert.equal(b.canDelete, false);
   assert.throws(() => f.parseProfileComments({ success: false, error: 'Private' }), /Private/);

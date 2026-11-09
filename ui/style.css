@@ -6557,3 +6557,16 @@ body[data-page='friend'] .layout > aside {
   display: block;
   margin: 0 12px 12px;
 }
+
+/* A profile frame over the commenter's avatar, as on Steam */
+.sp-comment-avatar {
+  position: relative;
+  overflow: visible;
+}
+.sp-comment-avatar img.sp-comment-frame {
+  position: absolute;
+  inset: -12%;
+  width: 124%;
+  height: 124%;
+  pointer-events: none;
+}
