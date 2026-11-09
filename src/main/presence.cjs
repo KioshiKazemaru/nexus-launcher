@@ -18,6 +18,7 @@ const { JsonFile } = require('./storage.cjs');
 const icon = path.join(__dirname, '../../ui/assets/nexus.ico');
 const SETTLE_MS = 4000; // after logon Steam sends every friend's status: that is not news
 const ACHIEVEMENT_POLL_MS = 90000;
+const POLL_MS = 60000; // friends' statuses from the Web API while the Steam client is open
 
 class PresenceService {
   constructor(ctx) {
@@ -34,6 +35,7 @@ class PresenceService {
     this.playing = null; // { id, name, provider } of the game running now
     this.notifications = new Set();
     this.achievementTimers = new Map(); // game id → { timer, known: Set }
+    this.polled = new Set(); // Steam account ids with a first Web API poll done
   }
   settings() {
     return this.ctx.settings;
@@ -46,20 +48,78 @@ class PresenceService {
     this.ctx.gameEvents?.on('start', g => this.gameStarted(g));
     this.ctx.gameEvents?.on('stop', g => this.gameStopped(g));
     this.connect();
+    this.pollTimer = setInterval(
+      () => this.poll().catch(e => this.ctx.log.debug?.('presence', e.message)),
+      POLL_MS
+    );
+    this.pollTimer.unref?.();
+    this.firstPoll = setTimeout(
+      () => this.poll().catch(e => this.ctx.log.debug?.('presence', e.message)),
+      15000
+    );
+    this.firstPoll.unref?.();
   }
   stop() {
+    clearInterval(this.pollTimer);
+    clearTimeout(this.firstPoll);
     for (const w of this.achievementTimers.values()) clearTimeout(w.timer);
     this.file.flushSync();
   }
   // Steam and Epic chat connections carry the status (not with "Не подключаться").
+  // Steam's is skipped while the Steam client runs (see chat.cjs STEAM_CLIENT_OPEN).
   connect() {
     if (this.status() === 'off' || !this.ctx.chat) return;
     for (const account of this.ctx.accounts.connected('steam'))
       this.ctx.chat
         .steam(account)
         .connect()
-        .catch(e => this.ctx.log.warn('presence', `steam: ${e.message}`));
+        .catch(e => e.code !== 'STEAM_CLIENT_OPEN' && this.ctx.log.warn('presence', `steam: ${e.message}`));
     this.ctx.chat.connectEpic();
+  }
+  // Without the chat connection (the Steam client is open) the friends' statuses
+  // come from the Web API once a minute; changes between two polls are the news.
+  async poll() {
+    if (this.status() === 'off') return;
+    this.connect(); // the Steam client may have been closed meanwhile
+    for (const account of this.ctx.accounts.connected('steam')) {
+      if (this.ctx.chat?.steamCm?.get(account.id)?.state === 'online') continue; // live already
+      const list = await this.ctx.friends?.steamFriends(account);
+      if (Array.isArray(list)) this.webFriends(account, list);
+    }
+  }
+  webFriends(account, list) {
+    const first = !this.polled.has(account.id);
+    this.polled.add(account.id);
+    for (const x of list) {
+      if (!/^7656119\d{10}$/.test(String(x?.id))) continue;
+      const now = {
+        status: x.status,
+        game: x.status === 'ingame' ? String(x.game || '') : '',
+        appId: Number(x.gameId) || 0,
+        name: String(x.name || ''),
+        avatar: String(x.avatar || ''),
+      };
+      const old = this.steamFriends.get(x.id);
+      this.steamFriends.set(x.id, now);
+      if (old && old.status === now.status && old.game === now.game && old.appId === now.appId) continue;
+      this.ctx.social?.broadcast({
+        type: 'presence',
+        provider: 'steam',
+        friendId: x.id,
+        status: now.status,
+        game: now.game,
+      });
+      if (first) continue; // the first poll is the current state, not news
+      for (const ev of p.changes(old, now))
+        this.event({
+          ...ev,
+          provider: 'steam',
+          accountId: account.id,
+          friendId: x.id,
+          name: now.name,
+          avatar: now.avatar,
+        });
+    }
   }
   async setStatus(status) {
     this.settings().myStatus = p.checkStatus(status);
@@ -93,11 +153,10 @@ class PresenceService {
     for (const [id, client] of this.clients) this.applySteam(id, client);
     for (const x of this.ctx.chat?.epic?.values() || []) x.setPresence(this.epicPresence());
   }
-  // The Steam status belongs to the whole account, and the session that set it
-  // last owns it: when that session ends, Steam shows the account offline, also
-  // in the Steam client (friends turn grey until the status is switched by hand).
-  // So Nexus leaves the status to a running Steam client unless the user chose
-  // something else than "В сети" in Nexus, and never sets "offline".
+  // The Steam status belongs to the whole account. Nexus signs in to Steam's chat
+  // only while the Steam client is closed (its sign-in greys out a running client,
+  // see chat.cjs). If the client starts later, "В сети" is left to it; Nexus sets
+  // only a status the user chose in Nexus, and never "offline".
   async applyPersona(client, status) {
     if (status === 'off') return;
     if (status === 'online' && !client.nexusPersonaSet) {

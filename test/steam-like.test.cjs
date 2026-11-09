@@ -642,3 +642,39 @@ test('news text drops BBCode with attributes; profile counts games launched befo
   assert.equal(s.playedThisMonth, 1);
   assert.deepEqual(s.top, []);
 });
+
+test('friends from the Web API once a minute: the first poll is the state, later changes are news', async () => {
+  const ctx = context();
+  const service = new PresenceService(ctx);
+  ctx.presence = service;
+  const account = { id: STEAM_ME, key: 'steam:0' };
+  let list = [
+    { id: FRIEND, name: 'Друг', avatar: '', status: 'offline', game: '', gameId: '' },
+    { id: 'x', name: 'Bad', status: 'online' },
+  ];
+  ctx.accounts = { ...ctx.accounts, connected: p => (p === 'steam' ? [account] : []) };
+  ctx.friends = { steamFriends: async () => list };
+  ctx.chat = { steamCm: new Map(), steam: () => ({ connect: async () => {} }), connectEpic() {} };
+  try {
+    await service.poll();
+    assert.deepEqual(service.steamStatus(FRIEND), { status: 'offline', game: '' });
+    assert.equal(service.feed().length, 0, 'the first poll is not news');
+    list = [{ id: FRIEND, name: 'Друг', avatar: '', status: 'ingame', game: 'Dota 2', gameId: '570' }];
+    await service.poll();
+    assert.deepEqual(service.steamStatus(FRIEND), { status: 'ingame', game: 'Dota 2' });
+    assert.deepEqual(
+      service.feed().map(x => [x.type, x.name, x.game]),
+      [
+        ['game', 'Друг', 'Dota 2'],
+        ['online', 'Друг', ''],
+      ]
+    );
+    // With the chat connection online, its live statuses are used instead.
+    ctx.chat.steamCm.set(STEAM_ME, { state: 'online' });
+    list = [];
+    await service.poll();
+    assert.deepEqual(service.steamStatus(FRIEND), { status: 'ingame', game: 'Dota 2' });
+  } finally {
+    service.stop();
+  }
+});

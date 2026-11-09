@@ -11,6 +11,7 @@ const handlers = new Map();
 const windows = [];
 const requests = [];
 const opened = [];
+const clipboard = { text: '' };
 let routes = [];
 let online = true;
 const dialogs = { save: null, open: null, errors: [] };
@@ -216,6 +217,7 @@ module.exports = {
     showSaveDialog: async () =>
       dialogs.save ? { canceled: false, filePath: dialogs.save } : { canceled: true },
   },
+  clipboard: { writeText: s => (clipboard.text = String(s)), readText: () => clipboard.text },
   shell: {
     openExternal: async u => opened.push(u),
     openPath: async () => '',
@@ -248,6 +250,7 @@ module.exports = {
     windows,
     requests,
     opened,
+    clipboard,
     sessions,
     setRoutes: r => (routes = r),
     setOnline: v => (online = v),

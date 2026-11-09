@@ -139,7 +139,9 @@ function render() {
     ? 'Писать друзьям Epic можно только в Epic Games Launcher или в игре'
     : c.state === 'connecting'
       ? 'Подключаемся к чату Steam…'
-      : 'Сообщение для ' + tab.name;
+      : c.state === 'client'
+        ? 'Клиент Steam запущен: Enter откроет чат в Steam, текст скопируется'
+        : 'Сообщение для ' + tab.name;
   $('#send').disabled = sending || !!c.readonly;
 }
 function addMessage(conv, msg) {
@@ -219,7 +221,7 @@ api.onSocialEvent(async ev => {
     for (const [conv, c] of conversations) if (conv.startsWith(prefix)) c.state = ev.state;
     const c = active && conversations.get(active);
     if (c && active.startsWith(prefix)) {
-      if (ev.error && ev.provider === 'steam') c.error = ev.error;
+      if (ev.error && ev.provider === 'steam' && ev.state !== 'client') c.error = ev.error;
       render();
     }
   }

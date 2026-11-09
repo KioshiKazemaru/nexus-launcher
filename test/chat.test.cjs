@@ -451,3 +451,24 @@ test('chat history: an old plain-text file is encrypted; without encryption noth
   plain.file.flushSync();
   assert.equal(fs.readFileSync(file, 'utf8'), '{}');
 });
+
+test('Steam chat with the Steam client open: Nexus stays off the chat servers; the chat opens in Steam', async () => {
+  // Signing in to the chat servers greys out a running Steam client (all friends offline).
+  const { __test } = require('electron');
+  const t = steamChat({ loggedIn: false });
+  t.chat.ctx.actions = { processRunning: async name => name === 'steam.exe' };
+  const key = c.convKey('steam', ME, FRIEND);
+  FakeSteamUser.last = null;
+  const opened = __test.opened.length;
+  await assert.rejects(t.chat.send(key, ' привет '), /Клиент Steam запущен.*Ctrl\+V/);
+  assert.equal(FakeSteamUser.last, null, 'no sign-in to Steam CM');
+  assert.deepEqual(__test.opened.slice(opened), [`steam://friends/message/${FRIEND}`]);
+  assert.equal(__test.clipboard.text, 'привет');
+  assert.equal(t.chat.history[key], undefined, 'nothing pretends to be sent');
+  const state = t.events.filter(e => e.type === 'chat-state').at(-1);
+  assert.equal(state.state, 'client');
+  // Opening the friends window does not sign in either, and logs no warning.
+  t.chat.connectChats();
+  await new Promise(r => setImmediate(r));
+  assert.equal(FakeSteamUser.last, null);
+});

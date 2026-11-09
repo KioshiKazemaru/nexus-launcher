@@ -35,10 +35,19 @@ function steamError(e) {
   return `Steam: ${e?.message || 'ошибка'}${r ? ' (' + r + ')' : ''}`;
 }
 
+// Signing in to Steam's chat servers while the Steam client runs makes Steam
+// show the whole account offline in the client (friends turn grey until the
+// status is switched by hand), whatever status Nexus sets afterwards. So with
+// the Steam client open Nexus stays off the chat servers: friends' statuses
+// come from the Web API and messages are written in the Steam client.
+const STEAM_CLIENT_OPEN =
+  'Клиент Steam запущен — переписка Steam идёт в нём (вход Nexus в чат Steam сбросил бы ваш статус в клиенте)';
+
 // Steam's chat servers, signed in like steamcommunity.com/chat.
 class SteamCm extends EventEmitter {
-  constructor({ webLogon, log, SteamUserImpl }) {
+  constructor({ webLogon, log, SteamUserImpl, steamClientOpen }) {
     super();
+    this.steamClientOpen = steamClientOpen;
     this.webLogon = webLogon;
     this.log = log;
     this.SteamUserImpl = SteamUserImpl;
@@ -55,13 +64,19 @@ class SteamCm extends EventEmitter {
     if (this.connecting) return this.connecting;
     this.connecting = this.logOn()
       .catch(e => {
-        this.setState('error', e.message);
+        this.setState(e.code === 'STEAM_CLIENT_OPEN' ? 'client' : 'error', e.message);
         throw e;
       })
       .finally(() => (this.connecting = null));
     return this.connecting;
   }
   async logOn() {
+    if (
+      await Promise.resolve()
+        .then(() => this.steamClientOpen?.())
+        .catch(() => false)
+    )
+      throw Object.assign(Error(STEAM_CLIENT_OPEN), { code: 'STEAM_CLIENT_OPEN' });
     this.setState('connecting');
     const { accountName, token, steamId } = await this.webLogon();
     const SteamUser = this.SteamUserImpl || require('steam-user');
@@ -97,6 +112,7 @@ class SteamCm extends EventEmitter {
       lost();
     });
     this.client = client;
+    this.log?.info('chat', 'steam cm: signed in (the Steam client is closed)');
     this.setState('online');
     return client;
   }
@@ -363,6 +379,7 @@ class ChatService {
         webLogon: () => this.steamWebLogon(account),
         log: this.ctx.log,
         SteamUserImpl: this.SteamUserImpl,
+        steamClientOpen: () => this.ctx.actions?.processRunning?.('steam.exe'),
       });
       x.on('message', m => this.received('steam', account.id, m.friendId, m.text, m.at, m.from));
       x.on('state', st => {
@@ -378,7 +395,7 @@ class ChatService {
     for (const account of this.ctx.accounts.connected('steam'))
       this.steam(account)
         .connect()
-        .catch(e => this.ctx.log.warn('chat', `steam: ${e.message}`));
+        .catch(e => e.code !== 'STEAM_CLIENT_OPEN' && this.ctx.log.warn('chat', `steam: ${e.message}`));
     this.connectEpic();
   }
   connectEpic() {
@@ -513,7 +530,18 @@ class ChatService {
     if (k.provider === 'steam') {
       const account = this.account('steam', k.accountId);
       // steam-user escapes the brackets itself (the text is not BBCode).
-      at = await this.steam(account).send(k.friendId, clean);
+      try {
+        at = await this.steam(account).send(k.friendId, clean);
+      } catch (e) {
+        if (e.code !== 'STEAM_CLIENT_OPEN') throw e;
+        // The Steam client is open: the conversation opens there with the text ready to paste.
+        const { clipboard, shell } = require('electron');
+        clipboard.writeText(clean);
+        await shell.openExternal(`steam://friends/message/${k.friendId}`);
+        throw Error(
+          'Клиент Steam запущен — чат с другом открыт в Steam, текст скопирован: вставьте его (Ctrl+V)'
+        );
+      }
       const seen = this.steamSeen.get(k.accountId);
       if (seen) seen.set(k.friendId, Math.max(seen.get(k.friendId) || 0, at));
     } else throw Error(EPIC_NO_SEND);
