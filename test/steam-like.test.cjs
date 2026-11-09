@@ -130,7 +130,8 @@ test('presence service: my status, "… · Nexus" for non-Steam games, friends\'
     });
     const account = { id: STEAM_ME, key: 'steam:0' };
     service.attach(account, client);
-    assert.deepEqual(client.persona, [1], 'online by default');
+    await new Promise(r => setImmediate(r));
+    assert.deepEqual(client.persona, [1], 'online by default (no Steam client running)');
     const sid = id => ({ getSteamID64: () => id });
     // The first wave after logon is the current state.
     await service.steamUser(account, client, sid(FRIEND), { persona_state: 0, player_name: 'Друг' });
@@ -150,6 +151,15 @@ test('presence service: my status, "… · Nexus" for non-Steam games, friends\'
     assert.equal(shown.length, 1, '"играет в" is notified; "в сети" is off by default');
     assert.match(shown[0].body, /Играет в Counter-Strike 2/);
     assert.deepEqual(service.steamStatus(FRIEND), { status: 'ingame', game: 'Counter-Strike 2' });
+    // Steam sends personas without a status (persona_state null) right after logon:
+    // that is "unknown", not "offline" — nothing changes, nothing is announced.
+    await service.steamUser(account, client, sid(FRIEND), { persona_state: null, player_name: 'Друг' });
+    assert.deepEqual(service.steamStatus(FRIEND), { status: 'ingame', game: 'Counter-Strike 2' });
+    assert.equal(shown.length, 1);
+    const OTHER = '76561198000000003';
+    client.myFriends[OTHER] = 3;
+    await service.steamUser(account, client, sid(OTHER), { persona_state: null, player_name: 'Новый' });
+    assert.equal(service.steamStatus(OTHER), null, 'the status from the Web API stays');
     // Not a friend: ignored.
     await service.steamUser(account, client, sid('76561198000000099'), { persona_state: 1 });
     assert.equal(service.steamStatus('76561198000000099'), null);
@@ -169,12 +179,48 @@ test('presence service: my status, "… · Nexus" for non-Steam games, friends\'
     assert.equal(client.played.length, before);
     // Status.
     await service.setStatus('invisible');
+    await new Promise(r => setImmediate(r));
     assert.equal(client.persona.at(-1), 7);
     assert.equal(ctx.settings.myStatus, 'invisible');
     await assert.rejects(service.setStatus('nope'), /Неизвестный статус/);
+    // "Не подключаться" never sets the account offline (that greys out the Steam client).
+    const sent = client.persona.length;
+    await service.setStatus('off');
+    await new Promise(r => setImmediate(r));
+    assert.equal(client.persona.length, sent);
+    await service.setStatus('online');
     service.stop();
   } finally {
     electron.Notification = Real;
+  }
+});
+
+test('Steam status: with the Steam client open, "В сети" is left to Steam; other statuses are set and undone', async () => {
+  const ctx = context();
+  ctx.actions = { processRunning: async name => name === 'steam.exe' };
+  const service = new PresenceService(ctx);
+  ctx.presence = service;
+  const client = new EventEmitter();
+  client.persona = [];
+  client.myFriends = {};
+  client.setPersona = s => client.persona.push(s);
+  client.gamesPlayed = () => {};
+  const tick = () => new Promise(r => setImmediate(r));
+  try {
+    service.attach({ id: STEAM_ME, key: 'steam:0' }, client);
+    await tick();
+    assert.deepEqual(client.persona, [], 'the Steam client owns "В сети"');
+    await service.setStatus('away');
+    await tick();
+    assert.deepEqual(client.persona, [3]);
+    await service.setStatus('online');
+    await tick();
+    assert.deepEqual(client.persona, [3, 1], '"Нет на месте" is undone');
+    await service.setStatus('online');
+    await tick();
+    assert.deepEqual(client.persona, [3, 1], 'and then left to Steam again');
+  } finally {
+    service.stop();
   }
 });
 

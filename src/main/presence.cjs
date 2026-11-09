@@ -93,13 +93,27 @@ class PresenceService {
     for (const [id, client] of this.clients) this.applySteam(id, client);
     for (const x of this.ctx.chat?.epic?.values() || []) x.setPresence(this.epicPresence());
   }
+  // The Steam status belongs to the whole account, and the session that set it
+  // last owns it: when that session ends, Steam shows the account offline, also
+  // in the Steam client (friends turn grey until the status is switched by hand).
+  // So Nexus leaves the status to a running Steam client unless the user chose
+  // something else than "В сети" in Nexus, and never sets "offline".
+  async applyPersona(client, status) {
+    if (status === 'off') return;
+    if (status === 'online' && !client.nexusPersonaSet) {
+      const steamOpen = await Promise.resolve()
+        .then(() => this.ctx.actions?.processRunning?.('steam.exe'))
+        .catch(() => false);
+      // The status may have changed while we checked: the newer call sets it.
+      if (steamOpen || this.status() !== status) return;
+    }
+    client.setPersona(p.STEAM_PERSONA[status]);
+    // Back to "В сети" with the Steam client open: Nexus no longer needs to own the status.
+    client.nexusPersonaSet = status !== 'online';
+  }
   applySteam(accountId, client) {
     const status = this.status();
-    try {
-      client.setPersona(status === 'off' ? 0 : p.STEAM_PERSONA[status]);
-    } catch (e) {
-      this.ctx.log.debug?.('presence', e.message);
-    }
+    this.applyPersona(client, status).catch(e => this.ctx.log.debug?.('presence', e.message));
     // Only games Steam does not know about; never over a game of the Steam client.
     const g = this.playing;
     const want =
@@ -157,6 +171,8 @@ class PresenceService {
     if (!/^7656119\d{10}$/.test(id) || id === String(account.id)) return;
     if (client.myFriends && client.myFriends[id] !== 3) return; // only friends
     const merged = { ...(client.users?.[id] || {}), ...user };
+    // No persona_state = Steam did not send the status (not "offline"): keep what we know.
+    if (merged.persona_state === null || merged.persona_state === undefined) return;
     const appId = Number(merged.gameid || merged.game_played_app_id || 0);
     const now = p.steamPersona(merged, merged.game_name ? '' : await this.appName(client, appId));
     const old = this.steamFriends.get(id);

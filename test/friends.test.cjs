@@ -23,32 +23,46 @@ test('Steam friends: only accepted friends, status like Steam (in game wins)', (
     }),
     [A]
   );
-  const list = f.parseSteamSummaries({
+  // IPlayerService/GetPlayerLinkDetails (the session token works; GetPlayerSummaries needs a key).
+  const digest = Buffer.from('0123456789abcdef0123456789abcdef01234567', 'hex').toString('base64');
+  const list = f.parseSteamLinkDetails({
     response: {
-      players: [
+      accounts: [
         {
-          steamid: A,
-          personaname: 'Alpha',
-          personastate: 1,
-          gameid: '570',
-          gameextrainfo: 'Dota 2',
-          avatarmedium: 'https://avatars.steamstatic.com/a.jpg',
+          public_data: { steamid: A, persona_name: 'Alpha', sha_digest_avatar: digest },
+          private_data: { persona_state: 1, game_id: '570' },
         },
-        { steamid: B, personaname: 'Beta', personastate: 3 },
-        { steamid: C, personaname: 'Gamma', personastate: 0, lastlogoff: 1700000000 },
+        {
+          public_data: {
+            steamid: B,
+            persona_name: 'Beta',
+            sha_digest_avatar: 'AAAAAAAAAAAAAAAAAAAAAAAAAAA=',
+          },
+          private_data: { persona_state: 3, game_id: '0' },
+        },
+        {
+          public_data: { steamid: C, persona_name: 'Gamma' },
+          private_data: { persona_state: 0, last_logoff_time: 1700000000 },
+        },
+        { public_data: { steamid: 'x', persona_name: 'Bad' } },
       ],
     },
   });
   assert.deepEqual(
-    list.map(x => [x.name, x.status, x.game]),
+    list.map(x => [x.name, x.status, x.gameId]),
     [
-      ['Alpha', 'ingame', 'Dota 2'],
+      ['Alpha', 'ingame', '570'],
       ['Beta', 'away', ''],
       ['Gamma', 'offline', ''],
     ]
   );
-  assert.equal(list[0].avatar, 'https://avatars.steamstatic.com/a.jpg');
+  assert.equal(
+    list[0].avatar,
+    'https://avatars.steamstatic.com/0123456789abcdef0123456789abcdef01234567_medium.jpg'
+  );
+  assert.equal(list[1].avatar, ''); // the default "no avatar" digest
   assert.equal(list[2].lastOnline, 1700000000000);
+  assert.throws(() => f.parseSteamLinkDetails({}), /профили друзей/);
   assert.deepEqual(
     f.sortFriends([list[2], list[1], list[0]]).map(x => x.name),
     ['Alpha', 'Beta', 'Gamma']

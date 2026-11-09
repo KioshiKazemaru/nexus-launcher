@@ -102,17 +102,32 @@ class FriendsService {
         const u = new URL(`https://api.steampowered.com/${method}`);
         u.search = new URLSearchParams({ access_token: token, ...params });
         const r = await this.ctx.publicFetch(u.href, { signal: AbortSignal.timeout(15000) });
-        if (!r.ok) throw Error(`Steam: HTTP ${r.status}`);
+        if (!r.ok) {
+          const text = await r.text().catch(() => '');
+          const why = text
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .slice(0, 120);
+          throw Error(`Steam ${method.split('/')[1]}: HTTP ${r.status}${why ? ' — ' + why : ''}`);
+        }
         return r.json();
       };
       const ids = f.parseSteamFriendIds(await api('IFriendsListService/GetFriendsList/v1/', {}));
+      // GetPlayerLinkDetails takes the session token (GetPlayerSummaries needs a developer key).
       const friends = [];
-      for (let i = 0; i < ids.length; i += 100)
+      for (let i = 0; i < ids.length; i += 100) {
+        const chunk = ids.slice(i, i + 100);
+        const params = Object.fromEntries(chunk.map((id, n) => [`steamids[${n}]`, id]));
         friends.push(
-          ...f.parseSteamSummaries(
-            await api('ISteamUser/GetPlayerSummaries/v2/', { steamids: ids.slice(i, i + 100).join(',') })
-          )
+          ...f.parseSteamLinkDetails(await api('IPlayerService/GetPlayerLinkDetails/v1/', params))
         );
+      }
+      // Only an app id comes for a friend in game: the name from the library or the Steam client.
+      const client = this.ctx.presence?.clients?.get(String(account.id));
+      for (const x of friends)
+        if (x.gameId && !x.game)
+          x.game = (await this.ctx.presence?.appName(client, Number(x.gameId)).catch(() => '')) || '';
       return friends;
     } catch (e) {
       this.ctx.log.debug?.('friends', `steam api: ${e.message}`);

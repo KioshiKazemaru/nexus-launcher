@@ -18,31 +18,37 @@ function parseSteamFriendIds(json) {
     .map(f => String(f.ulfriendid));
 }
 
-// ISteamUser/GetPlayerSummaries → friends with status.
-// personastate: 0 offline, 1 online, 2 busy, 3 away, 4 snooze, 5 trade, 6 play.
-function parseSteamSummaries(json) {
-  const players = json?.response?.players;
-  if (!Array.isArray(players)) throw Error('Steam не отдал профили друзей');
-  return players
-    .filter(p => STEAM_ID.test(String(p?.steamid)))
-    .map(p => {
-      const game = typeof p.gameextrainfo === 'string' ? p.gameextrainfo.slice(0, 120) : '';
-      const state = Number(p.personastate) || 0;
+// IPlayerService/GetPlayerLinkDetails → friends with status. Unlike
+// ISteamUser/GetPlayerSummaries it takes the session token (GetPlayerSummaries
+// wants a developer key: HTTP 400 "Required parameter 'key' is missing").
+// The avatar is a base64 SHA-1; the game comes as an app id only (gameId).
+const NO_AVATAR = '0000000000000000000000000000000000000000';
+function avatarFromDigest(digest) {
+  const hex = Buffer.from(String(digest || ''), 'base64').toString('hex');
+  return /^[0-9a-f]{40}$/.test(hex) && hex !== NO_AVATAR
+    ? `https://avatars.steamstatic.com/${hex}_medium.jpg`
+    : '';
+}
+function parseSteamLinkDetails(json) {
+  const accounts = json?.response?.accounts;
+  if (!Array.isArray(accounts)) throw Error('Steam не отдал профили друзей');
+  return accounts
+    .filter(a => STEAM_ID.test(String(a?.public_data?.steamid)))
+    .map(({ public_data: pub, private_data: priv = {} }) => {
+      const state = Number(priv.persona_state) || 0;
+      const gameId = Number(priv.game_id) > 0 ? String(priv.game_id) : '';
+      const game = typeof priv.game_extra_info === 'string' ? priv.game_extra_info.slice(0, 120) : '';
       const status =
-        game || p.gameid
-          ? 'ingame'
-          : state === 0
-            ? 'offline'
-            : state === 3 || state === 4
-              ? 'away'
-              : 'online';
+        gameId || game ? 'ingame' : state === 0 ? 'offline' : state === 3 || state === 4 ? 'away' : 'online';
+      const off = Number(priv.last_logoff_time) || Number(priv.last_seen_online) || 0;
       return {
-        id: String(p.steamid),
-        name: String(p.personaname || p.steamid).slice(0, 100),
-        avatar: imageUrl(p.avatarmedium || p.avatar || '') || '',
+        id: String(pub.steamid),
+        name: String(pub.persona_name || pub.steamid).slice(0, 100),
+        avatar: avatarFromDigest(pub.sha_digest_avatar),
         status,
         game,
-        lastOnline: Number(p.lastlogoff) ? Number(p.lastlogoff) * 1000 : null,
+        gameId,
+        lastOnline: off ? off * 1000 : null,
       };
     });
 }
@@ -96,7 +102,8 @@ function sortFriends(list) {
 
 module.exports = {
   parseSteamFriendIds,
-  parseSteamSummaries,
+  parseSteamLinkDetails,
+  avatarFromDigest,
   parseSteamFriendsPage,
   parseEpicFriendIds,
   parseEpicAccounts,
