@@ -94,6 +94,7 @@ const channels = [
   'workshop',
   'openWorkshop',
   'profile',
+  'friendProfile',
   'setLaunchOptions',
   'presenceSetting',
 ];
@@ -106,6 +107,7 @@ contextBridge.exposeInMainWorld('nexus', {
   onToast: listen('toast'),
   onSocialEvent: listen('social-event'),
   onShowGame: listen('show-game'),
+  onShowFriend: listen('show-friend'),
   ...Object.fromEntries(
     channels.map(channel => [
       channel,

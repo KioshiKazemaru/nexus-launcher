@@ -319,6 +319,8 @@ api?.onShowGame?.(id => {
   page = 'library';
   showDetail(id);
 });
+// "Профиль" in the friends or chat window: the friend's profile page here.
+api?.onShowFriend?.(id => showFriend(id));
 api?.onToast?.(message => toast(message));
 // Library grid grows while scrolling instead of rendering thousands of cards at once.
 const libraryObserver = new IntersectionObserver(

@@ -93,6 +93,85 @@ function parseEpicAccounts(list) {
   );
 }
 
+// IPlayerService/GetOwnedGames of a friend → games with playtime. A profile
+// whose game details are hidden answers with an empty response: hidden.
+function parseOwnedGames(json) {
+  const r = json?.response;
+  if (!r || typeof r !== 'object') throw Error('Steam не отдал игры профиля');
+  if (!Array.isArray(r.games)) return { hidden: true, count: 0, minutes: 0, games: [] };
+  const games = r.games
+    .filter(g => Number(g?.appid) > 0)
+    .map(g => ({
+      appId: String(g.appid),
+      name: String(g.name || '').slice(0, 200),
+      minutes: Math.max(0, Number(g.playtime_forever) || 0),
+      lastPlayed: Number(g.rtime_last_played) > 0 ? Number(g.rtime_last_played) * 1000 : null,
+    }));
+  return {
+    hidden: false,
+    count: Number(r.game_count) || games.length,
+    minutes: games.reduce((n, g) => n + g.minutes, 0),
+    games,
+  };
+}
+// IPlayerService/GetRecentlyPlayedGames → the last two weeks.
+function parseRecentGames(json) {
+  const list = json?.response?.games;
+  if (!Array.isArray(list)) return [];
+  return list
+    .filter(g => Number(g?.appid) > 0)
+    .map(g => ({
+      appId: String(g.appid),
+      name: String(g.name || '').slice(0, 200),
+      minutes2w: Math.max(0, Number(g.playtime_2weeks) || 0),
+      minutes: Math.max(0, Number(g.playtime_forever) || 0),
+    }));
+}
+
+// steamcommunity.com/profiles/<id>/?xml=1 → the parts of the profile page
+// the Web API does not give: real name, location, "О себе", member since.
+// The summary is HTML written by the person: only its text and line breaks are kept.
+function parseSteamProfileXml(xml) {
+  const $ = cheerio.load(String(xml || ''), { xml: true });
+  if (!$('profile').length) return null;
+  const text = sel =>
+    $('profile > ' + sel)
+      .first()
+      .text()
+      .trim();
+  const summaryHtml = text('summary')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|li|h\d)>/gi, '\n');
+  const doc = cheerio.load('<body>' + summaryHtml + '</body>');
+  doc('script, style').remove();
+  const summary = doc('body')
+    .text()
+    .replace(/[ \t ]+/g, ' ')
+    .replace(/ *\n */g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  return {
+    realName: text('realname').slice(0, 100),
+    location: text('location').replace(/\s+/g, ' ').slice(0, 120),
+    summary: /^no information given\.?$/i.test(summary) ? '' : summary.slice(0, 3000),
+    memberSince: text('memberSince').slice(0, 60),
+    privacy: text('privacyState'),
+  };
+}
+// IPlayerService/GetProfileItemsEquipped → the profile background and avatar frame.
+const COMMUNITY_IMAGES = 'https://cdn.akamai.steamstatic.com/steamcommunity/public/images/';
+function parseProfileItems(json) {
+  const r = json?.response || {};
+  const img = path =>
+    typeof path === 'string' && /^[\w\-./]+\.(?:jpg|jpeg|png|gif|webp)$/i.test(path) && !path.includes('..')
+      ? COMMUNITY_IMAGES + path
+      : '';
+  return {
+    background: img(r.profile_background?.image_large),
+    frame: img(r.avatar_frame?.image_small) || img(r.avatar_frame?.image_large),
+  };
+}
+
 const ORDER = { ingame: 0, online: 1, away: 2, unknown: 3, offline: 4 };
 function sortFriends(list) {
   return [...list].sort(
@@ -108,4 +187,8 @@ module.exports = {
   parseEpicFriendIds,
   parseEpicAccounts,
   sortFriends,
+  parseOwnedGames,
+  parseRecentGames,
+  parseSteamProfileXml,
+  parseProfileItems,
 };

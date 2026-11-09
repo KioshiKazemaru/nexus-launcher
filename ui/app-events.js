@@ -41,7 +41,7 @@ document.addEventListener('click', event =>
       return;
     }
     if (el.dataset.friend) {
-      await call('openProfile', { provider: 'steam', id: el.dataset.friend });
+      showFriend(el.dataset.friend);
       return;
     }
     if (el.dataset.installCancel !== undefined) {

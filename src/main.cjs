@@ -116,6 +116,11 @@ ctx.showGame = id => {
   ctx.focusMain();
   main?.webContents.send('show-game', String(id));
 };
+// A friend's profile page in the main window.
+ctx.showFriend = id => {
+  ctx.focusMain();
+  main?.webContents.send('show-friend', String(id));
+};
 ctx.mainWindow = () => (main && !main.isDestroyed() ? main : null);
 ctx.toast = message => main?.webContents.send('toast', String(message).slice(0, 300));
 ctx.prepareQuit = () => {
@@ -666,10 +671,13 @@ function registerIpc() {
     'openProfile',
     ({ provider, id } = {}) => {
       if (provider !== 'steam' || !/^7656119\d{10}$/.test(String(id))) throw Error('Профиль недоступен');
-      return shell.openExternal(`https://steamcommunity.com/profiles/${id}/`);
+      // The profile page inside Nexus (the main window), not the browser.
+      ctx.showFriend(String(id));
+      return true;
     },
     { social: true }
   );
+  register('friendProfile', id => ctx.friends.profile(id), { quiet: true });
   // ---- like the Steam client: status, activity, news, workshop, profile, overlay ----
   register('setStatus', s => ctx.presence.setStatus(s), { social: true });
   register('activity', () => ctx.presence.feed(), { quiet: true, social: true });

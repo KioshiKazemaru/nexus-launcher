@@ -263,6 +263,151 @@ function profilePage() {
   }</section></div>`;
 }
 
+// ---- a friend's Steam profile, inside Nexus ------------------------------------------
+let friendState = { id: '', loading: false, data: null, error: '' };
+async function loadFriend(force = false) {
+  const id = friendState.id;
+  if (!api?.friendProfile || demo || !id || (friendState.loading && !force)) return;
+  friendState = { ...friendState, loading: true, error: '' };
+  try {
+    const data = await call('friendProfile', id);
+    if (friendState.id === id) friendState = { id, loading: false, data, error: '' };
+  } catch (e) {
+    if (friendState.id === id) friendState = { id, loading: false, data: null, error: e.message };
+  }
+  if (page === 'friend') render();
+}
+function showFriend(id) {
+  if (friendState.id !== id) friendState = { id, loading: false, data: null, error: '' };
+  setPage('friend');
+  loadFriend();
+}
+function friendStatusText(d) {
+  if (d.status === 'ingame') return d.game ? 'В игре: ' + d.game : 'В игре';
+  if (d.status === 'online') return 'В сети';
+  if (d.status === 'away') return 'Нет на месте';
+  if (d.lastOnline) {
+    const days = Math.floor((Date.now() - d.lastOnline) / 86400000);
+    return (
+      'Не в сети · был(а) ' +
+      (days < 1 ? 'сегодня' : days === 1 ? 'вчера' : new Date(d.lastOnline).toLocaleDateString('ru-RU'))
+    );
+  }
+  return 'Не в сети';
+}
+// Steam writes the date in English ("May 14, 2012"): in Russian when it parses.
+function memberSince(text) {
+  if (!text) return '';
+  const t = Date.parse(text);
+  return esc(
+    Number.isFinite(t)
+      ? new Date(t).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })
+      : text
+  );
+}
+function friendPage() {
+  const d = friendState.data;
+  if (!d)
+    return `${notice()}<div class="empty"><h2>${esc(friendState.error || 'Загружаем профиль…')}</h2>${
+      friendState.error ? '<button class="secondary" id="friend-refresh">↻ Повторить</button>' : ''
+    }</div>`;
+  const h = m => (m / 60).toLocaleString('ru-RU', { maximumFractionDigits: m < 600 ? 1 : 0 });
+  const date = t =>
+    new Date(t).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+  const art = appId => `nexus-art://steam/${encodeURIComponent(appId)}/header`;
+  // A game: opens its page in Nexus when the game is in the library, the Steam store otherwise.
+  const open = g =>
+    g.gameId
+      ? `data-detail="${esc(g.gameId)}"`
+      : `data-open-link="https://store.steampowered.com/app/${esc(g.appId)}/"`;
+  // The library art first; the store image (hashed paths of new games) when that is missing.
+  const cover = (appId, image) =>
+    `<span class="friend-game-art"><img src="${art(appId)}" ${safeImage(image) ? `data-fallback="${esc(safeImage(image))}"` : ''} alt="" loading="lazy"></span>`;
+  const status = d.status || 'offline';
+  const g = d.games;
+  const hiddenGames = !g || g.hidden;
+  const bg = safeImage(d.background);
+  const avatar = safeImage(d.avatar)
+    ? `<img src="${esc(safeImage(d.avatar))}" alt="" referrerpolicy="no-referrer">`
+    : `<b>${esc((d.name || '?').slice(0, 1).toUpperCase())}</b>`;
+  const frame = safeImage(d.frame)
+    ? `<img class="sp-frame" src="${esc(safeImage(d.frame))}" alt="" referrerpolicy="no-referrer">`
+    : '';
+  const realLine = [d.realName, d.location].filter(Boolean).map(esc).join(' &nbsp;·&nbsp; ');
+  const panel = (title, body, extra = '') =>
+    `<section class="sp-panel"><div class="sp-panel-head"><span>${title}</span>${extra}</div>${body}</section>`;
+  const hiddenNote = '<p class="hint">Игры этого профиля скрыты настройками приватности Steam.</p>';
+  // "Недавняя активность" like Steam: hours in two weeks, then the games.
+  const recentMinutes = d.recent.reduce((n, x) => n + x.minutes2w, 0);
+  const recent = d.recent.length
+    ? d.recent
+        .map(
+          x =>
+            `<button class="sp-game" ${open(x)}>${cover(x.appId, x.image)}<span class="sp-game-name">${esc(x.name)}</span><span class="sp-game-meta">${h(x.minutes)} ч всего${x.lastPlayed ? `<br>последний запуск ${esc(date(x.lastPlayed))}` : ''}</span></button>`
+        )
+        .join('')
+    : hiddenGames
+      ? hiddenNote
+      : '<p class="hint">За последние две недели игр не было.</p>';
+  const top = d.top.length
+    ? d.top
+        .map((x, i) => {
+          const w = Math.max(2, Math.round((x.minutes / d.top[0].minutes) * 100));
+          return `<button class="top-game" ${open(x)}><span class="top-rank">${i + 1}</span><span class="top-name">${esc(x.name)}</span><span class="top-bar"><i style="width:${w}%"></i></span><b>${h(x.minutes)} ч</b></button>`;
+        })
+        .join('')
+    : hiddenGames
+      ? hiddenNote
+      : '<p class="hint">Время в играх не указано.</p>';
+  const common = d.common.length
+    ? `<div class="sp-common">${d.common
+        .map(
+          x =>
+            `<button class="friend-game" ${open(x)}>${cover(x.appId, x.image)}<span><strong>${esc(x.name)}</strong><small>у друга ${h(x.minutes)} ч · у вас ${h(x.mine)} ч</small></span></button>`
+        )
+        .join(
+          ''
+        )}</div>${d.commonCount > d.common.length ? `<p class="hint">и ещё ${d.commonCount - d.common.length}</p>` : ''}`
+    : hiddenGames
+      ? hiddenNote
+      : '<p class="hint">Общих игр в Steam нет.</p>';
+  const playing = d.recent.find(x => d.gameId && x.appId === String(d.gameId));
+  const statusBox =
+    status === 'ingame'
+      ? `<div class="sp-status ingame"><small>Сейчас в игре</small><strong>${esc(d.game || 'В игре')}</strong>${
+          d.gameId
+            ? `<button class="sp-now" ${open({ appId: String(d.gameId), gameId: playing?.gameId || '' })}>${cover(String(d.gameId), d.gameImage)}</button>`
+            : ''
+        }</div>`
+      : `<div class="sp-status ${esc(status)}"><strong>${esc(friendStatusText(d))}</strong></div>`;
+  const stat = (label, value) =>
+    value === null || value === undefined || value === ''
+      ? ''
+      : `<div class="sp-stat"><span>${label}</span><b>${value}</b></div>`;
+  return `${notice()}<div class="sp ${bg ? 'has-bg' : ''}" ${bg ? `style="--sp-bg:url('${esc(bg)}')"` : ''}><div class="sp-inner"><header class="sp-header"><div class="sp-avatar ${esc(status)}">${avatar}${frame}</div><div class="sp-id"><h1>${esc(d.name)}</h1>${realLine ? `<p class="sp-real">${realLine}</p>` : ''}${
+    d.summary ? `<p class="sp-summary">${esc(d.summary)}</p>` : ''
+  }</div><div class="sp-side">${
+    d.level !== null && d.level !== undefined
+      ? `<div class="sp-level">Уровень <span class="steam-level">${d.level}</span></div>`
+      : ''
+  }<div class="sp-actions">${
+    d.conv ? `<button class="primary" data-activity-chat="${esc(d.conv)}">Написать</button>` : ''
+  }<button class="secondary" data-open-link="https://steamcommunity.com/profiles/${esc(d.id)}/">Открыть в Steam ↗</button><button class="secondary" id="friend-refresh" title="Обновить">↻</button></div></div></header><div class="sp-body"><div class="sp-main">${panel(
+    'Недавняя активность',
+    `<div class="sp-games">${recent}</div>`,
+    recentMinutes ? `<small>${h(recentMinutes)} ч за последние 2 недели</small>` : ''
+  )}${panel('Больше всего времени', `<div class="top-games">${top}</div>`)}${panel(
+    'Общие игры',
+    common,
+    d.commonCount ? `<small>${d.commonCount}</small>` : ''
+  )}</div><aside class="sp-right">${statusBox}<div class="sp-stats">${stat('Значки', d.badges)}${
+    hiddenGames ? '' : stat('Игры', g.count.toLocaleString('ru-RU'))
+  }${hiddenGames ? '' : stat('Часов в играх', h(g.minutes))}${hiddenGames ? '' : stat('Запускались', g.played.toLocaleString('ru-RU'))}${stat(
+    'Общие игры',
+    hiddenGames ? '' : d.commonCount
+  )}${stat('В Steam с', memberSince(d.memberSince))}</div></aside></div></div></div>`;
+}
+
 // ---- settings: status, notifications, tray, overlay ---------------------------------------
 const OVERLAY_KEYS = ['Shift+Tab', 'Shift+F1', 'Ctrl+Shift+O', 'Alt+F12'];
 function socialCard() {
@@ -297,7 +442,11 @@ document.addEventListener('click', event =>
       activityState = { loading: false, list: null, error: '' };
       render();
     } else if (el.id === 'news-refresh') loadNewsFeed(true);
-    else if (el.id === 'profile-refresh') {
+    else if (el.id === 'friend-refresh') {
+      friendState = { ...friendState, data: null, error: '' };
+      render();
+      loadFriend(true);
+    } else if (el.id === 'profile-refresh') {
       profileState = { loading: false, data: null, error: '' };
       render();
     }

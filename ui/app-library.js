@@ -610,6 +610,7 @@ function render() {
           news: 'БИБЛИОТЕКА <span>/ НОВОСТИ</span>',
           activity: 'СООБЩЕСТВО <span>/ АКТИВНОСТЬ ДРУЗЕЙ</span>',
           profile: 'СООБЩЕСТВО <span>/ ПРОФИЛЬ</span>',
+          friend: 'СООБЩЕСТВО <span>/ ПРОФИЛЬ ДРУГА</span>',
           tracking: 'МАГАЗИН <span>/ СКИДКИ</span>',
           accounts: 'NEXUS <span>/ НАСТРОЙКИ</span>',
         }[page];
@@ -633,13 +634,15 @@ function render() {
               ? activityPage()
               : page === 'profile'
                 ? profilePage()
-                : page === 'accounts'
-                  ? accounts() + epicImportPanel()
-                  : page === 'tracking'
-                    ? tracking()
-                    : librarySelection && page === 'library'
-                      ? libraryGamePage()
-                      : library();
+                : page === 'friend'
+                  ? friendPage()
+                  : page === 'accounts'
+                    ? accounts() + epicImportPanel()
+                    : page === 'tracking'
+                      ? tracking()
+                      : librarySelection && page === 'library'
+                        ? libraryGamePage()
+                        : library();
   $('#footer-status').textContent =
     state.warnings[0] || 'Steam в приоритете · покупка в официальном магазине';
   renderDownloads();

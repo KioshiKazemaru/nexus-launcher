@@ -197,3 +197,154 @@ test('"Играть" is refused while the game runs', async () => {
   });
   await assert.rejects(() => actions.play({ id: 'steam:1', provider: 'steam' }), /уже запущена/);
 });
+
+test("a friend's games: hidden profile, playtime, recent games", () => {
+  const f = require('../src/friends.cjs');
+  assert.deepEqual(f.parseOwnedGames({ response: {} }), { hidden: true, count: 0, minutes: 0, games: [] });
+  assert.throws(() => f.parseOwnedGames({}), /не отдал игры/);
+  const owned = f.parseOwnedGames({
+    response: {
+      game_count: 2,
+      games: [
+        { appid: 10, name: 'Game A', playtime_forever: 120, rtime_last_played: 1700000000 },
+        { appid: 20, name: 'Game B', playtime_forever: 0, rtime_last_played: 0 },
+        { appid: 0, name: 'broken' },
+      ],
+    },
+  });
+  assert.equal(owned.hidden, false);
+  assert.equal(owned.count, 2);
+  assert.equal(owned.minutes, 120);
+  assert.deepEqual(owned.games[0], { appId: '10', name: 'Game A', minutes: 120, lastPlayed: 1700000000000 });
+  assert.equal(owned.games[1].lastPlayed, null);
+  assert.deepEqual(f.parseRecentGames({ response: { total_count: 0 } }), []);
+  assert.deepEqual(
+    f.parseRecentGames({
+      response: { games: [{ appid: 10, name: 'Game A', playtime_2weeks: 30, playtime_forever: 120 }] },
+    }),
+    [{ appId: '10', name: 'Game A', minutes2w: 30, minutes: 120 }]
+  );
+});
+
+test("a friend's profile in Nexus: status, level, games in common, chat key", async () => {
+  const { FriendsService } = require('../src/main/friends.cjs');
+  const me = { key: 'steam:76561198000000001', id: '76561198000000001', name: 'me' };
+  const friendId = '76561198000000002';
+  const xml =
+    '<?xml version="1.0"?><profile><steamID64>76561198000000002</steamID64><realname>Test Person</realname>' +
+    '<location>Test City</location><summary><![CDATA[Line one<br>Line two<script>bad()</script>]]></summary>' +
+    '<memberSince>May 1, 2015</memberSince></profile>';
+  const svc = new FriendsService({
+    accounts: {
+      connected: p => (p === 'steam' ? [me] : []),
+      session: () => ({ fetch: async () => ({ ok: true, text: async () => xml }) }),
+    },
+    // IStoreBrowseService/GetItems: names and images of the shown games.
+    publicFetch: async url => ({
+      ok: true,
+      json: async () => {
+        const ids = JSON.parse(new URL(url).searchParams.get('input_json')).ids.map(x => x.appid);
+        return {
+          response: {
+            store_items: ids.map(appid => ({
+              appid,
+              id: appid,
+              success: 1,
+              type: 0,
+              name: 'Store ' + appid,
+              assets: { asset_url_format: 'steam/apps/' + appid + '/abc/${FILENAME}', header: 'header.jpg' },
+            })),
+          },
+        };
+      },
+    }),
+    log: {},
+    library: {
+      games: [
+        {
+          id: 'steam:10',
+          name: 'Game A',
+          offers: [{ provider: 'steam', appId: '10', owned: true, playtime: 300 }],
+        },
+        { id: 'steam:30', name: 'Game C', offers: [{ provider: 'steam', appId: '30', owned: true }] },
+      ],
+    },
+    presence: { steamStatus: id => (id === friendId ? { status: 'online', game: '' } : null) },
+  });
+  svc.cache = {
+    checkedAt: Date.now(),
+    steam: [{ account: me, friends: [{ id: friendId, name: 'friend', status: 'offline' }] }],
+    epic: [],
+    errors: [],
+  };
+  const calls = [];
+  svc.steamApi = async () => async (method, params) => {
+    calls.push(method);
+    if (method.includes('GetPlayerLinkDetails'))
+      return {
+        response: {
+          accounts: [
+            {
+              public_data: {
+                steamid: params['steamids[0]'],
+                persona_name: 'friend',
+                sha_digest_avatar: 'ASNFZ4mrze8BI0VniavN7wEjRWc=',
+              },
+              private_data: { persona_state: 0, last_logoff_time: 1700000000 },
+            },
+          ],
+        },
+      };
+    if (method.includes('GetBadges')) return { response: { player_level: 12, badges: [{}, {}] } };
+    if (method.includes('GetOwnedGames'))
+      return {
+        response: {
+          game_count: 2,
+          games: [
+            { appid: 10, name: 'Game A', playtime_forever: 600 },
+            { appid: 20, name: 'Game B', playtime_forever: 60 },
+          ],
+        },
+      };
+    if (method.includes('GetRecentlyPlayedGames'))
+      return {
+        response: { games: [{ appid: 20, name: 'Game B', playtime_2weeks: 60, playtime_forever: 60 }] },
+      };
+    throw Error('unexpected ' + method);
+  };
+  await assert.rejects(() => svc.profile('not-an-id'), /недоступен/);
+  const p = await svc.profile(friendId);
+  assert.equal(p.status, 'online', 'the live status wins over the Web API one');
+  assert.equal(p.level, 12);
+  assert.equal(p.badges, 2);
+  assert.match(p.avatar, /_full\.jpg$/);
+  assert.deepEqual(p.games, { hidden: false, count: 2, minutes: 660, played: 2 });
+  assert.equal(p.commonCount, 1);
+  assert.deepEqual(
+    p.common.map(x => [x.appId, x.gameId, x.minutes, x.mine]),
+    [['10', 'steam:10', 600, 300]]
+  );
+  assert.deepEqual(
+    p.top.map(x => [x.appId, x.gameId]),
+    [
+      ['10', 'steam:10'],
+      ['20', ''],
+    ]
+  );
+  assert.equal(p.recent[0].gameId, '');
+  assert.ok(p.conv, 'a friend can be messaged from the profile');
+  // The parts of the Steam profile page: text only, no markup from the person.
+  assert.equal(p.realName, 'Test Person');
+  assert.equal(p.location, 'Test City');
+  assert.equal(p.summary, 'Line one\nLine two');
+  assert.equal(p.memberSince, 'May 1, 2015');
+  // Store images for games without library art (hashed paths of new games).
+  assert.match(
+    p.recent[0].image,
+    /^https:\/\/shared\.akamai\.steamstatic\.com\/store_item_assets\/steam\/apps\/20\/abc\/header\.jpg$/
+  );
+  // Cached for a while: no second round of requests.
+  const n = calls.length;
+  await svc.profile(friendId);
+  assert.equal(calls.length, n);
+});
