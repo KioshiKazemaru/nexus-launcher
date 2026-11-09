@@ -48,16 +48,59 @@ function hideLibraryHover() {
   if (popup) popup.classList.remove('visible');
 }
 // Carousel: hovering a screenshot shows it in the large image, as in Steam.
+// The thumbnail (already loaded) shows at once; the full-size picture replaces
+// it as soon as it has arrived. The full pictures start loading when the
+// pointer enters the carousel, so they are usually there by the time it
+// reaches a thumbnail.
 let showcaseHover = false,
   lastStoreInput = 0;
-document.addEventListener('mouseover', event => {
-  showcaseHover = !!event.target.closest?.('#showcase-block');
-  const main = $('#showcase-main');
-  if (main) {
-    const shot = event.target.closest?.('[data-showcase-shot]');
-    const next = shot ? shot.dataset.showcaseShot.replace('.600x338.', '.') : main.dataset.default;
-    if (main.getAttribute('src') !== next) main.src = next;
+const showcaseFull = new Map(); // full-size url → Image (loading or loaded)
+function loadShowcaseFull(url) {
+  let img = showcaseFull.get(url);
+  if (!img) {
+    if (showcaseFull.size > 60) showcaseFull.delete(showcaseFull.keys().next().value);
+    img = new Image();
+    img.referrerPolicy = 'no-referrer';
+    // Steam's 1920×1080 copy: the originals reach 4K and wider and decode slowly.
+    const hd = url.replace(/\.jpg(\?|$)/, '.1920x1080.jpg$1');
+    img.onerror = () => {
+      img.onerror = null;
+      if (img.src !== url) img.src = url;
+    };
+    img.src = hd;
+    showcaseFull.set(url, img);
   }
+  return img;
+}
+const fullShot = thumb => thumb.replace('.600x338.', '.');
+document.addEventListener('mouseover', event => {
+  const inside = !!event.target.closest?.('#showcase-block');
+  if (inside && !showcaseHover)
+    for (const el of document.querySelectorAll('[data-showcase-shot]'))
+      loadShowcaseFull(fullShot(el.dataset.showcaseShot));
+  showcaseHover = inside;
+  const main = $('#showcase-main');
+  if (!main) return;
+  const shot = event.target.closest?.('[data-showcase-shot]');
+  if (!shot) {
+    delete main.dataset.shot;
+    if (main.getAttribute('src') !== main.dataset.default) main.src = main.dataset.default;
+    return;
+  }
+  const thumb = shot.dataset.showcaseShot;
+  const full = loadShowcaseFull(fullShot(thumb));
+  const want = full.complete && full.naturalWidth ? full.src : thumb;
+  if (main.dataset.shot === thumb && main.getAttribute('src') === want) return;
+  main.dataset.shot = thumb;
+  main.src = want;
+  if (want === thumb)
+    full.decode().then(
+      () => {
+        // still the same screenshot under the pointer
+        if (main.isConnected && main.dataset.shot === thumb) main.src = full.src;
+      },
+      () => {}
+    );
 });
 // Auto-rotation every 8 s; it waits while the pointer is on the carousel and
 // for 20 s after the user clicked or typed anything.

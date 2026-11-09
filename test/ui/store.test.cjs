@@ -488,9 +488,16 @@ test(
       assert.equal(await p.locator('.store-showcase .screenshot-grid img').count(), 4);
       assert.match(await p.locator('.store-showcase .review-summary').textContent(), /Очень положительные/);
       assert.match(await p.locator('.store-showcase .showcase-tags').textContent(), /Хоррор/);
-      // Hovering a screenshot shows it large (full size, not the thumbnail).
+      // Hovering a screenshot shows it large at once: first the loaded thumbnail,
+      // then Steam's 1920×1080 copy when it has arrived (asked for in advance).
       await p.hover('.store-showcase .screenshot-grid img >> nth=1');
-      assert.match(await main.getAttribute('src'), /ss_2\.jpg$/);
+      assert.match(await main.getAttribute('src'), /ss_2\.600x338\.jpg$/);
+      assert.match(
+        await p.evaluate(
+          () => showcaseFull.get([...showcaseFull.keys()].find(k => /ss_2\.jpg$/.test(k)))?.src || ''
+        ),
+        /ss_2\.1920x1080\.jpg$/
+      );
       await p.hover('.store-subnav');
       assert.match(await main.getAttribute('src'), /capsule\.jpg$/);
       // Arrows change only the carousel.
