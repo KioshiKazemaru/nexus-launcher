@@ -3273,7 +3273,8 @@ body[data-page='library']:has(.library-game-page) #main {
   display: none;
 }
 .library-game-right [data-client-action],
-.library-game-right #library-hide {
+.library-game-right #library-hide,
+.library-game-right #library-uninstall {
   font-size: 13px;
   font-weight: 600;
   padding: 0 14px;
@@ -5686,7 +5687,7 @@ body.bp-on {
    Left panel like the Steam client's library: header, source and filter,
    search, folding categories, game rows with friend marks, "add a game".
    ========================================================================= */
-aside {
+.layout > aside {
   flex: 0 0 272px;
   width: 272px;
   padding: 0;
@@ -5930,12 +5931,12 @@ aside {
   background: var(--st-lib-row);
 }
 /* A profile page takes the whole width, as in Steam. */
-body[data-page='profile'] aside,
-body[data-page='friend'] aside {
+body[data-page='profile'] .layout > aside,
+body[data-page='friend'] .layout > aside {
   display: none;
 }
 @media (max-width: 1150px) {
-  aside {
+  .layout > aside {
     flex-basis: 232px;
     width: 232px;
   }
@@ -6019,4 +6020,115 @@ body[data-page='friend'] aside {
 }
 .footer-storage.active {
   color: var(--st-blue);
+}
+
+/* ---- "Играющие друзья" on a game page, like the Steam client ---- */
+.game-friends {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+.game-friends h3 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 400;
+  color: #dcdedf;
+}
+.gf-rows {
+  display: grid;
+  gap: 8px;
+}
+.gf-rows.two {
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+}
+.gf-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.gf-name {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 0;
+  text-align: left;
+  background: none;
+  border: 0;
+}
+.gf-name strong {
+  font-size: 13px;
+  font-weight: 400;
+  color: #dcdedf;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gf-name small {
+  font-size: 11px;
+  color: #8b929a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gf-name.online strong,
+.gf-name.away strong {
+  color: #57cbde;
+}
+.gf-name.ingame strong,
+.gf-name.ingame small {
+  color: #8bc53f;
+}
+.gf-name:hover strong {
+  color: var(--st-bright);
+}
+.gf-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.gf-avatar {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: #2a3542;
+  border: 0;
+  border-radius: 0;
+  box-shadow: inset 0 0 0 1px #00000080;
+}
+.gf-avatar.big {
+  width: 36px;
+  height: 36px;
+}
+.gf-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.gf-avatar span {
+  font-size: 16px;
+  color: #dcdedf;
+}
+.gf-avatar.online,
+.gf-avatar.away {
+  outline: 2px solid #57cbde;
+  outline-offset: -2px;
+}
+.gf-avatar.ingame {
+  outline: 2px solid #8bc53f;
+  outline-offset: -2px;
+}
+.gf-avatar:hover {
+  filter: brightness(1.2);
+}
+.gf-more {
+  align-self: center;
+  font-size: 11px;
+  color: #8b929a;
 }

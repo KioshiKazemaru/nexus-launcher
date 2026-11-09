@@ -678,6 +678,7 @@ function registerIpc() {
     { social: true }
   );
   register('friendProfile', id => ctx.friends.profile(id), { quiet: true });
+  register('gameFriends', appId => ctx.friends.gameFriends(appId), { quiet: true });
   // ---- like the Steam client: status, activity, news, workshop, profile, overlay ----
   register('setStatus', s => ctx.presence.setStatus(s), { social: true });
   register('activity', () => ctx.presence.feed(), { quiet: true, social: true });

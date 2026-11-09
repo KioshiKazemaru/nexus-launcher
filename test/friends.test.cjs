@@ -348,3 +348,95 @@ test("a friend's profile in Nexus: status, level, games in common, chat key", as
   await svc.profile(friendId);
   assert.equal(calls.length, n);
 });
+
+test('friends of a game: Steam lists, each friend once, names from the friends list', async () => {
+  const parsed = f.parseGameplayInfo({
+    response: {
+      your_info: { steamid: '76561198000000001', minutes_played_forever: 60 },
+      in_game: [{ steamid: '76561198000000002', minutes_played: 30, minutes_played_forever: 600 }],
+      played_recently: [
+        { steamid: '76561198000000002', minutes_played: 30 },
+        { steamid: '76561198000000003', minutes_played: 20, minutes_played_forever: 90 },
+        { steamid: '76561198000000004', minutes_played: 200, minutes_played_forever: 900 },
+      ],
+      played_ever: [{ steamid: '76561198000000005', minutes_played_forever: 50 }, { steamid: 'bad' }],
+      in_wishlist: [{ steamid: '76561198000000006' }],
+    },
+  });
+  assert.deepEqual(
+    parsed.inGame.map(x => x.id),
+    ['76561198000000002']
+  );
+  // Most played in two weeks first; the friend in game is not repeated.
+  assert.deepEqual(
+    parsed.recent.map(x => [x.id, x.minutes2w]),
+    [
+      ['76561198000000004', 200],
+      ['76561198000000003', 20],
+    ]
+  );
+  assert.deepEqual(
+    parsed.ever.map(x => x.id),
+    ['76561198000000005']
+  );
+  assert.deepEqual(parsed.owns, []);
+  assert.equal(parsed.wishlist.length, 1);
+  assert.throws(() => f.parseGameplayInfo({}), /не отдал/);
+
+  const { FriendsService } = require('../src/main/friends.cjs');
+  const me = { key: 'steam:76561198000000001', id: '76561198000000001', name: 'me' };
+  const svc = new FriendsService({
+    accounts: { connected: p => (p === 'steam' ? [me] : []) },
+    log: {},
+    presence: {
+      steamStatus: id => (id === '76561198000000002' ? { status: 'ingame', game: 'Game A' } : null),
+    },
+  });
+  svc.cache = {
+    steam: [
+      {
+        account: me,
+        friends: [
+          {
+            id: '76561198000000002',
+            name: 'Friend Two',
+            avatar: 'https://avatars.akamai.steamstatic.com/a_full.jpg',
+            status: 'ingame',
+          },
+        ],
+      },
+    ],
+    epic: [],
+    checkedAt: Date.now(),
+  };
+  const calls = [];
+  svc.steamApi = async () => async (method, params) => {
+    calls.push([method, params]);
+    if (method.includes('GetFriendsGameplayInfo'))
+      return {
+        response: {
+          in_game: [{ steamid: '76561198000000002', minutes_played: 30 }],
+          played_ever: [{ steamid: '76561198000000005', minutes_played_forever: 50 }],
+        },
+      };
+    // Someone not in the cached list: the name comes from GetPlayerLinkDetails.
+    return {
+      response: {
+        accounts: [
+          { public_data: { steamid: '76561198000000005', persona_name: 'Friend Five', visibility_state: 3 } },
+        ],
+      },
+    };
+  };
+  const r = await svc.gameFriends('10');
+  assert.equal(calls[0][1].appid, '10');
+  assert.equal(r.inGame[0].name, 'Friend Two');
+  assert.equal(r.inGame[0].status, 'ingame');
+  assert.equal(r.inGame[0].game, 'Game A');
+  assert.ok(r.inGame[0].conv);
+  assert.equal(r.ever[0].name, 'Friend Five');
+  // Cached for a while: no second request.
+  await svc.gameFriends('10');
+  assert.equal(calls.filter(c => c[0].includes('GetFriendsGameplayInfo')).length, 1);
+  await assert.rejects(() => svc.gameFriends('abc'), /не игра Steam/);
+});

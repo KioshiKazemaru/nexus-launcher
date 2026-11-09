@@ -10,6 +10,8 @@ const { convKey } = require('../chat.cjs');
 
 const CACHE_MS = 60000;
 const PROFILE_MS = 5 * 60 * 1000;
+const GAME_MS = 2 * 60 * 1000;
+const GAME_LISTS = ['inGame', 'recent', 'ever', 'owns', 'wishlist'];
 
 class FriendsService {
   constructor(ctx) {
@@ -17,6 +19,7 @@ class FriendsService {
     this.cache = null;
     this.pending = null;
     this.profiles = new Map(); // steam id → { at, value }
+    this.games = new Map(); // steam app id → { at, value }
   }
   async list({ force = false } = {}) {
     if (force || !this.cache || Date.now() - this.cache.checkedAt >= CACHE_MS) {
@@ -114,6 +117,79 @@ class FriendsService {
       }
       return r.json();
     };
+  }
+  // "Играющие друзья" for a Steam game, like the game page of the Steam client.
+  async gameFriends(appId) {
+    appId = String(appId || '');
+    if (!/^\d{1,10}$/.test(appId)) throw Error('Это не игра Steam');
+    const hit = this.games.get(appId);
+    if (hit && Date.now() - hit.at < GAME_MS) return this.decorateGame(hit.value);
+    const accounts = this.ctx.accounts.connected('steam');
+    if (!accounts.length) throw Error('Подключите Steam в «Аккаунтах»');
+    await this.list().catch(() => {});
+    const value = Object.fromEntries(GAME_LISTS.map(k => [k, []]));
+    const seen = new Set();
+    let failed = null;
+    for (const account of accounts) {
+      try {
+        const api = await this.steamApi(account);
+        const info = f.parseGameplayInfo(
+          await api('IPlayerService/GetFriendsGameplayInfo/v1/', { appid: appId })
+        );
+        for (const k of GAME_LISTS)
+          for (const x of info[k])
+            if (!seen.has(x.id) && x.id !== String(account.id)) {
+              seen.add(x.id);
+              value[k].push({ ...x, account: account.key });
+            }
+      } catch (e) {
+        failed = e;
+        this.ctx.log.debug?.('friends', 'game friends: ' + e.message);
+      }
+    }
+    if (failed && !seen.size) throw failed;
+    // Names and avatars: the friends list has them; ask Steam for anyone missing.
+    const known = this.knownFriends();
+    const missing = [...seen].filter(id => !known.has(id)).slice(0, 100);
+    if (missing.length)
+      try {
+        const api = await this.steamApi(accounts[0]);
+        const params = Object.fromEntries(missing.map((id, n) => ['steamids[' + n + ']', id]));
+        for (const x of f.parseSteamLinkDetails(await api('IPlayerService/GetPlayerLinkDetails/v1/', params)))
+          known.set(x.id, x);
+      } catch (e) {
+        this.ctx.log.debug?.('friends', 'game friends names: ' + e.message);
+      }
+    for (const k of GAME_LISTS)
+      value[k] = value[k].map(x => ({
+        ...x,
+        name: known.get(x.id)?.name || '',
+        avatar: known.get(x.id)?.avatar || '',
+      }));
+    this.games.set(appId, { at: Date.now(), value });
+    return this.decorateGame(value);
+  }
+  knownFriends() {
+    const known = new Map();
+    for (const g of this.cache?.steam || [])
+      for (const x of g.friends) if (!known.has(x.id)) known.set(x.id, x);
+    return known;
+  }
+  // Live status and chat keys on top of the cached lists.
+  decorateGame(v) {
+    const accountId = key => this.ctx.accounts.connected('steam').find(a => a.key === key)?.id;
+    const known = this.knownFriends();
+    const live = k => x => {
+      const p = this.ctx.presence?.steamStatus(x.id) || known.get(x.id);
+      const id = accountId(x.account);
+      return {
+        ...x,
+        status: p?.status || (k === 'inGame' ? 'ingame' : ''),
+        game: p?.game || '',
+        conv: id ? convKey('steam', id, x.id) : '',
+      };
+    };
+    return Object.fromEntries(GAME_LISTS.map(k => [k, v[k].map(live(k))]));
   }
   // A Steam profile page inside Nexus: who, status, level, games, games in common.
   async profile(id) {

@@ -172,6 +172,30 @@ function parseProfileItems(json) {
   };
 }
 
+// IPlayerService/GetFriendsGameplayInfo (what the Steam client shows as "Играющие друзья"):
+// friends in game now, played in the last two weeks, played before, owning it, wishing it.
+// Each friend lands in the first of those lists only.
+function parseGameplayInfo(json) {
+  const r = json?.response;
+  if (!r || typeof r !== 'object') throw Error('Steam не отдал друзей по игре');
+  const seen = new Set();
+  const take = key =>
+    (Array.isArray(r[key]) ? r[key] : [])
+      .map(x => ({
+        id: String(x?.steamid || ''),
+        minutes: Number(x?.minutes_played_forever) || 0,
+        minutes2w: Number(x?.minutes_played) || 0,
+      }))
+      .filter(x => /^7656119\d{10}$/.test(x.id) && !seen.has(x.id) && seen.add(x.id));
+  return {
+    inGame: take('in_game'),
+    recent: take('played_recently').sort((a, b) => b.minutes2w - a.minutes2w),
+    ever: take('played_ever').sort((a, b) => b.minutes - a.minutes),
+    owns: take('owns'),
+    wishlist: take('in_wishlist'),
+  };
+}
+
 const ORDER = { ingame: 0, online: 1, away: 2, unknown: 3, offline: 4 };
 function sortFriends(list) {
   return [...list].sort(
@@ -191,4 +215,5 @@ module.exports = {
   parseRecentGames,
   parseSteamProfileXml,
   parseProfileItems,
+  parseGameplayInfo,
 };

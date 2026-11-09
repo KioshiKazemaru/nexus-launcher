@@ -185,6 +185,84 @@ async function requestAchievements(id) {
   }
   if (librarySelection === id) render();
 }
+// "Играющие друзья" on a Steam game's page, like the Steam client's game page.
+const gameFriendsState = new Map(); // steam app id → { at, data } | { at, error } | { at, loading }
+function steamAppOf(g) {
+  return String(g.offers?.find(o => o.provider === 'steam')?.appId || g.steam || '');
+}
+async function requestGameFriends(appId) {
+  const had = gameFriendsState.get(appId);
+  if (!api?.gameFriends || demo || had?.loading || (had && Date.now() - had.at < 120000)) return;
+  gameFriendsState.set(appId, { ...had, at: Date.now(), loading: true });
+  let next;
+  try {
+    next = { at: Date.now(), data: await call('gameFriends', appId) };
+  } catch (e) {
+    next = { at: Date.now(), error: e.message };
+  }
+  gameFriendsState.set(appId, next);
+  const shown = page === 'library' && activeGames().find(x => x.id === librarySelection);
+  if (shown && steamAppOf(shown) === appId) render();
+}
+function friendAvatar(x, big) {
+  const src = safeImage(x.avatar);
+  const img = src
+    ? `<img src="${esc(src)}" alt="" loading="lazy" referrerpolicy="no-referrer">`
+    : '<span>?</span>';
+  return `<button class="gf-avatar ${big ? 'big' : ''} ${esc(x.status || '')}" data-friend="${esc(x.id)}" title="${esc(x.name || 'Друг Steam')}">${img}</button>`;
+}
+function gameFriendsBox(g) {
+  const appId = steamAppOf(g);
+  if (!appId || demo || !api?.gameFriends) return '';
+  if (!(state.accountList || []).some(a => a.provider === 'steam' && a.status === 'connected')) return '';
+  setTimeout(() => requestGameFriends(appId));
+  const st = gameFriendsState.get(appId);
+  const head = '<h2>ИГРАЮЩИЕ ДРУЗЬЯ</h2>';
+  if (!st?.data && !st?.error)
+    return head + '<div class="library-activity-box game-friends"><p class="hint">Загружаем…</p></div>';
+  if (!st.data)
+    return (
+      head +
+      `<div class="library-activity-box game-friends"><p class="watch-error">${esc(st.error)}</p></div>`
+    );
+  // Missing lists (an older main process, an odd answer) count as empty.
+  const d = Object.fromEntries(
+    ['inGame', 'recent', 'ever', 'owns', 'wishlist'].map(k => [
+      k,
+      Array.isArray(st.data?.[k]) ? st.data[k] : [],
+    ])
+  );
+  const h2w = m =>
+    (m / 60).toLocaleString('ru-RU', { maximumFractionDigits: 1 }) + ' ч. за последние 2 недели';
+  const row = (x, sub) =>
+    `<div class="gf-row">${friendAvatar(x, true)}<button class="gf-name ${esc(x.status || '')}" data-friend="${esc(x.id)}"><strong>${esc(x.name || 'Друг Steam')}</strong><small>${esc(sub)}</small></button></div>`;
+  const part = (title, list, body) =>
+    list.length ? `<section><h3>${title}: ${list.length}</h3>${body}</section>` : '';
+  const grid = list =>
+    `<div class="gf-grid">${list
+      .slice(0, 60)
+      .map(x => friendAvatar(x))
+      .join('')}${list.length > 60 ? `<span class="gf-more">+${list.length - 60}</span>` : ''}</div>`;
+  const html = [
+    part(
+      'Друзей, играющих прямо сейчас',
+      d.inGame,
+      `<div class="gf-rows">${d.inGame.map(x => row(x, x.game ? 'В игре · ' + x.game : 'В игре')).join('')}</div>`
+    ),
+    part(
+      'Друзей, игравших недавно',
+      d.recent,
+      `<div class="gf-rows two">${d.recent.map(x => row(x, h2w(x.minutes2w))).join('')}</div>`
+    ),
+    part('Друзей, игравших раньше', d.ever, grid(d.ever)),
+    part('Друзей, у которых есть игра', d.owns, grid(d.owns)),
+    part(`Друзей, добавивших ${esc(g.name)} в список желаемого`, d.wishlist, grid(d.wishlist)),
+  ].join('');
+  return (
+    head +
+    `<div class="library-activity-box game-friends">${html || '<p class="hint">Никто из друзей пока не играл в эту игру.</p>'}</div>`
+  );
+}
 function libraryGamePage() {
   const g = game(librarySelection),
     owned = activeGames().find(x => x.id === librarySelection);
@@ -229,7 +307,7 @@ function libraryGamePage() {
     steamHero = g.steam
       ? `https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/${g.steam}/library_hero.jpg`
       : '';
-  return `<div class="library-game-page" data-price-game="${esc(g.id)}"><div class="library-game-hero">${hero ? `<img src="${esc(steamHero || hero)}" data-fallback="${esc(hero)}" alt="Баннер ${esc(g.name)}" referrerpolicy="no-referrer">` : ''}<div class="library-game-hero-shade"></div><h1>${esc(g.name)}</h1></div><div class="library-game-actions">${isRunning(g.id) ? `<button class="play-main stop" id="library-stop" title="Закрыть игру; сохранения уйдут в облако">■ ЗАКРЫТЬ</button>` : `<button class="play-main" id="library-play" ${demo ? 'disabled' : ''}>${action}</button>`}<div class="library-game-launch"><div><small>СТАТУС</small><strong>${esc(status)}</strong></div><div><small>ПОСЛЕДНИЙ ЗАПУСК</small><strong>${played ? new Date(played).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Пока не запускалась'}</strong></div><div><small>ВЫ ИГРАЛИ</small><strong>${owned.playtime ? hours(owned.playtime) : '—'}</strong></div></div>${progressLine(owned)}<div class="library-game-right">${clientButtons(preferred)}<button class="secondary" id="library-hide" title="${owned.hidden ? 'Показать в библиотеке' : 'Скрыть из библиотеки'}">${owned.hidden ? '👁 Показать' : 'Скрыть'}</button><button class="secondary" id="library-favorite" aria-label="Избранное">${has('favorites', g.id) ? '★' : '☆'}</button><button class="secondary" id="library-wish" aria-label="Желаемое">${has('wishlist', g.id) ? '♥' : '♡'}</button></div></div><div class="library-game-links"><button data-library-back>← Все игры</button><button id="library-store">Страница в магазине</button><button data-page="tracking">Отслеживание скидок</button></div><div class="library-game-columns"><section><h2>ОБ ИГРЕ</h2><p>${esc(g.desc || g.storeOffers?.find(o => o.description)?.description || 'Описание пока не получено от магазина.')}</p><div class="preview-tags">${(g.tags || []).map(t => `<span>${esc(t)}</span>`).join('')}</div>${collectionsBox(owned)}${trackProcessBox(owned)}${launchOptionsBox(owned)}<h2>ПЛАТФОРМЫ</h2><div class="library-game-providers">${offers.map(o => `<button data-library-provider="${esc(o.provider)}" class="${p === o.provider ? 'active' : ''}"><strong>${names[o.provider]}</strong><span>${o.installed ? 'Установлена' : o.owned ? 'Имеется в аккаунте' : 'На диске'}${o.accountIds?.length > 1 ? ' · на ' + o.accountIds.length + ' аккаунтах' : ''}</span></button>`).join('')}</div>${newsBox(owned)}</section><aside class="library-game-activity"><h2>АКТИВНОСТЬ</h2><div class="library-activity-box"><strong>${played ? 'Последний запуск' : 'Данных о запусках пока нет'}</strong><p>${played ? new Date(played).toLocaleString('ru-RU') : 'Дата появится после запуска через Nexus или из данных платформы.'}${last && last !== played ? '<br>Через Nexus: ' + new Date(last).toLocaleString('ru-RU') : ''}</p>${playtimeRows ? '<strong>Время в игре</strong>' + playtimeRows : ''}</div>${merged}${achievementsBox(owned)}${dlcBox(owned)}${workshopBox(owned)}<h2>СКРИНШОТЫ</h2><div class="library-gallery">${(g.storeOffers?.find(o => o.screenshots?.length)?.screenshots || []).map(src => `<img src="${esc(safeImage(src))}" alt="Скриншот ${esc(g.name)}" referrerpolicy="no-referrer" loading="lazy">`).join('') || `<div class="library-activity-box">${artTag(g)}</div>`}</div></aside></div></div>`;
+  return `<div class="library-game-page" data-price-game="${esc(g.id)}"><div class="library-game-hero">${hero ? `<img src="${esc(steamHero || hero)}" data-fallback="${esc(hero)}" alt="Баннер ${esc(g.name)}" referrerpolicy="no-referrer">` : ''}<div class="library-game-hero-shade"></div><h1>${esc(g.name)}</h1></div><div class="library-game-actions">${isRunning(g.id) ? `<button class="play-main stop" id="library-stop" title="Закрыть игру; сохранения уйдут в облако">■ ЗАКРЫТЬ</button>` : `<button class="play-main" id="library-play" ${demo ? 'disabled' : ''}>${action}</button>`}<div class="library-game-launch"><div><small>СТАТУС</small><strong>${esc(status)}</strong></div><div><small>ПОСЛЕДНИЙ ЗАПУСК</small><strong>${played ? new Date(played).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Пока не запускалась'}</strong></div><div><small>ВЫ ИГРАЛИ</small><strong>${owned.playtime ? hours(owned.playtime) : '—'}</strong></div></div>${progressLine(owned)}<div class="library-game-right">${clientButtons(preferred)}<button class="secondary" id="library-hide" title="${owned.hidden ? 'Показать в библиотеке' : 'Скрыть из библиотеки'}">${owned.hidden ? '👁 Показать' : 'Скрыть'}</button><button class="secondary" id="library-favorite" aria-label="Избранное">${has('favorites', g.id) ? '★' : '☆'}</button><button class="secondary" id="library-wish" aria-label="Желаемое">${has('wishlist', g.id) ? '♥' : '♡'}</button></div></div><div class="library-game-links"><button data-library-back>← Все игры</button><button id="library-store">Страница в магазине</button><button data-page="tracking">Отслеживание скидок</button></div><div class="library-game-columns"><section><h2>ОБ ИГРЕ</h2><p>${esc(g.desc || g.storeOffers?.find(o => o.description)?.description || 'Описание пока не получено от магазина.')}</p><div class="preview-tags">${(g.tags || []).map(t => `<span>${esc(t)}</span>`).join('')}</div>${collectionsBox(owned)}${trackProcessBox(owned)}${launchOptionsBox(owned)}<h2>ПЛАТФОРМЫ</h2><div class="library-game-providers">${offers.map(o => `<button data-library-provider="${esc(o.provider)}" class="${p === o.provider ? 'active' : ''}"><strong>${names[o.provider]}</strong><span>${o.installed ? 'Установлена' : o.owned ? 'Имеется в аккаунте' : 'На диске'}${o.accountIds?.length > 1 ? ' · на ' + o.accountIds.length + ' аккаунтах' : ''}</span></button>`).join('')}</div>${newsBox(owned)}</section><aside class="library-game-activity">${gameFriendsBox(owned)}<h2>АКТИВНОСТЬ</h2><div class="library-activity-box"><strong>${played ? 'Последний запуск' : 'Данных о запусках пока нет'}</strong><p>${played ? new Date(played).toLocaleString('ru-RU') : 'Дата появится после запуска через Nexus или из данных платформы.'}${last && last !== played ? '<br>Через Nexus: ' + new Date(last).toLocaleString('ru-RU') : ''}</p>${playtimeRows ? '<strong>Время в игре</strong>' + playtimeRows : ''}</div>${merged}${achievementsBox(owned)}${dlcBox(owned)}${workshopBox(owned)}<h2>СКРИНШОТЫ</h2><div class="library-gallery">${(g.storeOffers?.find(o => o.screenshots?.length)?.screenshots || []).map(src => `<img src="${esc(safeImage(src))}" alt="Скриншот ${esc(g.name)}" referrerpolicy="no-referrer" loading="lazy">`).join('') || `<div class="library-activity-box">${artTag(g)}</div>`}</div></aside></div></div>`;
 }
 // ---- the left panel, laid out like the Steam client's library ----------------------
 // Sections: Избранное, the user's collections, then "Без категории", each folding.
@@ -769,10 +847,14 @@ function render() {
     requestRecommendations();
   }
 }
-function showDetail(id) {
+function showDetail(id, fromLibrary = false) {
   hideHover();
   hideLibraryHover();
-  if (['library', 'favorites', 'recent'].includes(page) && activeGames().some(g => g.id === id)) {
+  // A game of the library opens its library page from the library, its side panel, storage and downloads.
+  if (
+    (fromLibrary || ['library', 'favorites', 'recent', 'storage', 'downloads'].includes(page)) &&
+    activeGames().some(g => g.id === id)
+  ) {
     page = 'library';
     librarySelection = id;
     libraryProvider = null;

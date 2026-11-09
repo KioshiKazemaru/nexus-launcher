@@ -95,6 +95,7 @@ const channels = [
   'openWorkshop',
   'profile',
   'friendProfile',
+  'gameFriends',
   'setLaunchOptions',
   'presenceSetting',
 ];

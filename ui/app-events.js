@@ -222,7 +222,7 @@ document.addEventListener('click', event =>
       render();
       return;
     }
-    if (el.dataset.detail) return showDetail(el.dataset.detail);
+    if (el.dataset.detail) return showDetail(el.dataset.detail, !!el.closest('#library-tree'));
     if (el.dataset.wish) return toggle('wishlist', el.dataset.wish);
     if (el.dataset.login || el.dataset.loginAdd) {
       const provider = el.dataset.login || el.dataset.loginAdd;
