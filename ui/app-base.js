@@ -68,13 +68,16 @@ const countryCurrencies = {
 };
 const currentCurrency = () => countryCurrencies[state.settings.storeCountry || 'US'] || 'USD';
 function priceControls() {
-  return `<div class="price-controls"><label>Валюта / регион<select id="store-currency">${Object.keys(
-    currencyCountries
-  )
+  const currencies = Object.keys(currencyCountries)
     .map(c => `<option ${c === currentCurrency() ? 'selected' : ''}>${c}</option>`)
-    .join(
-      ''
-    )}</select></label><label>Цена от<input id="price-min" type="number" min="0" step="0.01" placeholder="0" value="${esc(priceFilter.min)}"></label><label>До<input id="price-max" type="number" min="0" step="0.01" placeholder="Любая" value="${esc(priceFilter.max)}"></label><label class="check"><input id="sale-only" type="checkbox" ${priceFilter.sale ? 'checked' : ''}>Со скидкой</label><label>Порядок<select id="price-sort"><option value="relevance">По релевантности</option><option value="asc" ${priceFilter.sort === 'asc' ? 'selected' : ''}>Сначала дешевле</option><option value="desc" ${priceFilter.sort === 'desc' ? 'selected' : ''}>Сначала дороже</option><option value="discount" ${priceFilter.sort === 'discount' ? 'selected' : ''}>Больше скидка</option></select></label></div><p class="hint">Валюта выбирает регион каталога, без конвертации. Фильтры применяются к загруженным результатам; при нескольких предложениях достаточно одного подходящего. ${priceFilter.min !== '' && priceFilter.max !== '' && Number(priceFilter.min) > Number(priceFilter.max) ? 'Цена «от» больше цены «до».' : ''}</p>`;
+    .join('');
+  const sort = (value, label) =>
+    `<option value="${value}" ${priceFilter.sort === value ? 'selected' : ''}>${label}</option>`;
+  const wrong =
+    priceFilter.min !== '' && priceFilter.max !== '' && Number(priceFilter.min) > Number(priceFilter.max)
+      ? 'Цена «от» больше цены «до».'
+      : '';
+  return `<div class="price-controls"><label>Валюта / регион<select id="store-currency">${currencies}</select></label><label>Цена от<input id="price-min" type="number" min="0" step="0.01" placeholder="0" value="${esc(priceFilter.min)}"></label><label>До<input id="price-max" type="number" min="0" step="0.01" placeholder="Любая" value="${esc(priceFilter.max)}"></label><label class="check"><input id="sale-only" type="checkbox" ${priceFilter.sale ? 'checked' : ''}>Со скидкой</label><label>Порядок<select id="price-sort"><option value="relevance">По релевантности</option>${sort('asc', 'Сначала дешевле')}${sort('desc', 'Сначала дороже')}${sort('discount', 'Больше скидка')}</select></label></div><p class="hint">Валюта выбирает регион каталога, без конвертации. Фильтры применяются к загруженным результатам; при нескольких предложениях достаточно одного подходящего. ${wrong}</p>`;
 }
 function filteredOffers(g) {
   return (g.storeOffers || []).filter(
@@ -117,22 +120,33 @@ function tracking() {
   );
   return `<div class="section-head"><h1>Отслеживание скидок</h1><button class="secondary" id="check-prices">↻ Проверить цены</button></div><p class="subheading">При запуске и каждый час, пока Nexus открыт. Изменения сохраняются между запусками.</p>${
     watches.length
-      ? watches
-          .map(
-            w =>
-              `<section class="settings-card watch-card"><div><h2>${esc(w.name)}</h2><p>${names[w.provider]} · ${esc(countries[w.country] || w.country)}</p><strong class="watch-price">${esc(money(w.current))}</strong> ${w.current?.discount ? `<span class="pill blue">−${w.current.discount}%</span>` : ''}<p class="hint">${w.checkedAt ? 'Проверено: ' + new Date(w.checkedAt).toLocaleString('ru-RU') : 'Ожидает проверки'}</p>${w.error ? `<p class="watch-error">${esc(w.error)}. Показана последняя известная цена.</p>` : ''}${w.alert ? `<p class="watch-alert">${esc(w.alert.reason)} · ${esc(money(w.alert))} · ${new Date(w.alert.at).toLocaleString('ru-RU')}</p>` : ''}<details><summary>История цен (${w.historyCount ?? w.history?.length ?? 0})</summary>${(w.historyCount || 0) > (w.history?.length || 0) ? `<button class="ghost" data-full-history="${esc(w.key)}">Показать всю историю</button>` : ''}<ul>${(
-                w.history || []
-              )
-                .slice()
-                .reverse()
-                .map(h => `<li>${new Date(h.at).toLocaleString('ru-RU')} · ${esc(money(h))}</li>`)
-                .join(
-                  ''
-                )}</ul></details></div><div class="watch-actions"><label>Уведомить при цене не выше (${esc(w.current?.currency || '—')})<input type="number" min="0" max="100000000" step="0.01" data-target="${esc(w.key)}" value="${w.target ?? ''}" placeholder="Любое снижение" ${!w.current ? 'disabled' : ''}></label><span class="hint">Пусто — любое снижение. Изменение сохраняется после выхода из поля.</span><button class="ghost" data-unwatch="${esc(w.key)}">Прекратить отслеживание</button></div></section>`
-          )
-          .join('')
+      ? watches.map(watchCard).join('')
       : '<div class="empty"><h2>Выбери игру в магазине</h2><p>В карточке выбери Steam или Epic и нажми «Следить за ценой». Можно отслеживать оба предложения отдельно.</p></div>'
   }<p class="footnote">Уведомления появляются в Windows и сохраняются здесь. После закрытия Nexus проверки прекращаются. Регион каждого отслеживания фиксируется при добавлении; недоступная цена не считается скидкой.</p>`;
+}
+// One watched price: the current price, the last check, the alert, the history and the target.
+function watchCard(w) {
+  const checked = w.checkedAt
+    ? 'Проверено: ' + new Date(w.checkedAt).toLocaleString('ru-RU')
+    : 'Ожидает проверки';
+  const error = w.error
+    ? `<p class="watch-error">${esc(w.error)}. Показана последняя известная цена.</p>`
+    : '';
+  const alert = w.alert
+    ? `<p class="watch-alert">${esc(w.alert.reason)} · ${esc(money(w.alert))} · ${new Date(w.alert.at).toLocaleString('ru-RU')}</p>`
+    : '';
+  const history = (w.history || [])
+    .slice()
+    .reverse()
+    .map(h => `<li>${new Date(h.at).toLocaleString('ru-RU')} · ${esc(money(h))}</li>`)
+    .join('');
+  const more =
+    (w.historyCount || 0) > (w.history?.length || 0)
+      ? `<button class="ghost" data-full-history="${esc(w.key)}">Показать всю историю</button>`
+      : '';
+  const info = `<div><h2>${esc(w.name)}</h2><p>${names[w.provider]} · ${esc(countries[w.country] || w.country)}</p><strong class="watch-price">${esc(money(w.current))}</strong> ${w.current?.discount ? `<span class="pill blue">−${w.current.discount}%</span>` : ''}<p class="hint">${checked}</p>${error}${alert}<details><summary>История цен (${w.historyCount ?? w.history?.length ?? 0})</summary>${more}<ul>${history}</ul></details></div>`;
+  const actions = `<div class="watch-actions"><label>Уведомить при цене не выше (${esc(w.current?.currency || '—')})<input type="number" min="0" max="100000000" step="0.01" data-target="${esc(w.key)}" value="${w.target ?? ''}" placeholder="Любое снижение" ${!w.current ? 'disabled' : ''}></label><span class="hint">Пусто — любое снижение. Изменение сохраняется после выхода из поля.</span><button class="ghost" data-unwatch="${esc(w.key)}">Прекратить отслеживание</button></div>`;
+  return `<section class="settings-card watch-card">${info}${actions}</section>`;
 }
 let toastTimer;
 function toast(message) {
