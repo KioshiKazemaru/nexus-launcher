@@ -22,6 +22,7 @@ function ensurePreview(id) {
         const panel = $('#store-list-preview');
         if (panel) panel.innerHTML = previewContent(game(id));
       }
+      if (detailId === id && detailOpen()) renderDetail();
       if (hoverGame === id && $('#store-hover').classList.contains('visible'))
         $('#store-hover').innerHTML = previewContent(game(id));
     })
@@ -63,7 +64,7 @@ document.addEventListener('mouseover', event => {
 for (const type of ['pointerdown', 'keydown'])
   document.addEventListener(type, () => (lastStoreInput = Date.now()));
 setInterval(() => {
-  if (page !== 'store' || query.trim() || document.hidden || showcaseHover || $('#details')?.open) return;
+  if (page !== 'store' || query.trim() || document.hidden || showcaseHover) return;
   if (Date.now() - lastStoreInput < 20000 || !$('#showcase-block')) return;
   const count = featuredItems().length;
   if (count < 2) return;
@@ -203,7 +204,7 @@ function applyState() {
   updateOffline();
   // Gamepad mode (ui/bigpicture.js) follows the state too.
   globalThis.bigPicture?.refresh();
-  if (detailId && $('#details').open) renderDetail();
+
   // Only text entry blocks re-rendering; a focused <select> or checkbox keeps
   // focus after a change and must not freeze updates.
   const typing = document.activeElement?.matches?.(
@@ -222,7 +223,7 @@ function applyState() {
   changedCards.clear();
   if (
     !changed &&
-    ['library', 'favorites', 'recent', 'wishlist', 'store'].includes(page) &&
+    ['library', 'favorites', 'recent', 'wishlist', 'store', 'game'].includes(page) &&
     !(page === 'store' && freeChanged)
   ) {
     applyDerived(state);

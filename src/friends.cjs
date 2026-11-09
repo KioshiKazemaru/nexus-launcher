@@ -265,6 +265,51 @@ function sortFriends(list) {
   );
 }
 
+// A page of steamcommunity.com/profiles/<id>/badges/ → badges shown inside Nexus.
+function parseBadgePage(html) {
+  const $ = cheerio.load(String(html || ''));
+  const badges = [];
+  $('.badge_row').each((_, el) => {
+    const row = $(el);
+    const info = row.find('.badge_info_description').first();
+    const lines = info
+      .children('div')
+      .toArray()
+      .map(d => $(d).text().replace(/\s+/g, ' ').trim())
+      .filter(Boolean);
+    const title = info.find('.badge_info_title').first().text().replace(/\s+/g, ' ').trim() || lines[0] || '';
+    const unlocked = info.find('.badge_info_unlocked').first().text().replace(/\s+/g, ' ').trim();
+    const level = lines.find(l => l !== title && l !== unlocked) || '';
+    const link = String(row.find('a.badge_row_overlay').first().attr('href') || '');
+    const icon = row.find('img.badge_icon').first();
+    const game = row.find('.badge_title').first().clone();
+    game.find('.badge_view_details').remove();
+    if (!title) return;
+    badges.push({
+      title: title.slice(0, 200),
+      level: level.slice(0, 200),
+      unlocked: unlocked.slice(0, 200),
+      game: game.text().replace(/\s+/g, ' ').trim().slice(0, 200),
+      // The icon's address waits in data-delayed-image; src is a transparent placeholder.
+      image: steamImage(
+        String(
+          icon.attr('data-delayed-image') ||
+            (/trans\.gif$/.test(icon.attr('src') || '') ? '' : icon.attr('src')) ||
+            ''
+        )
+      ),
+      link: /^https:\/\/steamcommunity\.com\/[\w/%.-]+$/.test(link) ? link : '',
+    });
+  });
+  const pages = Math.max(
+    1,
+    ...$('.pageLinks a, .pageLinks span')
+      .toArray()
+      .map(e => Number($(e).text().trim()) || 0)
+  );
+  return { badges, pages, private: $('.profile_private_info').length > 0 };
+}
+
 module.exports = {
   parseSteamFriendIds,
   parseSteamLinkDetails,
@@ -279,4 +324,5 @@ module.exports = {
   parseProfileItems,
   parseGameplayInfo,
   parseProfileComments,
+  parseBadgePage,
 };

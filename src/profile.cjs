@@ -106,4 +106,33 @@ function epicStats(games) {
       .map(({ id, name, minutes, lastPlayed }) => ({ id, name, minutes, lastPlayed: ms(lastPlayed) })),
   };
 }
-module.exports = { libraryStats, latestAchievements, parseBadges, epicStats };
+// The games behind a label of my profile: 'owned' | 'installed' | 'played',
+// of all stores or one ('steam' | 'epic'); most played first, like Steam's list.
+function libraryList(games, kind = 'owned', source = 'all') {
+  const list = (Array.isArray(games) ? games : []).filter(g => g && Array.isArray(g.offers));
+  const of = g => (source === 'all' ? g.offers : g.offers.filter(o => o.provider === source));
+  return list
+    .filter(g => {
+      const offers = of(g);
+      if (!offers.length) return false;
+      if (kind === 'installed') return offers.some(o => o.installed);
+      if (kind === 'played') return Number(g.playtime) > 0 || Number(g.lastPlayed) > 0;
+      return source === 'all' || offers.some(o => o.owned || o.installed);
+    })
+    .map(g => ({
+      id: g.id,
+      name: g.name || '',
+      minutes:
+        source === 'all' ? Number(g.playtime) || 0 : Math.max(0, ...of(g).map(o => Number(o.playtime) || 0)),
+      lastPlayed: Number(g.lastPlayed) > 0 ? Number(g.lastPlayed) * 1000 : null,
+      installed: of(g).some(o => o.installed),
+      steam: g.steam ? String(g.steam) : '',
+      image: typeof g.image === 'string' ? g.image : '',
+    }))
+    .sort(
+      (a, b) =>
+        b.minutes - a.minutes || (b.lastPlayed || 0) - (a.lastPlayed || 0) || a.name.localeCompare(b.name)
+    );
+}
+
+module.exports = { libraryStats, libraryList, latestAchievements, parseBadges, epicStats };

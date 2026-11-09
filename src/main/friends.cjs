@@ -162,6 +162,30 @@ class FriendsService {
     const json = await r.json().catch(() => null);
     return { ...f.parseProfileComments(json), mine: account.id === id, me: account.id };
   }
+  // Badges of a Steam profile, read from its community page (all pages, up to 20).
+  async badges(id) {
+    id = String(id || '');
+    if (!/^7656119\d{10}$/.test(id)) throw Error('Профиль недоступен');
+    const hit = this.badgeCache?.get(id);
+    if (hit && Date.now() - hit.at < PROFILE_MS) return hit.value;
+    const account = this.commentAccount(id);
+    const s = this.ctx.accounts.session(account.key);
+    const get = async page => {
+      const r = await (s || { fetch: this.ctx.publicFetch }).fetch(
+        `https://steamcommunity.com/profiles/${id}/badges/?l=russian${page > 1 ? '&p=' + page : ''}`,
+        { credentials: 'include', signal: AbortSignal.timeout(20000) }
+      );
+      if (!r.ok) throw Error(`Steam: HTTP ${r.status}`);
+      return f.parseBadgePage(await r.text());
+    };
+    const first = await get(1);
+    if (first.private && !first.badges.length) throw Error('Значки этого профиля скрыты');
+    const badges = [...first.badges];
+    for (let p = 2; p <= Math.min(first.pages, 20); p++) badges.push(...(await get(p)).badges);
+    const value = { id, badges };
+    (this.badgeCache ||= new Map()).set(id, { at: Date.now(), value });
+    return value;
+  }
   comments(id, start = 0) {
     const n = Math.max(0, Math.min(100000, Number(start) || 0));
     return this.commentCall(id, 'render', { start: String(n) });

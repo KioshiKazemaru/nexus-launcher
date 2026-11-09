@@ -769,7 +769,7 @@ function refreshCards(ids) {
       }
     }
   }
-  if (detailId && ids.has(detailId) && $('#details').open) renderDetail();
+  if (detailOpen() && ids.has(detailId)) renderDetail();
 }
 // The open/closed state of <details> panels survives re-rendering.
 function rememberOpenPanels() {
@@ -801,21 +801,23 @@ function render() {
   $('#breadcrumb').innerHTML =
     page === 'library' && librarySelection
       ? 'БИБЛИОТЕКА <span>/ ' + esc(game(librarySelection)?.name || 'ИГРА') + '</span>'
-      : {
-          store: 'МАГАЗИН <span>/ ОБЗОР</span>',
-          library: 'БИБЛИОТЕКА <span>/ ВСЕ ИГРЫ</span>',
-          wishlist: 'КОЛЛЕКЦИЯ <span>/ ЖЕЛАЕМОЕ</span>',
-          favorites: 'КОЛЛЕКЦИЯ <span>/ ИЗБРАННОЕ</span>',
-          recent: 'БИБЛИОТЕКА <span>/ НЕДАВНИЕ</span>',
-          downloads: 'БИБЛИОТЕКА <span>/ ЗАГРУЗКИ</span>',
-          storage: 'БИБЛИОТЕКА <span>/ ХРАНИЛИЩЕ</span>',
-          news: 'БИБЛИОТЕКА <span>/ НОВОСТИ</span>',
-          activity: 'СООБЩЕСТВО <span>/ АКТИВНОСТЬ ДРУЗЕЙ</span>',
-          profile: 'СООБЩЕСТВО <span>/ ПРОФИЛЬ</span>',
-          friend: 'СООБЩЕСТВО <span>/ ПРОФИЛЬ ДРУГА</span>',
-          tracking: 'МАГАЗИН <span>/ СКИДКИ</span>',
-          accounts: 'NEXUS <span>/ НАСТРОЙКИ</span>',
-        }[page];
+      : page === 'game'
+        ? 'МАГАЗИН <span>/ ' + esc(game(detailId)?.name || 'ИГРА') + '</span>'
+        : {
+            store: 'МАГАЗИН <span>/ ОБЗОР</span>',
+            library: 'БИБЛИОТЕКА <span>/ ВСЕ ИГРЫ</span>',
+            wishlist: 'КОЛЛЕКЦИЯ <span>/ ЖЕЛАЕМОЕ</span>',
+            favorites: 'КОЛЛЕКЦИЯ <span>/ ИЗБРАННОЕ</span>',
+            recent: 'БИБЛИОТЕКА <span>/ НЕДАВНИЕ</span>',
+            downloads: 'БИБЛИОТЕКА <span>/ ЗАГРУЗКИ</span>',
+            storage: 'БИБЛИОТЕКА <span>/ ХРАНИЛИЩЕ</span>',
+            news: 'БИБЛИОТЕКА <span>/ НОВОСТИ</span>',
+            activity: 'СООБЩЕСТВО <span>/ АКТИВНОСТЬ ДРУЗЕЙ</span>',
+            profile: 'СООБЩЕСТВО <span>/ ПРОФИЛЬ</span>',
+            friend: 'СООБЩЕСТВО <span>/ ПРОФИЛЬ ДРУГА</span>',
+            tracking: 'МАГАЗИН <span>/ СКИДКИ</span>',
+            accounts: 'NEXUS <span>/ НАСТРОЙКИ</span>',
+          }[page];
   $('#search').disabled = page === 'accounts';
   $('#mode-label').textContent = demo
     ? 'Демонстрационная библиотека'
@@ -826,25 +828,27 @@ function render() {
   $('#content').innerHTML =
     page === 'store'
       ? store()
-      : page === 'downloads'
-        ? downloadsPage()
-        : page === 'storage'
-          ? storagePage()
-          : page === 'news'
-            ? newsPage()
-            : page === 'activity'
-              ? activityPage()
-              : page === 'profile'
-                ? profilePage()
-                : page === 'friend'
-                  ? friendPage()
-                  : page === 'accounts'
-                    ? accounts() + epicImportPanel()
-                    : page === 'tracking'
-                      ? tracking()
-                      : librarySelection && page === 'library'
-                        ? libraryGamePage()
-                        : library();
+      : page === 'game'
+        ? notice() + storeGamePage()
+        : page === 'downloads'
+          ? downloadsPage()
+          : page === 'storage'
+            ? storagePage()
+            : page === 'news'
+              ? newsPage()
+              : page === 'activity'
+                ? activityPage()
+                : page === 'profile'
+                  ? profilePage()
+                  : page === 'friend'
+                    ? friendPage()
+                    : page === 'accounts'
+                      ? accounts() + epicImportPanel()
+                      : page === 'tracking'
+                        ? tracking()
+                        : librarySelection && page === 'library'
+                          ? libraryGamePage()
+                          : library();
   $('#footer-status').textContent =
     state.warnings[0] || 'Steam в приоритете · покупка в официальном магазине';
   renderDownloads();
@@ -871,19 +875,248 @@ function showDetail(id, fromLibrary = false) {
     $('#main').scrollTop = 0;
     return;
   }
-  detailId = id;
+  // Any other game opens its store page, like the Steam store.
+  if (!game(id)) return;
+  openGamePage(id);
+  $('#main').scrollTop = 0;
+}
+function pickProvider(id) {
   const g = game(id);
-  if (!g) return;
-  const available = g.offers || g.storeOffers || [{ provider: 'steam' }, { provider: 'epic' }];
-  selectedProvider =
+  const available = g?.offers || g?.storeOffers || [{ provider: 'steam' }, { provider: 'epic' }];
+  return (
     available.find(o => o.provider === state.settings.preferred[id])?.provider ||
     available.find(o => o.provider === 'steam')?.provider ||
     available[0]?.provider ||
-    'steam';
-  renderDetail();
-  $('#details').showModal();
+    'steam'
+  );
+}
+function openGamePage(id) {
+  if (detailId !== id) {
+    gameShot = 0;
+    gameAboutOpen = false;
+    gameReqOs = 'windows';
+  }
+  detailId = id;
+  selectedProvider = pickProvider(id);
+  page = 'game';
+  librarySelection = null;
+  render();
   refreshDetailPrice();
   requestDeals(id);
+  ensurePreview(id);
+  loadStorePage(id);
+}
+// The store page of a game is open (it replaced the old pop-up window).
+function detailOpen() {
+  return page === 'game' && !!detailId && !!$('#store-game');
+}
+let gameShot = 0; // the item shown large in the media block (trailers first, then screenshots)
+let gameAboutOpen = false; // «Читать дальше» under «Об этой игре»
+let gameReqOs = 'windows'; // the tab of «Системные требования»
+// The full Steam store page of a game (about, requirements, languages…).
+const storePageState = new Map(); // game id → { loading, data, error }
+async function loadStorePage(id) {
+  const old = storePageState.get(id);
+  if (!api?.gameStorePage || demo || old?.loading || (old && !old.error)) return;
+  storePageState.set(id, { loading: true, data: null, error: '' });
+  try {
+    storePageState.set(id, { loading: false, data: await call('gameStorePage', { id }), error: '' });
+  } catch (e) {
+    storePageState.set(id, { loading: false, data: null, error: e.message });
+  }
+  if (detailId === id && detailOpen()) renderDetail();
+}
+// Trailers are HLS streams; they are listed only where this Chromium plays them.
+let hlsSupport = null;
+function playableMovie(m) {
+  if (m.mp4 || m.webm) return m.mp4 || m.webm;
+  hlsSupport ??= !!document.createElement('video').canPlayType('application/vnd.apple.mpegurl');
+  return hlsSupport ? m.hls : '';
+}
+// A game's page in the store, laid out like the Steam store page: the title,
+// media with the capsule and summary beside them, the purchase blocks and
+// «Об этой игре» on the left, details, features and languages on the right.
+function storeGamePage() {
+  const g = game(detailId);
+  if (!g)
+    return '<div id="store-game" class="empty"><h2>Игра не найдена</h2><button class="secondary" data-page="store">← В магазин</button></div>';
+  const st = storePageState.get(g.id);
+  const sp = st?.data || null;
+  const appId = sp?.appId || String(g.steam || g.storeOffers?.find(o => o.provider === 'steam')?.appId || '');
+  const steamUrl = /^\d+$/.test(appId) ? `https://store.steampowered.com/app/${appId}/` : '';
+  const epicUrl = sp?.url || g.storeOffers?.find(o => o.provider === 'epic')?.url || '';
+  const offers = priceOffers(g);
+  const big = u => u.replace(/\.600x338\.jpg/, '.1920x1080.jpg');
+  // ---- media: trailers, then screenshots
+  const shots = sp?.screenshots?.length
+    ? sp.screenshots.map(s => ({ thumb: s.thumb || s.full, full: s.full || s.thumb }))
+    : gameScreens(g, 12).map(u => ({ thumb: u, full: big(u) }));
+  const items = [
+    ...(sp?.movies || [])
+      .map(m => ({ movie: true, thumb: m.thumb, src: playableMovie(m), name: m.name }))
+      .filter(m => m.src),
+    ...shots.map(s => ({ movie: false, thumb: safeImage(s.thumb), full: safeImage(s.full) })),
+  ].filter(x => x.thumb);
+  const cur = items[Math.min(gameShot, items.length - 1)];
+  const main = !cur
+    ? `<div class="sg-shot sg-shot-art">${artTag(g)}</div>`
+    : cur.movie
+      ? `<div class="sg-shot"><video src="${esc(cur.src)}" poster="${esc(cur.thumb)}" controls autoplay muted playsinline></video></div>`
+      : `<div class="sg-shot"><img src="${esc(cur.full)}" data-fallback="${esc(cur.thumb)}" alt="" referrerpolicy="no-referrer"></div>`;
+  const media = `<div class="sg-media">${main}${
+    items.length > 1
+      ? `<div class="sg-thumbs">${items
+          .map(
+            (x, i) =>
+              `<button class="sg-thumb ${x.movie ? 'movie' : ''} ${x === cur ? 'active' : ''}" data-game-shot="${i}" aria-label="${x.movie ? 'Трейлер: ' + esc(x.name) : 'Скриншот ' + (i + 1)}"><img src="${esc(x.thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer"></button>`
+          )
+          .join('')}</div>`
+      : ''
+  }</div>`;
+  // ---- the summary beside the media
+  const capsule = safeImage(sp?.header) || safeImage(g.capsule);
+  const desc = sp?.short || gameDescription(g);
+  const release =
+    sp?.release?.date ||
+    (Number(g.released)
+      ? new Date(Number(g.released)).toLocaleDateString('ru-RU', {
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric',
+        })
+      : offers.find(o => typeof o.releaseDate === 'string' && o.releaseDate)?.releaseDate || '');
+  const tags = [...new Set([...(g.tags || []), ...offers.flatMap(o => o.tags || [])])]
+    .filter(t => t && t !== 'Моя библиотека')
+    .slice(0, 12);
+  const fact = (label, value) => (value ? `<dt>${label}:</dt><dd>${value}</dd>` : '');
+  const names2 = list => (list || []).map(esc).join(', ');
+  const side = `<div class="sg-side"><div class="sg-capsule">${
+    capsule
+      ? `<img src="${esc(capsule)}" data-fallback="${esc(artwork(g))}" alt="" referrerpolicy="no-referrer">`
+      : artTag(g)
+  }</div>${desc ? `<p class="sg-desc">${esc(desc)}</p>` : ''}<dl class="sg-facts">${fact('Обзоры', reviewLine(g))}${fact(
+    'Дата выхода',
+    esc(release) + (sp?.release?.soon ? ' <small>(скоро)</small>' : '')
+  )}</dl><dl class="sg-facts">${fact('Разработчик', names2(sp?.developers))}${fact('Издатель', names2(sp?.publishers))}</dl>${
+    tags.length
+      ? `<p class="sg-tags-title">Популярные метки для этого продукта:</p><div class="sg-tags">${tags.map(t => `<span>${esc(t)}</span>`).join('')}</div>`
+      : ''
+  }</div>`;
+  // ---- the bar under the media: wishlist, favourites, price watch
+  const owned = activeGames().find(x => x.id === g.id);
+  const bar = `<div class="sg-queue"><button class="sg-queue-btn" id="detail-wish">${has('wishlist', g.id) ? '♥ В желаемом' : '♡ Добавить в желаемое'}</button>${
+    owned
+      ? `<button class="sg-queue-btn" id="favorite">${has('favorites', g.id) ? '★ В избранном' : '☆ В избранное'}</button>`
+      : ''
+  }<button class="sg-queue-btn" id="watch-price" ${demo || selectedProvider === 'custom' ? 'disabled' : ''}>♧ Следить за ценой · ${names[selectedProvider] || ''}</button><button class="sg-queue-btn" id="open-tracking">Мои отслеживания →</button><span class="sg-queue-gap"></span><button class="sg-queue-btn" id="refresh-detail-price" title="Обновить цену">↻</button>${
+    steamUrl
+      ? `<button class="sg-queue-btn" data-open-link="${esc(steamUrl)}">Открыть в Steam ↗</button>`
+      : epicUrl
+        ? `<button class="sg-queue-btn" data-open-link="${esc(epicUrl)}">Открыть в Epic Games ↗</button>`
+        : ''
+  }</div>`;
+  // ---- left column: purchase, critics, about, requirements
+  const section = (title, body, cls = '') =>
+    `<section class="sg-section ${cls}"><h2>${title}</h2>${body}</section>`;
+  const loading =
+    st?.loading && !sp
+      ? '<p class="hint">Загружаем страницу Steam…</p>'
+      : st?.error
+        ? `<p class="hint">${esc(st.error)}</p>`
+        : '';
+  const about = sp?.about
+    ? `<div class="sg-about ${gameAboutOpen ? 'open' : ''}"><div class="sg-rich">${sp.about}</div></div>${
+        gameAboutOpen ? '' : '<button class="sg-more" data-sg-more>Читать дальше</button>'
+      }`
+    : desc
+      ? `<p class="sg-rich">${esc(desc)}</p>${loading}`
+      : loading;
+  const reqs = sp?.requirements || {};
+  const osNames = { windows: 'Windows', mac: 'macOS', linux: 'SteamOS + Linux' };
+  const os = reqs[gameReqOs] ? gameReqOs : Object.keys(reqs)[0];
+  const requirements = os
+    ? `${
+        Object.keys(reqs).length > 1
+          ? `<div class="sg-os">${Object.keys(reqs)
+              .map(
+                k =>
+                  `<button class="${k === os ? 'active' : ''}" data-sg-os="${k}">${osNames[k] || esc(k)}</button>`
+              )
+              .join('')}</div>`
+          : ''
+      }<div class="sg-req"><div class="sg-rich">${reqs[os].minimum || ''}</div><div class="sg-rich">${reqs[os].recommended || ''}</div></div>`
+    : '';
+  const left = `<div class="sg-left">${demo ? '<div class="notice warning">Демонстрационная карточка. Внешние действия отключены.</div>' : ''}${ownershipBadge(g)}${detailPanel(
+    g,
+    sp
+  )}${sp?.critics ? section('Обзоры', `<div class="sg-rich sg-critics">${sp.critics}</div>`) : ''}${section('Об этой игре', about)}${
+    requirements ? section('Системные требования', requirements) : ''
+  }${sp?.legal ? `<p class="sg-legal">${esc(sp.legal)}</p>` : ''}</div>`;
+  // ---- right column: details, links, features, languages, achievements
+  const box = body => `<div class="sg-box">${body}</div>`;
+  const links = [
+    sp?.website && ['Посетить сайт', sp.website],
+    steamUrl && ['Страница в Steam', steamUrl],
+    epicUrl && ['Страница в Epic Games Store', epicUrl],
+    appId && ['Центр сообщества', `https://steamcommunity.com/app/${appId}`],
+    appId && ['Обсуждения', `https://steamcommunity.com/app/${appId}/discussions/`],
+    sp?.metacritic?.url && ['Metacritic', sp.metacritic.url],
+  ].filter(Boolean);
+  const details = box(
+    `<dl class="sg-details">${fact('Название', esc(sp?.name || g.name))}${fact('Жанр', names2(sp?.genres))}${fact(
+      'Разработчик',
+      names2(sp?.developers)
+    )}${fact('Издатель', names2(sp?.publishers))}${fact('Дата выхода', esc(release))}</dl>${
+      links.length
+        ? `<div class="sg-links">${links.map(([n, u]) => `<button class="sg-link" data-open-link="${esc(u)}">${n} ↗</button>`).join('')}</div>`
+        : ''
+    }`
+  );
+  const features = sp?.features?.length
+    ? box(
+        `<ul class="sg-features">${sp.features.map(f => `<li data-feature="${f.id}">${esc(f.name)}</li>`).join('')}</ul>`
+      )
+    : '';
+  const meta = sp?.metacritic
+    ? box(
+        `<div class="sg-meta"><b class="${sp.metacritic.score >= 75 ? 'good' : sp.metacritic.score >= 50 ? 'mixed' : 'bad'}">${sp.metacritic.score}</b><span>Metascore</span></div>`
+      )
+    : '';
+  const languages = sp?.languages?.length
+    ? box(
+        `<h3>Языки:</h3><table class="sg-langs"><thead><tr><th></th><th>Интерфейс</th><th>Озвучка</th></tr></thead><tbody>${sp.languages
+          .map(
+            l =>
+              `<tr><td>${esc(l.name)}</td><td>${l.ui === false ? '' : '✔'}</td><td>${l.audio ? '✔' : ''}</td></tr>`
+          )
+          .join('')}</tbody></table>`
+      )
+    : '';
+  const achievements = sp?.achievements?.total
+    ? box(
+        `<h3>Достижения в Steam <small>${sp.achievements.total}</small></h3><div class="sg-ach">${sp.achievements.list
+          .slice(0, 4)
+          .map(
+            a =>
+              `<img src="${esc(a.icon)}" alt="" title="${esc(a.name)}" loading="lazy" referrerpolicy="no-referrer">`
+          )
+          .join('')}${
+          sp.achievements.total > 4 && appId
+            ? `<button class="sg-ach-all" data-open-link="https://steamcommunity.com/stats/${esc(appId)}/achievements/">Показать все (${sp.achievements.total})</button>`
+            : ''
+        }</div>`
+      )
+    : '';
+  const right = `<div class="sg-right">${details}${meta}${features}${languages}${achievements}</div>`;
+  const bg = safeImage(sp?.background);
+  const crumbs = ['Все игры', sp?.genres?.[0], g.name].filter(Boolean).map(esc).join(' &gt; ');
+  return `<div id="store-game" class="store-game ${bg ? 'has-bg' : ''}" ${bg ? `style="--sg-bg:url('${esc(bg)}')"` : ''}><div class="sg-crumbs">${crumbs}</div><div class="sg-head"><h1>${esc(g.name)}</h1>${
+    appId
+      ? `<button class="sg-hub" data-open-link="https://steamcommunity.com/app/${esc(appId)}">Центр сообщества ↗</button>`
+      : epicUrl
+        ? `<button class="sg-hub" data-open-link="${esc(epicUrl)}">Страница в Epic Games Store ↗</button>`
+        : ''
+  }</div><div class="sg-top">${media}${side}</div>${bar}<div class="sg-columns">${left}${right}</div></div>`;
 }
 // Prices in other shops and the historical low (IsThereAnyDeal, optional).
 const dealsState = new Map();
@@ -918,13 +1151,17 @@ async function requestDeals(id) {
   } catch (e) {
     dealsState.set(key, { error: e.message, checkedAt: Date.now() });
   }
-  if (detailId === id && $('#details').open) renderDetail();
+  if (detailId === id && detailOpen()) renderDetail();
 }
 function renderDetail() {
-  const g = game(detailId);
-  if (!g) return;
+  const el = $('#store-game');
+  if (page !== 'game' || !el) return;
+  el.outerHTML = storeGamePage();
+}
+// The purchase blocks of a game's store page, one per store, as on Steam:
+// «Купить …» with the price and a green button, or «Играть» for a game you own.
+function detailPanel(g, sp = null) {
   const owned = activeGames().find(x => x.id === g.id);
-  const o = owned?.offers.find(x => x.provider === selectedProvider);
   const providers = [
     ...new Set([
       ...(g.storeOffers || []).map(x => x.provider),
@@ -932,25 +1169,43 @@ function renderDetail() {
     ]),
   ];
   if (!providers.length) providers.push('steam', 'epic');
-  $('#detail-content').innerHTML =
-    `<div class="detail-art">${artTag(g)}<h1>${esc(g.name)}</h1></div><div class="detail-body"><div class="detail-price-header"><div><small>Цена · ${names[selectedProvider]} · ${esc(state.settings.storeCountry || 'US')}</small><div class="detail-price-value">${selectedProvider === 'custom' ? 'Добавлена вручную' : salePrice(g.storeOffers?.find(x => x.provider === selectedProvider))}</div></div><button class="secondary" id="refresh-detail-price">↻ Обновить цену</button></div>${bestBadge(g)}<p>${esc(g.desc || 'Игра из твоей коллекции. Выбери платформу для запуска.')}</p>${demo ? '<div class="notice warning">Демонстрационная карточка. Внешние действия отключены.</div>' : ''}${ownershipBadge(g)}${providers
-      .map(p => {
-        const offer = owned?.offers.find(x => x.provider === p),
-          sale = g.storeOffers?.find(x => x.provider === p),
-          has = ownsOffer(sale || offer);
-        return `<label class="offer ${p === selectedProvider ? 'chosen' : ''}"><input type="radio" name="provider" value="${p}" ${p === selectedProvider ? 'checked' : ''}><span class="offer-label"><strong>${names[p]} ${p === 'steam' ? '<span class="pill blue">В приоритете</span>' : ''}</strong><small>${has || offer?.owned ? '✓ Уже есть на аккаунте' + (offer && !offer.installed ? ' · не установлена' : '') : offer ? (offer.installed ? 'Установлена · право на игру не подтверждено' : 'Найдена на диске') : 'Регион ' + esc(state.settings.storeCountry || 'US')}</small><span class="offer-price">${p === 'custom' ? '' : salePrice(sale)}</span></span></label>`;
-      })
-      .join('')}
- ${dealsBlock(g.id)}
- <div class="detail-buttons"><button class="secondary" id="watch-price" ${demo || selectedProvider === 'custom' ? 'disabled' : ''}>♧ Следить за ценой · ${names[selectedProvider]}</button><button class="ghost" id="open-tracking">Мои отслеживания →</button></div>
- ${o ? `<div class="detail-buttons">${isRunning(g.id) ? '<button class="primary stop" id="detail-stop" title="Закрыть игру; сохранения уйдут в облако">■ Закрыть</button>' : `<button class="primary" id="play" ${demo ? 'disabled' : ''}>${o.installed ? '▶ Играть' : selectedProvider === 'epic' && (state.settings.nexusDownloads === false || !o.namespace) ? 'Открыть в Epic' : '↓ Установить'}</button>`}<button class="secondary" id="favorite">${has('favorites', g.id) ? '★ В избранном' : '☆ В избранное'}</button><button class="secondary" id="detail-wish">${has('wishlist', g.id) ? '♥ В желаемом' : '♡ В желаемое'}</button></div>` : `<div class="detail-buttons"><button class="primary" id="buy-selected" ${demo || ownsOffer(g.storeOffers?.find(x => x.provider === selectedProvider)) || !g.storeOffers?.find(x => x.provider === selectedProvider)?.url ? 'disabled' : ''}>${ownsOffer(g.storeOffers?.find(x => x.provider === selectedProvider)) ? 'Уже в библиотеке' : 'Купить в ' + names[selectedProvider] + ' ↗'}</button><button class="secondary" id="detail-wish">${has('wishlist', g.id) ? '♥ В желаемом' : '♡ В желаемое'}</button></div>${accountSelect(selectedProvider, 'buy-account')}<div class="hint">Оплата и выбор издания происходят в магазине. Перед покупкой проверь аккаунт, регион и состав издания.</div>`}</div>`;
+  const platforms = p => {
+    const pl = p === 'steam' && sp?.platforms ? sp.platforms : { windows: true };
+    return `<span class="sg-platforms">${pl.windows ? '<i class="win" title="Windows"></i>' : ''}${pl.mac ? '<i class="mac" title="macOS"></i>' : ''}${pl.linux ? '<i class="linux" title="SteamOS + Linux"></i>' : ''}</span>`;
+  };
+  const blocks = providers
+    .map(p => {
+      const offer = owned?.offers.find(x => x.provider === p),
+        sale = g.storeOffers?.find(x => x.provider === p),
+        mine = ownsOffer(sale || offer) || offer?.owned === true;
+      const store = `<small class="sg-store">${names[p] || esc(p)}${p === 'steam' ? ' · в приоритете' : ''}${mine ? ' · ✓ уже есть на аккаунте' : ''}</small>`;
+      if (offer) {
+        const action = isRunning(g.id)
+          ? '<button class="sg-cart stop" data-sg-act="detail-stop" title="Закрыть игру; сохранения уйдут в облако">■ Закрыть</button>'
+          : `<button class="sg-cart" data-sg-act="play" data-sg-provider="${esc(p)}" ${demo ? 'disabled' : ''}>${
+              offer.installed
+                ? '▶ Играть'
+                : p === 'epic' && (state.settings.nexusDownloads === false || !offer.namespace)
+                  ? 'Открыть в Epic'
+                  : '↓ Установить'
+            }</button>`;
+        return `<div class="sg-purchase"><h2>${offer.installed ? 'Играть в' : 'Установить'} ${esc(g.name)}</h2>${platforms(p)}${store}<div class="sg-action"><div class="sg-price">${
+          offer.installed ? 'Установлена' : mine ? 'В библиотеке' : 'Найдена на диске'
+        }</div>${action}</div></div>`;
+      }
+      if (p === 'custom') return '';
+      const canBuy = !demo && !mine && !!sale?.url;
+      return `<div class="sg-purchase"><h2>Купить ${esc(sale?.name && sale.name !== g.name ? sale.name : g.name)}</h2>${platforms(p)}${store}<div class="sg-action"><div class="sg-price">${salePrice(sale)}</div><button class="sg-cart" data-buy="${esc(p)}" ${canBuy ? '' : 'disabled'}>${mine ? 'В библиотеке' : 'Купить в ' + (names[p] || p) + ' ↗'}</button></div>${accountSelect(p, 'buy-account-' + p)}</div>`;
+    })
+    .join('');
+  return `<div id="detail-content" class="sg-buy">${blocks}${bestBadge(g)}<p class="hint">Оплата и выбор издания происходят в официальном магазине. Перед покупкой проверь аккаунт, регион и состав издания.</p>${dealsBlock(g.id)}</div>`;
 }
 // Back / forward like the Steam client: every page and opened game is a step.
 const viewHistory = [];
 let viewIndex = -1,
   restoringView = false;
 function rememberView() {
-  const view = { page, game: page === 'library' ? librarySelection : null };
+  const view = { page, game: page === 'library' ? librarySelection : page === 'game' ? detailId : null };
   const current = viewHistory[viewIndex];
   if (!restoringView && !(current && current.page === view.page && current.game === view.game)) {
     viewHistory.splice(viewIndex + 1);
@@ -970,7 +1225,12 @@ function goHistory(step) {
   hideHover();
   hideLibraryHover();
   page = view.page;
-  librarySelection = view.game && activeGames().some(g => g.id === view.game) ? view.game : null;
+  librarySelection =
+    view.page === 'library' && view.game && activeGames().some(g => g.id === view.game) ? view.game : null;
+  if (view.page === 'game') {
+    if (!game(view.game)) page = 'store';
+    else return (openGamePage(view.game), ($('#main').scrollTop = 0));
+  }
   render();
   $('#main').scrollTop = 0;
 }
@@ -1018,7 +1278,7 @@ async function setPage(p) {
 }
 async function buy(p) {
   if (demo) throw Error('В демонстрационном режиме покупка отключена');
-  const account = $('#buy-account')?.value || undefined;
+  const account = ($('#buy-account-' + p) || $('#buy-account'))?.value || undefined;
   const r = await call('buy', { id: detailId, provider: p, account });
   if (r?.opened)
     toast(

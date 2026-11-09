@@ -324,7 +324,7 @@ function myProfilePage(d) {
   )}${panel('Больше всего времени', top, '<small>Steam, Epic Games и Nexus</small>')}${panel(
     'Последние достижения',
     achievements
-  )}</div><aside class="sp-right"><div class="sp-status ${esc(status)}"><strong>${esc(statusText)}</strong></div><div class="sp-stats">${stat('Игр в библиотеке', s.games.toLocaleString('ru-RU'), 'data-sp-go="owned"')}${stat('Установлено', s.installed, 'data-sp-go="installed"')}${stat('Часов в играх', h(s.minutes))}${stat('Запускались', s.played, 'data-sp-go="played"')}${stat('За последние 30 дней', s.playedThisMonth, 'data-page="recent"')}${stat('Значки', sp.badges ?? steam.badges, id ? `data-open-link="https://steamcommunity.com/profiles/${esc(id)}/badges/"` : '')}${stat('В Steam с', memberSince(sp.memberSince))}</div>${
+  )}</div><aside class="sp-right"><div class="sp-status ${esc(status)}"><strong>${esc(statusText)}</strong></div><div class="sp-stats">${stat('Игр в библиотеке', s.games.toLocaleString('ru-RU'), 'data-sp-go="owned"')}${stat('Установлено', s.installed, 'data-sp-go="installed"')}${stat('Часов в играх', h(s.minutes))}${stat('Запускались', s.played, 'data-sp-go="played"')}${stat('За последние 30 дней', s.playedThisMonth, 'data-page="recent"')}${stat('Значки', sp.badges ?? steam.badges, id ? `data-sp-badges="${esc(id)}"` : '')}${stat('В Steam с', memberSince(sp.memberSince))}</div>${
     platforms ? `<div class="sp-stats"><h3>По платформам</h3>${platforms}</div>` : ''
   }${epicCards ? `<div class="sp-stats">${epicCards}</div>` : ''}</aside></div>${commentsBox(id)}</div></div>`;
 }
@@ -338,6 +338,7 @@ let profileTab = (() => {
 })();
 function setProfileTab(tab) {
   profileTab = tab;
+  profileView = null;
   try {
     localStorage.setItem('nexus.profileTab', tab);
   } catch {}
@@ -364,7 +365,8 @@ function profileTabsPage(d) {
           .join('')}</div>`
       : '';
   // The tabs sit at the top of the profile card, over its background.
-  const body = current.e ? epicProfilePage(d, current.e) : myProfilePage(d);
+  const page = current.e ? epicProfilePage(d, current.e) : myProfilePage(d);
+  const body = profileView ? withView(page, myProfileView(d)) : page;
   return notice() + body.replace('<div class="sp-inner">', '<div class="sp-inner">' + bar);
 }
 // An Epic Games account, in the look of the Epic Games Store.
@@ -503,24 +505,104 @@ function friendGamesView(d, h, cover, open) {
       .join('') || '<p class="hint">Список пуст.</p>'
   }</div>${list.length > shown.length ? `<p class="hint">Показаны первые ${shown.length} — используйте поиск</p>` : ''}</section>`;
 }
-// A label in my profile → the library with that filter.
-async function profileGo(kind, source = 'all') {
-  const want = kind === 'installed' ? 'installed' : 'owned';
-  if (libraryMode() !== want)
-    state = api
-      ? await call('libraryView', want)
-      : { ...state, settings: { ...state.settings, libraryView: want } };
-  filter = ['steam', 'epic'].includes(source) ? source : 'all';
-  collectionFilter = null;
-  librarySelection = null;
-  libraryLimit = LIBRARY_PAGE;
-  if (kind === 'played') librarySort = 'playtime';
-  setPage('library');
+// A profile sub-page (a game list, badges) takes the whole width under the
+// profile header; the columns and comments are hidden while it is open.
+function withView(html, view) {
+  const at = html.indexOf('<div class="sp-body">');
+  if (at < 0) return html;
+  return (
+    html.slice(0, at) +
+    `<div class="sp-body sp-body-full"><div class="sp-main">${view}</div></div></div></div>`
+  );
+}
+// A label in my profile («Игр в библиотеке», «Установлено», «Запускались», «Значки»).
+let profileView = null; // { kind: owned|installed|played|badges, source, id }
+const profileGamesState = new Map(); // kind:source → { loading, list, error }
+async function loadProfileGames(kind, source) {
+  const key = kind + ':' + source;
+  if (profileGamesState.get(key)?.loading) return;
+  profileGamesState.set(key, { loading: true, list: null, error: '' });
+  try {
+    const list = api?.profileGames ? await call('profileGames', { kind, source }) : [];
+    profileGamesState.set(key, { loading: false, list: Array.isArray(list) ? list : [], error: '' });
+  } catch (e) {
+    profileGamesState.set(key, { loading: false, list: null, error: e.message });
+  }
+  if (page === 'profile') render();
+}
+function myProfileView(d) {
+  const v = profileView;
+  const back = 'data-sp-go=""';
+  if (v.kind === 'badges') return badgesView(v.id, back);
+  const key = v.kind + ':' + v.source;
+  const st = profileGamesState.get(key);
+  if (!st) loadProfileGames(v.kind, v.source);
+  const where = { steam: ' · Steam', epic: ' · Epic Games' }[v.source] || '';
+  const title =
+    ({ owned: 'Игры в библиотеке', installed: 'Установлено', played: 'Запускались' }[v.kind] || 'Игры') +
+    where;
+  const head = n =>
+    `<div class="sp-panel-head"><button class="sp-back" ${back}>← Профиль</button><span>${title}${n === undefined ? '' : ' · ' + n.toLocaleString('ru-RU')}</span><input class="sp-filter" type="search" placeholder="Поиск" aria-label="Поиск по играм" autocomplete="off"></div>`;
+  if (!st?.list)
+    return `<section class="sp-panel sp-list">${head()}<p class="hint">${esc(st?.error || 'Загружаем список…')}</p></section>`;
+  const h = m => (m / 60).toLocaleString('ru-RU', { maximumFractionDigits: m < 600 ? 1 : 0 });
+  const list = st.list;
+  const shown = list.slice(0, 1500);
+  const card = x => {
+    const g = game(x.id);
+    const art = g
+      ? artTag(g)
+      : x.steam
+        ? `<img src="nexus-art://steam/${encodeURIComponent(x.steam)}/header" ${safeImage(x.image) ? `data-fallback="${esc(safeImage(x.image))}"` : ''} alt="" loading="lazy">`
+        : '';
+    const caption = [
+      x.minutes ? `<b>${h(x.minutes)} ч</b> всего` : 'не запускалась',
+      x.lastPlayed
+        ? 'запуск ' +
+          new Date(x.lastPlayed).toLocaleDateString('ru-RU', {
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric',
+          })
+        : '',
+    ]
+      .filter(Boolean)
+      .join('<br>');
+    return `<button class="sp-game" data-detail="${esc(x.id)}" data-name="${esc((x.name || '').toLowerCase())}" title="${esc(x.name)}"><span class="friend-game-art">${art}<span class="sp-game-time">${caption}</span></span><span class="sp-game-name">${esc(x.name)}</span></button>`;
+  };
+  return `<section class="sp-panel sp-list">${head(list.length)}<div class="sp-games">${shown.map(card).join('') || '<p class="hint">Список пуст.</p>'}</div>${list.length > shown.length ? `<p class="hint">Показаны первые ${shown.length} — используйте поиск</p>` : ''}</section>`;
+}
+// Badges of a Steam profile, shown inside Nexus.
+const badgesState = new Map(); // steam id → { loading, list, error }
+async function loadBadges(id) {
+  if (badgesState.get(id)?.loading) return;
+  badgesState.set(id, { loading: true, list: null, error: '' });
+  try {
+    const r = api?.profileBadges ? await call('profileBadges', id) : { badges: [] };
+    badgesState.set(id, { loading: false, list: r?.badges || [], error: '' });
+  } catch (e) {
+    badgesState.set(id, { loading: false, list: null, error: e.message });
+  }
+  if (page === 'profile' || page === 'friend') render();
+}
+function badgesView(id, back) {
+  const st = badgesState.get(id);
+  if (!st) loadBadges(id);
+  const head = n =>
+    `<div class="sp-panel-head"><button class="sp-back" ${back}>← Профиль</button><span>Значки${n === undefined ? '' : ' · ' + n.toLocaleString('ru-RU')}</span><input class="sp-filter" type="search" placeholder="Поиск" aria-label="Поиск по значкам" autocomplete="off"></div>`;
+  if (!st?.list)
+    return `<section class="sp-panel sp-list">${head()}<p class="hint">${esc(st?.error || 'Загружаем значки…')}</p></section>`;
+  const card = b => {
+    const img = safeImage(b.image);
+    const game = b.game && b.game !== b.title ? `<small class="sp-badge-game">${esc(b.game)}</small>` : '';
+    return `<div class="sp-badge" data-name="${esc((b.title + ' ' + (b.game || '')).toLowerCase())}">${img ? `<img src="${esc(img)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : '<span class="sp-badge-empty"></span>'}<span><strong>${esc(b.title)}</strong>${game}${b.level ? `<small>${esc(b.level)}</small>` : ''}${b.unlocked ? `<small>${esc(b.unlocked)}</small>` : ''}</span></div>`;
+  };
+  return `<section class="sp-panel sp-list">${head(st.list.length)}<div class="sp-badges">${st.list.map(card).join('') || '<p class="hint">Значков нет.</p>'}</div></section>`;
 }
 document.addEventListener('input', event => {
   if (!event.target.classList?.contains('sp-filter')) return;
   const q = event.target.value.trim().toLowerCase();
-  for (const el of document.querySelectorAll('.sp-list .sp-game'))
+  for (const el of document.querySelectorAll('.sp-list [data-name]'))
     el.hidden = !!q && !el.dataset.name.includes(q);
 });
 
@@ -752,7 +834,7 @@ function friendPage() {
     value === null || value === undefined || value === ''
       ? ''
       : `<div class="sp-stat">${attrs ? `<button class="sp-stat-link" ${attrs}>${label}</button>` : `<span>${label}</span>`}<b>${value}</b></div>`;
-  return `${notice()}<div class="sp ${bg ? 'has-bg' : ''}" ${bg ? `style="--sp-bg:url('${esc(bg)}')"` : ''}><div class="sp-inner"><header class="sp-header"><div class="sp-avatar ${esc(status)}">${avatar}${frame}</div><div class="sp-id"><h1>${esc(d.name)}</h1>${realLine ? `<p class="sp-real">${realLine}</p>` : ''}${
+  const html = `${notice()}<div class="sp ${bg ? 'has-bg' : ''}" ${bg ? `style="--sp-bg:url('${esc(bg)}')"` : ''}><div class="sp-inner"><header class="sp-header"><div class="sp-avatar ${esc(status)}">${avatar}${frame}</div><div class="sp-id"><h1>${esc(d.name)}</h1>${realLine ? `<p class="sp-real">${realLine}</p>` : ''}${
     d.summary ? `<p class="sp-summary">${esc(d.summary)}</p>` : ''
   }</div><div class="sp-side">${
     d.level !== null && d.level !== undefined
@@ -760,15 +842,11 @@ function friendPage() {
       : ''
   }<div class="sp-actions">${
     d.conv ? `<button class="primary" data-activity-chat="${esc(d.conv)}">Написать</button>` : ''
-  }<button class="secondary" data-open-link="https://steamcommunity.com/profiles/${esc(d.id)}/">Открыть в Steam ↗</button><button class="secondary" id="friend-refresh" title="Обновить">↻</button></div></div></header><div class="sp-body"><div class="sp-main">${
-    friendState.view
-      ? friendGamesView(d, h, cover, open)
-      : panel(
-          'Недавняя активность',
-          `<div class="sp-games">${recent}</div>`,
-          recentMinutes ? `<small>${h(recentMinutes)} ч за последние 2 недели</small>` : ''
-        )
-  }${panel('Больше всего времени', `<div class="top-games">${top}</div>`)}${panel(
+  }<button class="secondary" data-open-link="https://steamcommunity.com/profiles/${esc(d.id)}/">Открыть в Steam ↗</button><button class="secondary" id="friend-refresh" title="Обновить">↻</button></div></div></header><div class="sp-body"><div class="sp-main">${panel(
+    'Недавняя активность',
+    `<div class="sp-games">${recent}</div>`,
+    recentMinutes ? `<small>${h(recentMinutes)} ч за последние 2 недели</small>` : ''
+  )}${panel('Больше всего времени', `<div class="top-games">${top}</div>`)}${panel(
     'Общие игры',
     common,
     d.commonCount > d.common.length
@@ -776,9 +854,11 @@ function friendPage() {
       : d.commonCount
         ? `<small>${d.commonCount}</small>`
         : ''
-  )}</div><aside class="sp-right">${statusBox}<div class="sp-stats">${stat('Значки', d.badges, `data-open-link="https://steamcommunity.com/profiles/${esc(d.id)}/badges/"`)}${
+  )}</div><aside class="sp-right">${statusBox}<div class="sp-stats">${stat('Значки', d.badges, `data-sp-badges="${esc(d.id)}"`)}${
     hiddenGames ? '' : stat('Игры', g.count.toLocaleString('ru-RU'), 'data-sp-view="games"')
   }${hiddenGames ? '' : stat('Часов в играх', h(g.minutes))}${hiddenGames ? '' : stat('Запускались', g.played.toLocaleString('ru-RU'), 'data-sp-view="played"')}${stat('Общие игры', hiddenGames ? '' : d.commonCount, 'data-sp-view="common"')}${stat('В Steam с', memberSince(d.memberSince))}</div></aside></div>${commentsBox(d.id)}</div></div>`;
+  if (friendState.view === 'badges') return withView(html, badgesView(d.id, 'data-sp-view=""'));
+  return friendState.view ? withView(html, friendGamesView(d, h, cover, open)) : html;
 }
 
 // ---- settings: status, notifications, tray, overlay ---------------------------------------
@@ -824,8 +904,20 @@ document.addEventListener('click', event =>
       friendState = { ...friendState, view: el.dataset.spView };
       render();
       $('#main').scrollTop = 0;
-    } else if (el.dataset.spGo) await profileGo(el.dataset.spGo, el.dataset.spSource);
-    else if (el.dataset.spFriends !== undefined) await call('openFriendsWindow');
+    } else if (el.dataset.spGo !== undefined) {
+      const kind = el.dataset.spGo;
+      const source = ['steam', 'epic'].includes(el.dataset.spSource) ? el.dataset.spSource : 'all';
+      profileView = kind ? { kind, source } : null;
+      if (kind) profileGamesState.delete(kind + ':' + source);
+      render();
+      $('#main').scrollTop = 0;
+    } else if (el.dataset.spBadges) {
+      const id = el.dataset.spBadges;
+      if (page === 'friend') friendState = { ...friendState, view: 'badges' };
+      else profileView = { kind: 'badges', id };
+      render();
+      $('#main').scrollTop = 0;
+    } else if (el.dataset.spFriends !== undefined) await call('openFriendsWindow');
     else if (el.dataset.commentsMore) await loadComments(el.dataset.commentsMore, true);
     else if (el.dataset.commentDel) {
       const id = el.dataset.commentProfile;

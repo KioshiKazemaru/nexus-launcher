@@ -279,6 +279,7 @@ function registerIpc() {
   register('recommendations', p => store.recommendations(p));
   register('gamePrices', p => store.gamePrices(p));
   register('gameDeals', p => store.deals(p));
+  register('gameStorePage', p => store.storePage(p), { quiet: true });
   register('watchHistory', key => settings.priceWatches.find(w => w.key === key)?.history || []);
   register(
     'refreshCatalogPrices',
@@ -678,6 +679,18 @@ function registerIpc() {
     { social: true }
   );
   register('friendProfile', id => ctx.friends.profile(id), { quiet: true });
+  register('profileBadges', id => ctx.friends.badges(id), { quiet: true });
+  // My profile: the games behind «Игр в библиотеке», «Установлено», «Запускались».
+  register(
+    'profileGames',
+    ({ kind, source } = {}) =>
+      require('./profile.cjs').libraryList(
+        ctx.library.games || [],
+        ['owned', 'installed', 'played'].includes(kind) ? kind : 'owned',
+        ['steam', 'epic'].includes(source) ? source : 'all'
+      ),
+    { quiet: true }
+  );
   register('gameFriends', appId => ctx.friends.gameFriends(appId), { quiet: true });
   // Comments under a Steam profile: read, post (the user's own text), delete.
   register('profileComments', p => ctx.friends.comments(p?.id, p?.start), { quiet: true });
@@ -807,6 +820,14 @@ function registerArtProtocol() {
         const file = await findLibraryCover(fs.promises, path, dir, appId, kind);
         if (file) return net.fetch(pathToFileURL(file).href);
       }
+      // Not in the local Steam cache (a friend's game, a new one): the store's address.
+      const { ArtResolver } = require('./main/art-resolver.cjs');
+      ctx.artResolver ||= new ArtResolver({
+        fetch: (url, o) => ctx.publicFetch(url, o),
+        country: () => ctx.settings?.storeCountry || 'US',
+      });
+      const remote = await ctx.artResolver.url(appId, kind);
+      if (remote && /^https:\/\/[\w.-]+\.steamstatic\.com\//.test(remote)) return ctx.publicFetch(remote);
     } catch (e) {
       ctx.log.warn('nexus-art', e.message);
     }

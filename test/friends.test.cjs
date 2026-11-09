@@ -495,3 +495,101 @@ test('Steam profile comments: author, text with line breaks and emoticons, time,
   assert.throws(() => f.parseProfileComments({ success: false, error: 'Private' }), /Private/);
   assert.throws(() => f.parseProfileComments(null));
 });
+
+test('badges page: title, level, date, game, safe links and images only', () => {
+  const html = `<div class="badge_row"><a class="badge_row_overlay" href="https://steamcommunity.com/profiles/${A}/gamecards/10/"></a>
+    <div class="badge_title">Test Game <span class="badge_view_details">Подробнее</span></div>
+    <div class="badge_info_image"><img class="badge_icon" src="https://cdn.fastly.steamstatic.com/steamcommunity/public/images/items/10/b.png"></div>
+    <div class="badge_info_description"><div class="badge_info_title">Card Badge</div><div>Уровень 2, 200 XP</div><div class="badge_info_unlocked">Получен 1 янв. 2020</div></div></div>
+    <div class="badge_row"><a class="badge_row_overlay" href="javascript:alert(1)"></a><div class="badge_title">Years</div>
+    <div class="badge_info_image"><img class="badge_icon" src="https://community.fastly.steamstatic.com/public/shared/images/trans.gif" data-delayed-image="https://community.fastly.steamstatic.com/public/images/badges/02_years/steamyears1_80.png"></div>
+    <div class="badge_info_description"><div class="badge_info_title">Years of Service</div><div>500 XP</div></div></div>
+    <div class="badge_row"><div class="badge_info_image"><img class="badge_icon" src="http://evil.example/x.png"></div><div class="badge_info_description"><div class="badge_info_title">Evil</div></div></div>
+    <div class="pageLinks"><a>1</a><a>2</a><span>3</span></div>`;
+  const r = f.parseBadgePage(html);
+  assert.equal(r.pages, 3);
+  assert.equal(r.private, false);
+  assert.deepEqual(r.badges[0], {
+    title: 'Card Badge',
+    level: 'Уровень 2, 200 XP',
+    unlocked: 'Получен 1 янв. 2020',
+    game: 'Test Game',
+    image: 'https://cdn.fastly.steamstatic.com/steamcommunity/public/images/items/10/b.png',
+    link: `https://steamcommunity.com/profiles/${A}/gamecards/10/`,
+  });
+  assert.equal(r.badges[1].link, '');
+  assert.equal(
+    r.badges[1].image,
+    'https://community.fastly.steamstatic.com/public/images/badges/02_years/steamyears1_80.png'
+  );
+  assert.equal(r.badges[2].image, '');
+  assert.equal(r.badges[1].level, '500 XP');
+  assert.equal(f.parseBadgePage('<div class="profile_private_info"></div>').private, true);
+});
+
+test('library list for profile labels: kinds, store filter, sorting', () => {
+  const { libraryList } = require('../src/profile.cjs');
+  const games = [
+    {
+      id: 'a',
+      name: 'A',
+      playtime: 60,
+      lastPlayed: 100,
+      steam: 10,
+      offers: [{ provider: 'steam', owned: true, installed: true, playtime: 60 }],
+    },
+    { id: 'b', name: 'B', playtime: 0, offers: [{ provider: 'epic', owned: true }] },
+    {
+      id: 'c',
+      name: 'C',
+      playtime: 300,
+      offers: [
+        { provider: 'steam', owned: true },
+        { provider: 'epic', owned: true, playtime: 300 },
+      ],
+    },
+  ];
+  assert.deepEqual(
+    libraryList(games).map(g => g.id),
+    ['c', 'a', 'b']
+  );
+  assert.deepEqual(
+    libraryList(games, 'installed').map(g => g.id),
+    ['a']
+  );
+  assert.deepEqual(
+    libraryList(games, 'played').map(g => g.id),
+    ['c', 'a']
+  );
+  assert.deepEqual(
+    libraryList(games, 'owned', 'epic').map(g => [g.id, g.minutes]),
+    [
+      ['c', 300],
+      ['b', 0],
+    ]
+  );
+  assert.equal(libraryList(games)[1].lastPlayed, 100000);
+  assert.equal(libraryList(games)[1].steam, '10');
+});
+
+test('art resolver: one batched request, cached answers, retry after a failure', async () => {
+  const { ArtResolver } = require('../src/main/art-resolver.cjs');
+  const asked = [];
+  let fail = true;
+  const items = async (_f, ids) => {
+    asked.push(ids);
+    if (fail) throw Error('offline');
+    return new Map([
+      ['10', { image: 'https://x.steamstatic.com/h.jpg', portrait: 'https://x.steamstatic.com/p.jpg' }],
+    ]);
+  };
+  const r = new ArtResolver({ items, delay: 5 });
+  assert.equal(await r.url('10'), '');
+  fail = false;
+  const [h, p, none] = await Promise.all([r.url('10'), r.url('10', 'portrait'), r.url('20')]);
+  assert.deepEqual([h, p, none], ['https://x.steamstatic.com/h.jpg', 'https://x.steamstatic.com/p.jpg', '']);
+  assert.deepEqual(asked, [['10'], ['10', '20']]);
+  await r.url('20');
+  assert.equal(asked.length, 2, 'answers are cached, a game without art too');
+  assert.equal(await r.url('../x'), '');
+});

@@ -583,7 +583,8 @@ test(
       assert.deepEqual(asked.at(-1), { country: 'US', force: true });
       // A card opens the game.
       await first.locator('.rec-open').click();
-      assert.equal(await p.locator('#details').evaluate(d => d.open), true);
+      await p.waitForSelector('#store-game #detail-content');
+      assert.equal(await p.evaluate(() => page), 'game');
       assert.deepEqual(errors, []);
     } finally {
       await browser.close();
@@ -875,15 +876,15 @@ test(
       assert.equal(await p.locator('#friends-panel').count(), 0);
       // The running game cannot be started again: its button closes it.
       await p.evaluate(() => showDetail('steam:100'));
-      await p.waitForSelector('#detail-stop');
-      assert.equal(await p.locator('#details #play').count(), 0);
-      await p.click('#detail-stop');
+      await p.waitForSelector('[data-sg-act="detail-stop"]');
+      assert.equal(await p.locator('#store-game [data-sg-act="play"]').count(), 0);
+      await p.click('[data-sg-act="detail-stop"]');
       assert.deepEqual(
         await p.evaluate(() => window.__calls.filter(c => c[0] === 'closeGame').map(c => c[1])),
         ['steam:100']
       );
       // Closed: "Играть" again, and the account is no longer "В игре".
-      await p.waitForSelector('#details #play');
+      await p.waitForSelector('#store-game [data-sg-act="play"]');
       assert.doesNotMatch(await p.locator('.profile-chip').first().getAttribute('class'), /in-game/);
       assert.deepEqual(errors, []);
     } finally {

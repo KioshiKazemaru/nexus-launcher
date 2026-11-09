@@ -353,12 +353,23 @@ document.addEventListener('click', event =>
     }
     if (el.dataset.buy) return buy(el.dataset.buy);
 
-    if (el.classList.contains('close')) {
-      $('#details').close();
-      detailId = null;
+    if (el.dataset.sgMore !== undefined) {
+      gameAboutOpen = true;
+      renderDetail();
       return;
     }
-    switch (el.id) {
+    if (el.dataset.sgOs) {
+      gameReqOs = el.dataset.sgOs;
+      renderDetail();
+      return;
+    }
+    if (el.dataset.gameShot !== undefined) {
+      gameShot = Number(el.dataset.gameShot) || 0;
+      renderDetail();
+      return;
+    }
+    if (el.dataset.sgProvider) selectedProvider = el.dataset.sgProvider;
+    switch (el.dataset.sgAct || el.id) {
       case 'library-store': {
         const id = librarySelection;
         await setPage('store');
@@ -513,8 +524,6 @@ document.addEventListener('click', event =>
         toast('Отслеживание включено. Цены будут проверяться каждый час, пока Nexus открыт.');
         break;
       case 'open-tracking':
-        $('#details').close();
-        detailId = null;
         await setPage('tracking');
         break;
       case 'check-prices':
@@ -553,7 +562,7 @@ document.addEventListener('click', event =>
         state = r.state || state;
         if (r.result === 'kept') toast('Игра продолжает работать.');
         render();
-        if ($('#details').open) renderDetail();
+        renderDetail();
         return;
       }
       case 'friends-toggle':
@@ -623,7 +632,6 @@ document.addEventListener('click', event =>
         break;
       case 'play':
         if (wantsInstallWindow(game(detailId), selectedProvider)) {
-          $('#details').close();
           return openInstallDialog(detailId);
         }
         el.disabled = true;
@@ -825,6 +833,7 @@ $('#search').addEventListener('input', e => {
   query = e.target.value;
   clearTimeout(searchTimer);
   searchSequence++;
+  if (page === 'game' && query.trim()) page = 'store';
   if (page === 'store') {
     searchState = { items: [], providers: {}, loading: !!query.trim(), query: query.trim(), start: 0 };
     render();

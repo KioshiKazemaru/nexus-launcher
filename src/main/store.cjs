@@ -549,6 +549,55 @@ class StoreService {
       })
     );
   }
+  // The full store page of a game (about, requirements, languages…), kept 30 minutes:
+  // Steam's when the game is on Steam, Epic Games Store's otherwise.
+  async storePage({ id }) {
+    const g = typeof id === 'string' ? this.find(id) : null;
+    if (!g) throw Error('Игра не найдена');
+    const page = require('../store-page.cjs');
+    const appId = String(g.steam || g.storeOffers?.find(o => o.provider === 'steam')?.appId || '');
+    const epic = g.storeOffers?.find(
+      o =>
+        o.provider === 'epic' &&
+        /^[\w-]{1,64}$/.test(o.appId || '') &&
+        /^[\w-]{1,64}$/.test(o.namespace || '')
+    );
+    if (!/^\d{1,10}$/.test(appId) && !epic) return null;
+    const country = this.country(),
+      key = (/^\d{1,10}$/.test(appId) ? appId : 'epic:' + epic.appId) + ':' + country;
+    this.pageCache ||= new Map();
+    const old = this.pageCache.get(key);
+    if (old && Date.now() - old.at < 1800000) return old.value;
+    let value;
+    if (/^\d{1,10}$/.test(appId)) {
+      const u = new URL('https://store.steampowered.com/api/appdetails');
+      u.search = new URLSearchParams({ appids: appId, cc: country, l: 'russian' });
+      value = page.parseAppDetails((await responseJSON(this.ctx.publicFetch, u.href))?.[appId], appId);
+    } else {
+      const u = new URL('https://store.epicgames.com/graphql');
+      u.search = new URLSearchParams({
+        query:
+          'query NexusOffer($namespace:String!,$id:String!){Catalog{catalogOffer(namespace:$namespace,id:$id,locale:"ru"){title description longDescription developerDisplayName publisherDisplayName releaseDate seller{name} keyImages{type url} tags{id name groupName}}}}',
+        variables: JSON.stringify({ namespace: epic.namespace, id: epic.appId }),
+      });
+      const offer = (await responseJSON(this.ctx.epicFetch || this.ctx.publicFetch, u.href))?.data?.Catalog
+        ?.catalogOffer;
+      // Requirements and languages are on the older product page; new products have none.
+      const slug = String(epic.url || '').match(
+        /^https:\/\/store\.epicgames\.com\/p\/([a-z0-9][a-z0-9-]{0,180})$/i
+      )?.[1];
+      let content = null;
+      if (slug)
+        content = await responseJSON(
+          this.ctx.publicFetch,
+          `https://store-content-ipv4.ak.epicgames.com/api/ru/content/products/${slug}`
+        ).catch(() => null);
+      value = page.parseEpicOffer(offer, content, epic.url || '');
+    }
+    if (this.pageCache.size > 50) this.pageCache.delete(this.pageCache.keys().next().value);
+    this.pageCache.set(key, { at: Date.now(), value });
+    return value;
+  }
   async deals({ id }) {
     const g = this.find(id);
     if (!g) throw Error('Игра не найдена');
