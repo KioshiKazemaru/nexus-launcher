@@ -139,9 +139,7 @@ function render() {
     ? 'Писать друзьям Epic можно только в Epic Games Launcher или в игре'
     : c.state === 'connecting'
       ? 'Подключаемся к чату Steam…'
-      : c.state === 'client'
-        ? 'Клиент Steam запущен: Enter откроет чат в Steam, текст скопируется'
-        : 'Сообщение для ' + tab.name;
+      : 'Сообщение для ' + tab.name;
   $('#send').disabled = sending || !!c.readonly;
 }
 function addMessage(conv, msg) {

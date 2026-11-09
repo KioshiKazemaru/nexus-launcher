@@ -118,6 +118,64 @@ class FriendsService {
       return r.json();
     };
   }
+  // ---- comments under a Steam profile, as on Steam Community ----
+  commentAccount(id) {
+    const accounts = this.ctx.accounts.connected('steam');
+    if (!accounts.length) throw Error('Подключите Steam в «Аккаунтах»');
+    const isFriend = a =>
+      !!this.cache?.steam.some(g => g.account.id === a.id && g.friends.some(x => x.id === id));
+    return accounts.find(a => a.id === id) || accounts.find(isFriend) || accounts[0];
+  }
+  // The community "sessionid" cookie: Steam wants it in every comment request.
+  async communitySession(account) {
+    const s = this.ctx.accounts.session(account.key);
+    if (!s) throw Error('Войдите в Steam в «Аккаунтах»');
+    const cookie = async () =>
+      (await s.cookies.get({ url: 'https://steamcommunity.com', name: 'sessionid' }).catch(() => []))[0]
+        ?.value || '';
+    let sid = await cookie();
+    if (!sid) {
+      await s
+        .fetch('https://steamcommunity.com/my/', {
+          credentials: 'include',
+          signal: AbortSignal.timeout(15000),
+        })
+        .catch(() => {});
+      sid = await cookie();
+    }
+    return { s, sid };
+  }
+  async commentCall(id, action, form) {
+    id = String(id || '');
+    if (!/^7656119\d{10}$/.test(id)) throw Error('Профиль недоступен');
+    const account = this.commentAccount(id);
+    const { s, sid } = await this.communitySession(account);
+    const body = new URLSearchParams({ ...form, count: '10', feature2: '-1', sessionid: sid });
+    const r = await s.fetch(`https://steamcommunity.com/comment/Profile/${action}/${id}/-1/`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+      body: body.toString(),
+      signal: AbortSignal.timeout(20000),
+    });
+    if (!r.ok) throw Error(`Steam: HTTP ${r.status}`);
+    const json = await r.json().catch(() => null);
+    return { ...f.parseProfileComments(json), mine: account.id === id, me: account.id };
+  }
+  comments(id, start = 0) {
+    const n = Math.max(0, Math.min(100000, Number(start) || 0));
+    return this.commentCall(id, 'render', { start: String(n) });
+  }
+  postComment(id, text) {
+    const comment = String(text || '').trim();
+    if (!comment) throw Error('Комментарий пустой');
+    if (comment.length > 1000) throw Error('Steam принимает комментарии до 1000 символов');
+    return this.commentCall(id, 'post', { comment, start: '0' });
+  }
+  deleteComment(id, commentId) {
+    if (!/^\d{1,25}$/.test(String(commentId || ''))) throw Error('Комментарий не найден');
+    return this.commentCall(id, 'delete', { gidcomment: String(commentId), start: '0' });
+  }
   // "Играющие друзья" for a Steam game, like the game page of the Steam client.
   async gameFriends(appId) {
     appId = String(appId || '');
@@ -340,6 +398,23 @@ class FriendsService {
       ),
       common: common.slice(0, 60).map(withArt),
       commonCount: common.length,
+      // Full lists for «Игры», «Запускались» and «Общие игры» on the page (art comes from the app id).
+      allGames: (v.games?.games || [])
+        .map(g => ({
+          appId: g.appId,
+          name: g.name || store[g.appId]?.name || '',
+          minutes: g.minutes,
+          lastPlayed: g.lastPlayed || null,
+          gameId: inLib(g.appId),
+        }))
+        .sort((a, b) => b.minutes - a.minutes || a.name.localeCompare(b.name)),
+      commonAll: common.map(g => ({
+        appId: g.appId,
+        name: g.name,
+        minutes: g.minutes,
+        mine: g.mine,
+        gameId: g.gameId,
+      })),
     };
   }
   async steamFriends(account) {

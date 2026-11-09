@@ -452,7 +452,7 @@ test('chat history: an old plain-text file is encrypted; without encryption noth
   assert.equal(fs.readFileSync(file, 'utf8'), '{}');
 });
 
-test('Steam chat with the Steam client open: Nexus stays off the chat servers; the chat opens in Steam', async () => {
+test('Steam chat with the Steam client open: Nexus stays off the chat servers; a refused Web API send opens the chat in Steam', async () => {
   // Signing in to the chat servers greys out a running Steam client (all friends offline).
   const { __test } = require('electron');
   const t = steamChat({ loggedIn: false });
@@ -460,7 +460,7 @@ test('Steam chat with the Steam client open: Nexus stays off the chat servers; t
   const key = c.convKey('steam', ME, FRIEND);
   FakeSteamUser.last = null;
   const opened = __test.opened.length;
-  await assert.rejects(t.chat.send(key, ' привет '), /Клиент Steam запущен.*Ctrl\+V/);
+  await assert.rejects(t.chat.send(key, ' привет '), /Steam не принял сообщение.*Ctrl\+V/);
   assert.equal(FakeSteamUser.last, null, 'no sign-in to Steam CM');
   assert.deepEqual(__test.opened.slice(opened), [`steam://friends/message/${FRIEND}`]);
   assert.equal(__test.clipboard.text, 'привет');
@@ -471,4 +471,39 @@ test('Steam chat with the Steam client open: Nexus stays off the chat servers; t
   t.chat.connectChats();
   await new Promise(r => setImmediate(r));
   assert.equal(FakeSteamUser.last, null);
+});
+
+test('Steam chat with the Steam client open: the message goes through the Web API, no chat sign-in', async () => {
+  const { __test } = require('electron');
+  const t = steamChat({ loggedIn: false });
+  t.chat.ctx.actions = { processRunning: async name => name === 'steam.exe' };
+  const fetchBefore = t.chat.ctx.publicFetch;
+  t.chat.ctx.publicFetch = async (url, o = {}) => {
+    if (url.includes('IFriendMessagesService/SendMessage/'))
+      return (
+        t.requests.push({ url, o }),
+        {
+          ok: true,
+          status: 200,
+          headers: { get: () => '1' },
+          json: async () => ({ response: { server_timestamp: 1700000000 } }),
+        }
+      );
+    return fetchBefore(url, o);
+  };
+  const key = c.convKey('steam', ME, FRIEND);
+  FakeSteamUser.last = null;
+  const opened = __test.opened.length;
+  const msg = await t.chat.send(key, ' привет [b]x[/b] ');
+  assert.deepEqual(msg, { from: 'me', text: 'привет [b]x[/b]', at: 1700000000000 });
+  assert.equal(FakeSteamUser.last, null, 'no sign-in to Steam CM');
+  assert.equal(__test.opened.length, opened, 'the Steam client is not opened');
+  const req = t.requests.find(r => r.url.includes('SendMessage'));
+  assert.equal(req.o.method, 'POST');
+  const body = new URLSearchParams(String(req.o.body));
+  assert.equal(body.get('steamid'), FRIEND);
+  assert.equal(body.get('message'), 'привет [b]x[/b]');
+  assert.equal(body.get('contains_bbcode'), 'false');
+  assert.equal(body.get('access_token'), 'tok');
+  assert.equal(t.chat.history[key].at(-1).text, 'привет [b]x[/b]');
 });

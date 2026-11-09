@@ -197,6 +197,51 @@ function parseGameplayInfo(json) {
   };
 }
 
+// Steam's profile comments (comment/Profile/render and /post answer with comments_html).
+const STEAM_ID_BASE = 76561197960265728n;
+function parseProfileComments(json) {
+  if (!json || typeof json !== 'object') throw Error('Steam не отдал комментарии');
+  if (json.success !== true) throw Error(String(json.error || 'Комментарии недоступны').slice(0, 200));
+  const $ = cheerio.load(String(json.comments_html || ''));
+  const comments = [];
+  $('.commentthread_comment').each((_, el) => {
+    const c = $(el);
+    const id = String(c.attr('id') || '').replace(/^comment_/, '');
+    if (!/^\d{1,25}$/.test(id)) return;
+    const link = c.find('.commentthread_author_link').first();
+    const mini = Number(
+      link.attr('data-miniprofile') || c.find('[data-miniprofile]').first().attr('data-miniprofile')
+    );
+    const authorId = Number.isSafeInteger(mini) && mini > 0 ? String(STEAM_ID_BASE + BigInt(mini)) : '';
+    const text = c.find('.commentthread_comment_text').first().clone();
+    text.find('br').replaceWith('\n');
+    text.find('img').each((_, img) => $(img).replaceWith($(img).attr('alt') || ''));
+    const avatar = c.find('.commentthread_comment_avatar img').first().attr('src') || '';
+    const at =
+      Number(c.find('.commentthread_comment_timestamp[data-timestamp]').first().attr('data-timestamp')) || 0;
+    comments.push({
+      id,
+      authorId,
+      author: link.text().trim().slice(0, 100) || 'Пользователь Steam',
+      avatar: /^https:\/\/[\w.-]+\.(?:steamstatic\.com|akamaihd\.net)\//.test(avatar) ? avatar : '',
+      text: text
+        .text()
+        .replace(/[ \t]+\n/g, '\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim()
+        .slice(0, 5000),
+      at: at ? at * 1000 : null,
+      canDelete:
+        c.find('.commentthread_comment_actions a, .commentthread_comment_actions [onclick]').length > 0,
+    });
+  });
+  return {
+    comments,
+    total: Number(json.total_count) || comments.length,
+    start: Number(json.start) || 0,
+  };
+}
+
 const ORDER = { ingame: 0, online: 1, away: 2, unknown: 3, offline: 4 };
 function sortFriends(list) {
   return [...list].sort(
@@ -217,4 +262,5 @@ module.exports = {
   parseSteamProfileXml,
   parseProfileItems,
   parseGameplayInfo,
+  parseProfileComments,
 };

@@ -456,3 +456,39 @@ test('profile background and avatar frame come from the Steam community CDN', ()
   // Anything that is not a plain image path is dropped.
   assert.equal(f.parseProfileItems({ response: { avatar_frame: { image_small: '../x.png' } } }).frame, '');
 });
+
+test('Steam profile comments: author, text with line breaks and emoticons, time, delete right', () => {
+  const html = `
+    <div class="commentthread_comment" id="comment_4000000000000000001">
+      <div class="commentthread_comment_avatar"><a data-miniprofile="39734273"><img src="https://avatars.akamai.steamstatic.com/abc_medium.jpg"></a></div>
+      <div class="commentthread_comment_content">
+        <a class="commentthread_author_link" data-miniprofile="39734273"><bdi>Tester One</bdi></a>
+        <div class="commentthread_comment_timestamp"><div class="commentthread_comment_timestamp" title="1 Nov" data-timestamp="1700000000">1 Nov</div></div>
+        <div class="commentthread_comment_actions"><a href="javascript:CCommentThread.DeleteComment('x')">del</a></div>
+        <div class="commentthread_comment_text">first line<br>second <img class="emoticon" alt=":steamhappy:" src="x.png"></div>
+      </div>
+    </div>
+    <div class="commentthread_comment" id="comment_4000000000000000002">
+      <div class="commentthread_comment_avatar"><img src="http://evil.example/a.jpg"></div>
+      <a class="commentthread_author_link" data-miniprofile="39734274">Tester Two</a>
+      <div class="commentthread_comment_text"> plain </div>
+    </div>
+    <div class="commentthread_comment" id="comment_bad"></div>`;
+  const r = f.parseProfileComments({ success: true, comments_html: html, total_count: 25, start: 0 });
+  assert.equal(r.total, 25);
+  assert.equal(r.comments.length, 2);
+  const [a, b] = r.comments;
+  assert.equal(a.id, '4000000000000000001');
+  assert.equal(a.authorId, String(76561197960265728n + 39734273n));
+  assert.equal(a.author, 'Tester One');
+  assert.equal(a.text, 'first line\nsecond :steamhappy:');
+  assert.equal(a.at, 1700000000000);
+  assert.equal(a.canDelete, true);
+  assert.match(a.avatar, /^https:\/\/avatars\.akamai\.steamstatic\.com\//);
+  assert.equal(b.text, 'plain');
+  assert.equal(b.avatar, '');
+  assert.equal(b.at, null);
+  assert.equal(b.canDelete, false);
+  assert.throws(() => f.parseProfileComments({ success: false, error: 'Private' }), /Private/);
+  assert.throws(() => f.parseProfileComments(null));
+});

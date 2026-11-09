@@ -218,18 +218,18 @@ function myProfilePage(d) {
   const epics = d.accounts.filter(a => a.provider === 'epic');
   const h = m => (m / 60).toLocaleString('ru-RU', { maximumFractionDigits: m < 600 ? 1 : 0 });
   const art = appId => `nexus-art://steam/${encodeURIComponent(appId)}/header`;
-  const cover = (appId, image) =>
-    `<span class="friend-game-art"><img src="${art(appId)}" ${safeImage(image) ? `data-fallback="${esc(safeImage(image))}"` : ''} alt="" loading="lazy"></span>`;
+  const cover = (appId, image, caption = '') =>
+    `<span class="friend-game-art"><img src="${art(appId)}" ${safeImage(image) ? `data-fallback="${esc(safeImage(image))}"` : ''} alt="" loading="lazy">${caption ? `<span class="sp-game-time">${caption}</span>` : ''}</span>`;
   const open = g =>
     g.gameId
       ? `data-detail="${esc(g.gameId)}"`
       : `data-open-link="https://store.steampowered.com/app/${esc(g.appId)}/"`;
   const panel = (title, body, extra = '') =>
     `<section class="sp-panel"><div class="sp-panel-head"><span>${title}</span>${extra}</div>${body}</section>`;
-  const stat = (label, value) =>
+  const stat = (label, value, attrs = '') =>
     value === null || value === undefined || value === ''
       ? ''
-      : `<div class="sp-stat"><span>${label}</span><b>${value}</b></div>`;
+      : `<div class="sp-stat">${attrs ? `<button class="sp-stat-link" ${attrs}>${label}</button>` : `<span>${label}</span>`}<b>${value}</b></div>`;
   // My status: in game when Nexus runs one, otherwise the status set for friends.
   const runningId = Object.keys(state.running || {})[0];
   const runningName = runningId ? game(runningId)?.name || '' : '';
@@ -252,6 +252,7 @@ function myProfilePage(d) {
   const frame = safeImage(sp.frame)
     ? `<img class="sp-frame" src="${esc(safeImage(sp.frame))}" alt="" referrerpolicy="no-referrer">`
     : '';
+  const id = sp.id || steam.id;
   const realLine = [sp.realName, sp.location].filter(Boolean).map(esc).join(' &nbsp;·&nbsp; ');
   const level = sp.level ?? steam.level;
   const xpLine =
@@ -265,7 +266,7 @@ function myProfilePage(d) {
     ? `<div class="sp-games">${recentList
         .map(
           x =>
-            `<button class="sp-game" ${open(x)}>${cover(x.appId, x.image)}<span class="sp-game-name">${esc(x.name)}</span><span class="sp-game-meta">${h(x.minutes2w || 0)} ч за 2 недели · ${h(x.minutes)} ч всего</span></button>`
+            `<button class="sp-game" ${open(x)} title="${esc(x.name)}">${cover(x.appId, x.image, `<b>${h(x.minutes2w || 0)} ч</b> за 2 недели<br>${h(x.minutes)} ч всего`)}<span class="sp-game-name">${esc(x.name)}</span></button>`
         )
         .join('')}</div>`
     : '<p class="hint">За последние две недели игр в Steam не было.</p>';
@@ -294,7 +295,8 @@ function myProfilePage(d) {
   ]
     .filter(([p]) => by[p]?.games)
     .map(
-      ([p, n]) => `<div class="sp-stat"><span>${n}</span><b>${by[p].games} · ${h(by[p].minutes)} ч</b></div>`
+      ([p, n]) =>
+        `<div class="sp-stat">${p === 'custom' ? `<span>${n}</span>` : `<button class="sp-stat-link" data-sp-go="owned" data-sp-source="${p}">${n}</button>`}<b>${by[p].games} · ${h(by[p].minutes)} ч</b></div>`
     )
     .join('');
   const epicCards = epics
@@ -303,7 +305,6 @@ function myProfilePage(d) {
         `<div class="sp-account"><span class="sp-account-avatar">${safeImage(a.avatar) ? `<img src="${esc(safeImage(a.avatar))}" alt="" referrerpolicy="no-referrer">` : 'E'}</span><span><small>Epic Games</small><strong>${esc(a.name)}</strong></span></div>`
     )
     .join('');
-  const id = sp.id || steam.id;
   return `<div class="sp my-profile ${bg ? 'has-bg' : ''}" ${bg ? `style="--sp-bg:url('${esc(bg)}')"` : ''}><div class="sp-inner"><header class="sp-header"><div class="sp-avatar ${esc(status)}">${avatar}${frame}</div><div class="sp-id"><h1>${esc(sp.name || steam.name || 'Мой профиль')}</h1>${realLine ? `<p class="sp-real">${realLine}</p>` : ''}${
     sp.summary
       ? `<p class="sp-summary">${esc(sp.summary)}</p>`
@@ -323,15 +324,9 @@ function myProfilePage(d) {
   )}${panel('Больше всего времени', top, '<small>Steam, Epic Games и Nexus</small>')}${panel(
     'Последние достижения',
     achievements
-  )}</div><aside class="sp-right"><div class="sp-status ${esc(status)}"><strong>${esc(statusText)}</strong></div><div class="sp-stats">${stat(
-    'Игр в библиотеке',
-    s.games.toLocaleString('ru-RU')
-  )}${stat('Установлено', s.installed)}${stat('Часов в играх', h(s.minutes))}${stat('Запускались', s.played)}${stat(
-    'За последние 30 дней',
-    s.playedThisMonth
-  )}${stat('Значки', sp.badges ?? steam.badges)}${stat('В Steam с', memberSince(sp.memberSince))}</div>${
+  )}</div><aside class="sp-right"><div class="sp-status ${esc(status)}"><strong>${esc(statusText)}</strong></div><div class="sp-stats">${stat('Игр в библиотеке', s.games.toLocaleString('ru-RU'), 'data-sp-go="owned"')}${stat('Установлено', s.installed, 'data-sp-go="installed"')}${stat('Часов в играх', h(s.minutes))}${stat('Запускались', s.played, 'data-sp-go="played"')}${stat('За последние 30 дней', s.playedThisMonth, 'data-page="recent"')}${stat('Значки', sp.badges ?? steam.badges, id ? `data-open-link="https://steamcommunity.com/profiles/${esc(id)}/badges/"` : '')}${stat('В Steam с', memberSince(sp.memberSince))}</div>${
     platforms ? `<div class="sp-stats"><h3>По платформам</h3>${platforms}</div>` : ''
-  }${epicCards ? `<div class="sp-stats">${epicCards}</div>` : ''}</aside></div></div></div>`;
+  }${epicCards ? `<div class="sp-stats">${epicCards}</div>` : ''}</aside></div>${commentsBox(id)}</div></div>`;
 }
 // ---- "Профиль" tabs: Steam and every Epic Games account ----------------------------
 let profileTab = (() => {
@@ -375,10 +370,10 @@ function profileTabsPage(d) {
 // An Epic Games account, in the look of the Epic Games Store.
 function epicProfilePage(d, e) {
   const h = m => (m / 60).toLocaleString('ru-RU', { maximumFractionDigits: m < 600 ? 1 : 0 });
-  const stat = (label, value) =>
+  const stat = (label, value, attrs = '') =>
     value === null || value === undefined || value === ''
       ? ''
-      : `<div class="sp-stat"><span>${label}</span><b>${value}</b></div>`;
+      : `<div class="sp-stat">${attrs ? `<button class="sp-stat-link" ${attrs}>${label}</button>` : `<span>${label}</span>`}<b>${value}</b></div>`;
   const panel = (title, body, extra = '') =>
     `<section class="sp-panel"><div class="sp-panel-head"><span>${title}</span>${extra}</div>${body}</section>`;
   let country = '';
@@ -402,15 +397,15 @@ function epicProfilePage(d, e) {
     : { online: 'В сети', away: 'Нет на месте', invisible: 'Невидимка', offline: 'Не в сети' }[d.status] ||
       'В сети';
   const letter = esc((e.name || 'E').trim().slice(0, 1).toUpperCase());
-  const cover = id => {
+  const cover = (id, caption = '') => {
     const g = game(id);
-    return `<span class="friend-game-art">${g ? artTag(g) : ''}</span>`;
+    return `<span class="friend-game-art">${g ? artTag(g) : ''}${caption ? `<span class="sp-game-time">${caption}</span>` : ''}</span>`;
   };
   const recent = e.recent.length
     ? `<div class="sp-games">${e.recent
         .map(
           x =>
-            `<button class="sp-game" data-detail="${esc(x.id)}">${cover(x.id)}<span class="sp-game-name">${esc(game(x.id)?.name || x.name)}</span><span class="sp-game-meta">${x.minutes ? h(x.minutes) + ' ч всего · ' : ''}запуск ${new Date(x.lastPlayed).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}</span></button>`
+            `<button class="sp-game" data-detail="${esc(x.id)}" title="${esc(game(x.id)?.name || x.name)}">${cover(x.id, `${x.minutes ? `<b>${h(x.minutes)} ч</b> всего<br>` : ''}запуск ${new Date(x.lastPlayed).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}`)}<span class="sp-game-name">${esc(game(x.id)?.name || x.name)}</span></button>`
         )
         .join(
           ''
@@ -429,13 +424,7 @@ function epicProfilePage(d, e) {
   }</div><div class="sp-side"><div class="sp-actions"><button class="primary" data-open-link="https://store.epicgames.com/u/${esc(e.id)}">Профиль в Epic ↗</button><button class="secondary" data-open-link="https://www.epicgames.com/account/personal">Аккаунт ↗</button><button class="secondary" id="profile-refresh" title="Обновить" ${profileState.loading ? 'disabled' : ''}>↻</button></div></div></header><div class="sp-body"><div class="sp-main">${panel(
     'Недавно запущенные',
     recent
-  )}${panel('Больше всего времени', top, e.minutes ? `<small>${h(e.minutes)} ч всего</small>` : '')}</div><aside class="sp-right"><div class="sp-status ${esc(status)}"><strong>${esc(statusText)}</strong></div><div class="sp-stats">${stat(
-    'Игр в Epic',
-    e.games.toLocaleString('ru-RU')
-  )}${stat('Установлено', e.installed)}${stat('Часов в играх', h(e.minutes))}${stat('Запускались', e.played)}${stat(
-    'Друзей в Epic',
-    e.friends
-  )}</div></aside></div></div></div>`;
+  )}${panel('Больше всего времени', top, e.minutes ? `<small>${h(e.minutes)} ч всего</small>` : '')}</div><aside class="sp-right"><div class="sp-status ${esc(status)}"><strong>${esc(statusText)}</strong></div><div class="sp-stats">${stat('Игр в Epic', e.games.toLocaleString('ru-RU'), 'data-sp-go="owned" data-sp-source="epic"')}${stat('Установлено', e.installed, 'data-sp-go="installed" data-sp-source="epic"')}${stat('Часов в играх', h(e.minutes))}${stat('Запускались', e.played, 'data-sp-go="played" data-sp-source="epic"')}${stat('Друзей в Epic', e.friends, 'data-sp-friends')}</div></aside></div></div></div>`;
 }
 function profilePage() {
   if (!profileState.data && !profileState.loading && !profileState.error) loadProfile();
@@ -491,6 +480,152 @@ function profilePage() {
       : '<p class="hint">Достижения появятся здесь после того, как вы откроете страницы игр Steam (Nexus загружает их по запросу).</p>'
   }</section></div>`;
 }
+
+// A friend's full game list inside the profile («Игры», «Запускались», «Общие игры»).
+function friendGamesView(d, h, cover, open) {
+  const v = friendState.view;
+  const list =
+    v === 'common' ? d.commonAll || [] : (d.allGames || []).filter(x => v !== 'played' || x.minutes > 0);
+  const title = { games: 'Все игры', played: 'Запускались', common: 'Общие игры' }[v] || 'Игры';
+  const caption = x =>
+    v === 'common'
+      ? `<b>${h(x.minutes)} ч</b> у друга<br>${h(x.mine)} ч у вас`
+      : x.minutes
+        ? `<b>${h(x.minutes)} ч</b> всего`
+        : 'не запускалась';
+  const shown = list.slice(0, 1000);
+  return `<section class="sp-panel sp-list"><div class="sp-panel-head"><button class="sp-back" data-sp-view="">← Профиль</button><span>${title} · ${list.length.toLocaleString('ru-RU')}</span><input class="sp-filter" type="search" placeholder="Поиск" aria-label="Поиск по играм" autocomplete="off"></div><div class="sp-games">${
+    shown
+      .map(
+        x =>
+          `<button class="sp-game" ${open(x)} data-name="${esc((x.name || '').toLowerCase())}" title="${esc(x.name)}">${cover(x.appId, '', caption(x))}<span class="sp-game-name">${esc(x.name || 'Игра ' + x.appId)}</span></button>`
+      )
+      .join('') || '<p class="hint">Список пуст.</p>'
+  }</div>${list.length > shown.length ? `<p class="hint">Показаны первые ${shown.length} — используйте поиск</p>` : ''}</section>`;
+}
+// A label in my profile → the library with that filter.
+async function profileGo(kind, source = 'all') {
+  const want = kind === 'installed' ? 'installed' : 'owned';
+  if (libraryMode() !== want)
+    state = api
+      ? await call('libraryView', want)
+      : { ...state, settings: { ...state.settings, libraryView: want } };
+  filter = ['steam', 'epic'].includes(source) ? source : 'all';
+  collectionFilter = null;
+  librarySelection = null;
+  libraryLimit = LIBRARY_PAGE;
+  if (kind === 'played') librarySort = 'playtime';
+  setPage('library');
+}
+document.addEventListener('input', event => {
+  if (!event.target.classList?.contains('sp-filter')) return;
+  const q = event.target.value.trim().toLowerCase();
+  for (const el of document.querySelectorAll('.sp-list .sp-game'))
+    el.hidden = !!q && !el.dataset.name.includes(q);
+});
+
+// ---- comments under a Steam profile, as on Steam Community --------------------------
+const commentsState = new Map(); // steam id → { loading, list, total, error, mine, me, sending, armed }
+// Unsent text per profile: the page may be rebuilt while the user writes.
+const commentDrafts = new Map();
+document.addEventListener('input', event => {
+  const form = event.target.closest?.('[data-comment-form]');
+  if (form) commentDrafts.set(form.dataset.commentForm, event.target.value);
+});
+async function loadComments(id, more = false) {
+  const st = commentsState.get(id) || { list: [] };
+  if (!api?.profileComments || demo || st.loading) return;
+  commentsState.set(id, { ...st, loading: true, error: '' });
+  try {
+    const r = await call('profileComments', { id, start: more ? st.list.length : 0 });
+    const list = more
+      ? [...st.list, ...r.comments.filter(c => !st.list.some(x => x.id === c.id))]
+      : r.comments;
+    commentsState.set(id, { ...st, loading: false, list, total: r.total, mine: r.mine, me: r.me, error: '' });
+  } catch (e) {
+    commentsState.set(id, { ...st, loading: false, error: e.message });
+  }
+  render();
+}
+function commentsBox(id) {
+  if (!id || !api?.profileComments || demo) return '';
+  const st = commentsState.get(id);
+  if (!st) setTimeout(() => loadComments(id));
+  const list = st?.list || [];
+  const date = t =>
+    t
+      ? new Date(t).toLocaleString('ru-RU', {
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        })
+      : '';
+  const who = c =>
+    c.authorId && c.authorId === st?.me
+      ? 'data-page="profile"'
+      : c.authorId
+        ? `data-friend="${esc(c.authorId)}"`
+        : '';
+  const rows = list
+    .map(
+      c =>
+        `<div class="sp-comment"><button class="sp-comment-avatar" ${who(c)} title="${esc(c.author)}">${
+          safeImage(c.avatar)
+            ? `<img src="${esc(safeImage(c.avatar))}" alt="" loading="lazy" referrerpolicy="no-referrer">`
+            : '<span>?</span>'
+        }</button><div class="sp-comment-body"><div class="sp-comment-head"><button class="sp-comment-author" ${who(c)}>${esc(c.author)}</button><small>${esc(date(c.at))}</small>${
+          c.canDelete
+            ? `<button class="sp-comment-del ${st.armed === c.id ? 'armed' : ''}" data-comment-del="${esc(c.id)}" data-comment-profile="${esc(id)}" title="Удалить комментарий">${st.armed === c.id ? 'Удалить?' : '✕'}</button>`
+            : ''
+        }</div><p>${esc(c.text)}</p></div></div>`
+    )
+    .join('');
+  const body =
+    st?.error && !list.length
+      ? `<p class="hint">${esc(st.error)}</p>`
+      : !st || (st.loading && !list.length)
+        ? '<p class="hint">Загружаем комментарии…</p>'
+        : rows || '<p class="hint">Комментариев пока нет.</p>';
+  return `<section class="sp-panel sp-comments"><div class="sp-panel-head"><span>Комментарии</span>${st?.total ? `<small>${st.total.toLocaleString('ru-RU')}</small>` : ''}</div><form class="sp-comment-form" data-comment-form="${esc(id)}"><textarea maxlength="1000" rows="2" placeholder="Добавить комментарий" aria-label="Текст комментария" ${st?.sending ? 'disabled' : ''}>${esc(commentDrafts.get(id) || '')}</textarea><button class="primary" type="submit" ${st?.sending ? 'disabled' : ''}>${st?.sending ? 'Отправляем…' : 'Отправить'}</button></form><div class="sp-comment-list">${body}</div>${
+    st && list.length < (st.total || 0)
+      ? `<button class="sp-more sp-comments-more" data-comments-more="${esc(id)}" ${st.loading ? 'disabled' : ''}>Показать ещё (${st.total - list.length})</button>`
+      : ''
+  }</section>`;
+}
+document.addEventListener('submit', event => {
+  const form = event.target.closest?.('[data-comment-form]');
+  if (!form) return;
+  event.preventDefault();
+  const id = form.dataset.commentForm;
+  const text = form.querySelector('textarea').value.trim();
+  if (!text) return;
+  run(async () => {
+    const st = commentsState.get(id) || { list: [] };
+    commentsState.set(id, { ...st, sending: true });
+    render();
+    try {
+      const r = await call('postProfileComment', { id, text });
+      commentsState.set(id, {
+        ...st,
+        sending: false,
+        list: r.comments,
+        total: r.total,
+        mine: r.mine,
+        me: r.me,
+        error: '',
+      });
+      commentDrafts.delete(id);
+      toast('Комментарий опубликован.');
+    } catch (e) {
+      commentsState.set(id, { ...st, sending: false });
+      render();
+      throw e;
+    }
+    render();
+  });
+});
 
 // ---- a friend's Steam profile, inside Nexus ------------------------------------------
 let friendState = { id: '', loading: false, data: null, error: '' };
@@ -550,8 +685,8 @@ function friendPage() {
       ? `data-detail="${esc(g.gameId)}"`
       : `data-open-link="https://store.steampowered.com/app/${esc(g.appId)}/"`;
   // The library art first; the store image (hashed paths of new games) when that is missing.
-  const cover = (appId, image) =>
-    `<span class="friend-game-art"><img src="${art(appId)}" ${safeImage(image) ? `data-fallback="${esc(safeImage(image))}"` : ''} alt="" loading="lazy"></span>`;
+  const cover = (appId, image, caption = '') =>
+    `<span class="friend-game-art"><img src="${art(appId)}" ${safeImage(image) ? `data-fallback="${esc(safeImage(image))}"` : ''} alt="" loading="lazy">${caption ? `<span class="sp-game-time">${caption}</span>` : ''}</span>`;
   const status = d.status || 'offline';
   const g = d.games;
   const hiddenGames = !g || g.hidden;
@@ -572,7 +707,7 @@ function friendPage() {
     ? d.recent
         .map(
           x =>
-            `<button class="sp-game" ${open(x)}>${cover(x.appId, x.image)}<span class="sp-game-name">${esc(x.name)}</span><span class="sp-game-meta">${h(x.minutes)} ч всего${x.lastPlayed ? `<br>последний запуск ${esc(date(x.lastPlayed))}` : ''}</span></button>`
+            `<button class="sp-game" ${open(x)} title="${esc(x.name)}">${cover(x.appId, x.image, `<b>${h(x.minutes)} ч</b> всего${x.lastPlayed ? `<br>${esc(date(x.lastPlayed))}` : ''}`)}<span class="sp-game-name">${esc(x.name)}</span></button>`
         )
         .join('')
     : hiddenGames
@@ -609,10 +744,10 @@ function friendPage() {
             : ''
         }</div>`
       : `<div class="sp-status ${esc(status)}"><strong>${esc(friendStatusText(d))}</strong></div>`;
-  const stat = (label, value) =>
+  const stat = (label, value, attrs = '') =>
     value === null || value === undefined || value === ''
       ? ''
-      : `<div class="sp-stat"><span>${label}</span><b>${value}</b></div>`;
+      : `<div class="sp-stat">${attrs ? `<button class="sp-stat-link" ${attrs}>${label}</button>` : `<span>${label}</span>`}<b>${value}</b></div>`;
   return `${notice()}<div class="sp ${bg ? 'has-bg' : ''}" ${bg ? `style="--sp-bg:url('${esc(bg)}')"` : ''}><div class="sp-inner"><header class="sp-header"><div class="sp-avatar ${esc(status)}">${avatar}${frame}</div><div class="sp-id"><h1>${esc(d.name)}</h1>${realLine ? `<p class="sp-real">${realLine}</p>` : ''}${
     d.summary ? `<p class="sp-summary">${esc(d.summary)}</p>` : ''
   }</div><div class="sp-side">${
@@ -621,20 +756,25 @@ function friendPage() {
       : ''
   }<div class="sp-actions">${
     d.conv ? `<button class="primary" data-activity-chat="${esc(d.conv)}">Написать</button>` : ''
-  }<button class="secondary" data-open-link="https://steamcommunity.com/profiles/${esc(d.id)}/">Открыть в Steam ↗</button><button class="secondary" id="friend-refresh" title="Обновить">↻</button></div></div></header><div class="sp-body"><div class="sp-main">${panel(
-    'Недавняя активность',
-    `<div class="sp-games">${recent}</div>`,
-    recentMinutes ? `<small>${h(recentMinutes)} ч за последние 2 недели</small>` : ''
-  )}${panel('Больше всего времени', `<div class="top-games">${top}</div>`)}${panel(
+  }<button class="secondary" data-open-link="https://steamcommunity.com/profiles/${esc(d.id)}/">Открыть в Steam ↗</button><button class="secondary" id="friend-refresh" title="Обновить">↻</button></div></div></header><div class="sp-body"><div class="sp-main">${
+    friendState.view
+      ? friendGamesView(d, h, cover, open)
+      : panel(
+          'Недавняя активность',
+          `<div class="sp-games">${recent}</div>`,
+          recentMinutes ? `<small>${h(recentMinutes)} ч за последние 2 недели</small>` : ''
+        )
+  }${panel('Больше всего времени', `<div class="top-games">${top}</div>`)}${panel(
     'Общие игры',
     common,
-    d.commonCount ? `<small>${d.commonCount}</small>` : ''
-  )}</div><aside class="sp-right">${statusBox}<div class="sp-stats">${stat('Значки', d.badges)}${
-    hiddenGames ? '' : stat('Игры', g.count.toLocaleString('ru-RU'))
-  }${hiddenGames ? '' : stat('Часов в играх', h(g.minutes))}${hiddenGames ? '' : stat('Запускались', g.played.toLocaleString('ru-RU'))}${stat(
-    'Общие игры',
-    hiddenGames ? '' : d.commonCount
-  )}${stat('В Steam с', memberSince(d.memberSince))}</div></aside></div></div></div>`;
+    d.commonCount > d.common.length
+      ? `<button class="sp-more" data-sp-view="common">Все ${d.commonCount} →</button>`
+      : d.commonCount
+        ? `<small>${d.commonCount}</small>`
+        : ''
+  )}</div><aside class="sp-right">${statusBox}<div class="sp-stats">${stat('Значки', d.badges, `data-open-link="https://steamcommunity.com/profiles/${esc(d.id)}/badges/"`)}${
+    hiddenGames ? '' : stat('Игры', g.count.toLocaleString('ru-RU'), 'data-sp-view="games"')
+  }${hiddenGames ? '' : stat('Часов в играх', h(g.minutes))}${hiddenGames ? '' : stat('Запускались', g.played.toLocaleString('ru-RU'), 'data-sp-view="played"')}${stat('Общие игры', hiddenGames ? '' : d.commonCount, 'data-sp-view="common"')}${stat('В Steam с', memberSince(d.memberSince))}</div></aside></div>${commentsBox(d.id)}</div></div>`;
 }
 
 // ---- settings: status, notifications, tray, overlay ---------------------------------------
@@ -676,7 +816,28 @@ document.addEventListener('click', event =>
       render();
       loadFriend(true);
     } else if (el.dataset.profileTab) setProfileTab(el.dataset.profileTab);
-    else if (el.id === 'profile-refresh') {
+    else if (el.dataset.spView !== undefined) {
+      friendState = { ...friendState, view: el.dataset.spView };
+      render();
+      $('#main').scrollTop = 0;
+    } else if (el.dataset.spGo) await profileGo(el.dataset.spGo, el.dataset.spSource);
+    else if (el.dataset.spFriends !== undefined) await call('openFriendsWindow');
+    else if (el.dataset.commentsMore) await loadComments(el.dataset.commentsMore, true);
+    else if (el.dataset.commentDel) {
+      const id = el.dataset.commentProfile;
+      const st = commentsState.get(id);
+      if (!st) return;
+      // The first press asks "Удалить?" on the button itself; the second deletes.
+      if (st.armed !== el.dataset.commentDel) {
+        commentsState.set(id, { ...st, armed: el.dataset.commentDel });
+        render();
+        return;
+      }
+      const r = await call('deleteProfileComment', { id, commentId: el.dataset.commentDel });
+      commentsState.set(id, { ...st, armed: null, list: r.comments, total: r.total, error: '' });
+      render();
+      toast('Комментарий удалён.');
+    } else if (el.id === 'profile-refresh') {
       profileState = { loading: false, data: profileState.data, error: '' };
       loadProfile(true);
     }

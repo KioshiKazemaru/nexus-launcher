@@ -679,6 +679,10 @@ function registerIpc() {
   );
   register('friendProfile', id => ctx.friends.profile(id), { quiet: true });
   register('gameFriends', appId => ctx.friends.gameFriends(appId), { quiet: true });
+  // Comments under a Steam profile: read, post (the user's own text), delete.
+  register('profileComments', p => ctx.friends.comments(p?.id, p?.start), { quiet: true });
+  register('postProfileComment', p => ctx.friends.postComment(p?.id, p?.text));
+  register('deleteProfileComment', p => ctx.friends.deleteComment(p?.id, p?.commentId));
   // ---- like the Steam client: status, activity, news, workshop, profile, overlay ----
   register('setStatus', s => ctx.presence.setStatus(s), { social: true });
   register('activity', () => ctx.presence.feed(), { quiet: true, social: true });

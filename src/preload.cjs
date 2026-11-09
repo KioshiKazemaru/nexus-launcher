@@ -96,6 +96,9 @@ const channels = [
   'profile',
   'friendProfile',
   'gameFriends',
+  'profileComments',
+  'postProfileComment',
+  'deleteProfileComment',
   'setLaunchOptions',
   'presenceSetting',
 ];

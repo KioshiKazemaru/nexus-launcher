@@ -534,13 +534,34 @@ class ChatService {
         at = await this.steam(account).send(k.friendId, clean);
       } catch (e) {
         if (e.code !== 'STEAM_CLIENT_OPEN') throw e;
-        // The Steam client is open: the conversation opens there with the text ready to paste.
-        const { clipboard, shell } = require('electron');
-        clipboard.writeText(clean);
-        await shell.openExternal(`steam://friends/message/${k.friendId}`);
-        throw Error(
-          'Клиент Steam запущен — чат с другом открыт в Steam, текст скопирован: вставьте его (Ctrl+V)'
-        );
+        // The Steam client is open: send through the Web API (no chat sign-in,
+        // so the client keeps its status); the client shows the message too.
+        try {
+          const r = await this.steamApi(
+            account,
+            'SendMessage',
+            {
+              steamid: k.friendId,
+              chat_entry_type: 1,
+              message: clean,
+              contains_bbcode: false,
+              echo_to_sender: true,
+            },
+            true
+          );
+          at = (+r?.response?.server_timestamp || 0) * 1000 || Date.now();
+          this.ctx.log.info('chat', 'steam: sent through the Web API (the Steam client is open)');
+        } catch (webErr) {
+          this.ctx.log.warn('chat', `steam web send: ${webErr.message}`);
+          if (/нет доступа|слишком много/.test(webErr.message)) throw webErr;
+          // Last resort: the conversation opens in the client with the text ready to paste.
+          const { clipboard, shell } = require('electron');
+          clipboard.writeText(clean);
+          await shell.openExternal(`steam://friends/message/${k.friendId}`);
+          throw Error(
+            'Steam не принял сообщение — чат с другом открыт в клиенте Steam, текст скопирован: вставьте его (Ctrl+V)'
+          );
+        }
       }
       const seen = this.steamSeen.get(k.accountId);
       if (seen) seen.set(k.friendId, Math.max(seen.get(k.friendId) || 0, at));
