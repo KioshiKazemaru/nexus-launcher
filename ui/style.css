@@ -1,22 +1,42 @@
 :root {
   color-scheme: dark;
-  --bg: #10151d;
-  --panel: #19212d;
   --muted: #8c9aaf;
-  --blue: #65b9f8;
   --line: #ffffff0c;
+  --bg: #171d25;
+  --panel: #252b34;
+  --blue: #1a9fff;
+  --st-header: #171d25;
+  --st-store: #1b2838;
+  --st-text: #c7d5e0;
+  --st-bright: #ffffff;
+  --st-muted: #8f98a0;
+  --st-link: #67c1f5;
+  --st-blue: #1a9fff;
+  --st-chip: rgba(103, 193, 245, 0.2);
+  --st-green: linear-gradient(90deg, #75b022 5%, #588a1b 95%);
+  --st-green-hover: linear-gradient(90deg, #8ed629 5%, #6aa621 95%);
+  --st-lib: #1b1e24;
+  --st-lib-side: #23262e;
+  --st-lib-row: #2f333c;
+  --st-lib-active: #3d4450;
+  --st-sale: #4c6b22;
+  --st-sale-text: #beee11;
 }
 * {
   box-sizing: border-box;
 }
 body {
   margin: 0;
-  background: var(--bg);
-  color: #eef3fa;
   font:
     14px/1.5 'Segoe UI',
     Arial,
     sans-serif;
+  height: 100vh;
+  overflow: hidden;
+  font-size: 14px;
+  background: var(--st-store);
+  color: var(--st-text);
+  font-family: 'Motiva Sans', Arial, 'Segoe UI', sans-serif;
 }
 button,
 input,
@@ -27,6 +47,10 @@ button {
   cursor: pointer;
   color: inherit;
   border: 0;
+  transition:
+    background 0.16s,
+    transform 0.16s;
+  border-radius: 2px;
 }
 button:disabled {
   opacity: 0.45;
@@ -37,11 +61,6 @@ input:focus-visible,
 select:focus-visible {
   outline: 2px solid var(--blue);
   outline-offset: 4px;
-}
-button {
-  transition:
-    background 0.16s,
-    transform 0.16s;
 }
 button:hover {
   filter: brightness(1.13);
@@ -90,6 +109,8 @@ button:hover {
   display: flex;
   align-self: stretch;
   gap: 30px;
+  height: 50px;
+  align-items: center;
 }
 .nav {
   position: relative;
@@ -104,19 +125,20 @@ button:hover {
 .nav.active:after {
   content: '';
   position: absolute;
-  height: 3px;
-  background: #69bafa;
-  bottom: 0;
   left: 0;
   right: 0;
-  border-radius: 2px;
+  bottom: 4px;
+  border-radius: 0;
+  background: var(--st-blue);
+  height: 2px;
 }
 #wish-count {
   font-size: 11px;
-  background: #26364a;
   padding: 2px 6px;
   margin-left: 5px;
-  border-radius: 4px;
+  background: #3d4450;
+  color: #dcdedf;
+  border-radius: 2px;
 }
 .accounts-link {
   margin-left: auto;
@@ -148,11 +170,14 @@ button:hover {
 }
 aside {
   flex: 0 0 225px;
-  background: #131a24;
-  border-right: 1px solid var(--line);
-  padding: 29px 16px 15px;
   display: flex;
   flex-direction: column;
+  overflow-y: auto;
+  width: 252px;
+  padding: 8px;
+  min-height: 0;
+  background: var(--st-lib-side);
+  border-right: 1px solid #000;
 }
 .eyebrow {
   font-size: 9px;
@@ -264,6 +289,9 @@ main {
   flex: 1;
   padding: 25px 32px 46px;
   max-width: 1900px;
+  overflow-y: auto;
+  scrollbar-color: #35475d #141d29;
+  scrollbar-width: thin;
 }
 .toolbar {
   display: flex;
@@ -273,14 +301,14 @@ main {
   margin-bottom: 23px;
 }
 #breadcrumb {
-  font-size: 10px;
-  letter-spacing: 1.6px;
   font-weight: 600;
-  color: #d5e1ed;
+  font-size: 10px;
+  color: var(--st-bright);
+  letter-spacing: 0.06em;
 }
 #breadcrumb span {
-  color: #5d7089;
   margin-left: 12px;
+  color: var(--st-muted);
 }
 .search {
   display: flex;
@@ -299,13 +327,13 @@ main {
   outline: none;
   color: #dae6f4;
   width: 100%;
-  font-size: 12px;
   min-width: 0;
+  font-size: 13px;
 }
 .search kbd {
   white-space: nowrap;
-  font-size: 9px;
   color: #5d738e;
+  font-size: 9px;
 }
 h1 {
   font-size: 28px;
@@ -525,6 +553,7 @@ h3 {
   transition:
     transform 0.18s,
     border-color 0.18s;
+  box-shadow: 0 2px 5px #0006;
 }
 .game-card:hover {
   transform: translateY(-3px);
@@ -602,6 +631,7 @@ h3 {
   margin-left: auto;
   font-size: 9px;
   color: #9ab0c4;
+  white-space: nowrap;
 }
 .heart {
   position: absolute;
@@ -798,17 +828,21 @@ footer {
   bottom: 0;
   left: 0;
   right: 0;
-  height: 40px;
-  display: flex;
-  align-items: center;
   justify-content: space-between;
-  gap: 15px;
-  background: #131c28;
-  border-top: 1px solid #293344;
-  padding: 0 23px;
-  font-size: 10px;
-  color: #7890aa;
   z-index: 10;
+  height: 34px;
+  padding: 0 16px;
+  font-size: 10px;
+  display: grid;
+  /* The side groups take what they need; the middle (downloads) gets the rest.
+     With "1fr auto 1fr" the right group got under half the width, and its
+     items wrapped onto a second line out of the 34px bar. */
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  background: linear-gradient(180deg, #1b1f26, #12151b);
+  border-top: 1px solid #000;
+  color: #8b929a;
 }
 footer button {
   background: none;
@@ -856,7 +890,7 @@ dialog::backdrop {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  opacity: 0.55;
+  opacity: 0.85;
 }
 .detail-art h1 {
   position: absolute;
@@ -865,6 +899,7 @@ dialog::backdrop {
   max-width: 85%;
   font-size: 34px;
   text-shadow: 0 4px 20px #000;
+  z-index: 1;
 }
 .detail-body {
   padding: 25px 28px;
@@ -1005,23 +1040,10 @@ a {
     padding: 18px;
   }
 }
-
 /* Keep navigation visible while the collection scrolls. */
-body {
-  height: 100vh;
-  overflow: hidden;
-}
 .layout {
   height: calc(100vh - 122px);
   min-height: 0;
-}
-main {
-  overflow-y: auto;
-  scrollbar-color: #35475d #141d29;
-  scrollbar-width: thin;
-}
-aside {
-  overflow-y: auto;
 }
 .side-bottom {
   padding-bottom: 0;
@@ -1029,7 +1051,6 @@ aside {
 .hero-actions {
   margin-top: 18px;
 }
-
 /* 0.2: verified profiles, real art, in-app search */
 .account-status {
   margin-left: auto;
@@ -1148,10 +1169,8 @@ aside {
 .card-price {
   font-size: 11px;
   color: #bfdab7;
-  white-space: nowrap;
 }
 .detail-art img {
-  opacity: 0.85;
   object-position: center;
 }
 .detail-art:after {
@@ -1161,7 +1180,6 @@ aside {
   background: linear-gradient(0deg, #142233, transparent 85%);
 }
 .detail-art h1 {
-  z-index: 1;
   font-size: 28px;
 }
 .detail-art .cover-missing {
@@ -1237,7 +1255,6 @@ aside {
     font-size: 14px;
   }
 }
-
 .price-controls {
   display: flex;
   flex-wrap: wrap;
@@ -1312,7 +1329,6 @@ aside {
 .watch-card summary {
   cursor: pointer;
 }
-
 .card-prices {
   display: flex;
   flex-direction: column;
@@ -1396,19 +1412,6 @@ aside {
   display: none;
 }
 /* 0.5 — desktop library shelves and full-width storefront */
-:root {
-  --bg: #171d25;
-  --panel: #252b34;
-  --blue: #1a9fff;
-}
-body {
-  font-family: Arial, 'Segoe UI', sans-serif;
-  font-size: 14px;
-  background: #171d25;
-}
-button {
-  border-radius: 2px;
-}
 .topbar {
   height: 92px;
   padding: 0 18px;
@@ -1445,8 +1448,6 @@ button {
   margin: 0 0 0 8px;
 }
 .topbar nav {
-  height: 50px;
-  align-items: center;
   gap: 26px;
 }
 .nav {
@@ -1459,12 +1460,6 @@ button {
 }
 .nav.active {
   color: #1a9fff;
-}
-.nav.active:after {
-  height: 3px;
-  bottom: 4px;
-  border-radius: 0;
-  background: #1a9fff;
 }
 .nav-settings {
   margin-left: auto;
@@ -1502,11 +1497,6 @@ button {
 }
 aside {
   flex-basis: 252px;
-  width: 252px;
-  background: #242930;
-  padding: 8px;
-  min-height: 0;
-  border-right: 5px solid #171d25;
 }
 .library-home {
   padding: 12px;
@@ -1585,6 +1575,7 @@ aside {
   margin-left: auto;
   color: #72859b;
   font-size: 9px;
+  flex-shrink: 0;
 }
 .tree-empty {
   font-size: 12px;
@@ -1595,6 +1586,9 @@ aside {
   overflow: auto;
   flex: 1;
   min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-bottom: 6px;
 }
 #main {
   height: 100%;
@@ -1615,31 +1609,11 @@ aside {
   border: 0;
   gap: 12px;
 }
-#breadcrumb {
-  font-size: 10px;
-  letter-spacing: 0.8px;
-}
 .search {
   border: 0;
   border-radius: 2px;
   background: #343e4c;
   width: 340px;
-}
-.search input {
-  font-size: 13px;
-}
-.search kbd {
-  font-size: 9px;
-}
-footer {
-  height: 34px;
-  background: #171d25;
-  border-top: 1px solid #383f49;
-  padding: 0 16px;
-  font-size: 10px;
-}
-footer button {
-  font-size: 10px;
 }
 .primary {
   background: linear-gradient(90deg, #47bfff, #1a94e6);
@@ -1661,7 +1635,6 @@ footer button {
   border-radius: 0;
   border: 0;
   background: #182c40;
-  box-shadow: 0 2px 5px #0006;
 }
 .card-info {
   padding: 12px;
@@ -1706,6 +1679,8 @@ footer button {
 }
 .section-head h1 {
   font-size: 27px;
+  color: var(--st-bright);
+  letter-spacing: 0.01em;
 }
 .footnote {
   font-size: 11px;
@@ -1782,7 +1757,6 @@ body[data-page='game'] .search {
   border: 0;
   border-radius: 0;
   padding: 6px;
-  font-size: 11px;
 }
 .store-showcase {
   height: 390px;
@@ -1896,11 +1870,11 @@ body[data-page='game'] .search {
   margin: 14px 0 34px;
 }
 .carousel-dots button {
-  width: 16px;
-  height: 8px;
   border-radius: 4px;
   background: #ffffff35;
   padding: 0;
+  width: 15px;
+  height: 9px;
 }
 .carousel-dots .active {
   background: #e8f0f7;
@@ -2011,6 +1985,7 @@ body[data-page='game'] .search {
   font-size: 22px;
   margin: 0;
   font-weight: 400;
+  color: var(--st-bright);
 }
 .library-heading > .ghost {
   margin-left: auto;
@@ -2144,11 +2119,12 @@ body[data-page='game'] .search {
   text-align: left;
   padding: 0;
   background: none;
+  flex-basis: 216px;
 }
 .quick-rail > button > div {
-  height: 128px;
   overflow: hidden;
   background: #17232f;
+  height: 105px;
 }
 .quick-rail img {
   height: 100%;
@@ -2173,6 +2149,7 @@ body[data-page='game'] .search {
 }
 .recent-shelf .library-card {
   flex: 0 0 145px;
+  flex-basis: 118px;
 }
 .collection-sync {
   display: flex;
@@ -2182,20 +2159,21 @@ body[data-page='game'] .search {
 }
 .collection-sync > div {
   background: #202630;
-  padding: 10px 13px;
   border-left: 2px solid #4785ae;
   flex: 1;
   min-width: 240px;
+  padding: 8px 11px;
 }
 .collection-sync b {
   font-size: 12px;
   color: #bdd8ee;
 }
 .collection-sync span {
-  display: block;
-  font-size: 11px;
   color: #9cabbc;
   margin-top: 4px;
+  display: inline;
+  margin-left: 10px;
+  font-size: 10px;
 }
 .settings-card,
 .account-card {
@@ -2212,8 +2190,10 @@ body[data-page='game'] .search {
   border-color: #3b4b5d;
 }
 #details {
-  border-radius: 3px;
-  background: #1c2e41;
+  background: var(--st-store);
+  border: 0;
+  border-radius: 0;
+  box-shadow: 0 0 40px #000;
 }
 .detail-art {
   border-radius: 0;
@@ -2297,25 +2277,8 @@ body[data-page='game'] .search {
 .collection-sync {
   margin-bottom: 12px;
 }
-.collection-sync > div {
-  padding: 8px 11px;
-}
-.collection-sync span {
-  display: inline;
-  margin-left: 10px;
-  font-size: 10px;
-}
 .shelf-title {
   margin: 20px 0 12px;
-}
-.quick-rail > button {
-  flex-basis: 216px;
-}
-.quick-rail > button > div {
-  height: 105px;
-}
-.recent-shelf .library-card {
-  flex-basis: 118px;
 }
 .recent-shelf {
   padding-bottom: 8px;
@@ -2328,7 +2291,6 @@ body[data-page='game'] .search {
 .native-window .app-strip input {
   -webkit-app-region: no-drag;
 }
-
 /* Steam-style browse lists and factual preview data from the storefront offers. */
 .store-lists {
   margin: 30px 0 38px;
@@ -2510,7 +2472,6 @@ body[data-page='game'] .search {
 .store-hover.visible {
   display: block;
 }
-
 /* Library game view preserves the full sidebar and uses only observed activity. */
 body[data-page='library']:has(.library-game-page) .toolbar {
   display: none;
@@ -2579,6 +2540,7 @@ body[data-page='library']:has(.library-game-page) #main {
   font-weight: 500;
   font-size: 12px;
   color: #e7e8e9;
+  white-space: nowrap;
 }
 .library-game-launch span {
   font-size: 11px;
@@ -2661,7 +2623,7 @@ body[data-page='library']:has(.library-game-page) #main {
 }
 .library-game-providers button.active {
   background: #365c75;
-  box-shadow: inset 3px 0 #74c3ef;
+  box-shadow: inset 3px 0 0 var(--st-blue);
 }
 .library-game-providers button span {
   font-size: 11px;
@@ -2883,7 +2845,6 @@ body[data-page='library']:has(.library-game-page) #main {
   color: #cce8fa;
   padding: 2px 5px;
 }
-
 /* ---- 0.9: price comparison ---------------------------------------------- */
 .best-price {
   display: inline-block;
@@ -2938,7 +2899,6 @@ body[data-page='library']:has(.library-game-page) #main {
   margin: 0 0 6px;
   color: #c9e6aa;
 }
-
 /* ---- giveaways ---------------------------------------------------------- */
 .free-rail {
   display: flex;
@@ -2992,7 +2952,6 @@ body[data-page='library']:has(.library-game-page) #main {
 .free-card.soon .free-label {
   background: #3b4a5c;
 }
-
 /* ---- library ------------------------------------------------------------ */
 .library-sort {
   margin-left: auto;
@@ -3038,7 +2997,6 @@ body[data-page='library']:has(.library-game-page) #main {
 .merged-note button {
   margin-left: 8px;
 }
-
 /* ---- accounts ----------------------------------------------------------- */
 .account-list {
   list-style: none;
@@ -3092,7 +3050,6 @@ body[data-page='library']:has(.library-game-page) #main {
   display: block;
   margin-top: 10px;
 }
-
 /* ---- 0.10 -------------------------------------------------------------- */
 /* Off-screen cards are not laid out or painted; keeps large libraries fast. */
 .library-card,
@@ -3284,7 +3241,6 @@ body[data-page='library']:has(.library-game-page) #main {
   font-weight: 600;
   padding: 0 14px;
 }
-
 /* ---- Store front, modelled on the Steam store ---------------------------- */
 /* Proportions of the Steam carousel: the 616×353 capsule is never cropped. */
 .store-showcase {
@@ -3360,8 +3316,6 @@ body[data-page='library']:has(.library-game-page) #main {
   margin: 12px 0 26px;
 }
 .carousel-dots button {
-  width: 15px;
-  height: 9px;
   border-radius: 2px;
   background: #ffffff33;
 }
@@ -3447,35 +3401,10 @@ body[data-page='library']:has(.library-game-page) #main {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
-
 /* =========================================================================
    Steam theme: the whole window styled like the Steam client and store.
    Only appearance changes here; every control keeps its role and handler.
    ========================================================================= */
-:root {
-  --st-header: #171d25;
-  --st-store: #1b2838;
-  --st-text: #c7d5e0;
-  --st-bright: #ffffff;
-  --st-muted: #8f98a0;
-  --st-link: #67c1f5;
-  --st-blue: #1a9fff;
-  --st-chip: rgba(103, 193, 245, 0.2);
-  --st-green: linear-gradient(90deg, #75b022 5%, #588a1b 95%);
-  --st-green-hover: linear-gradient(90deg, #8ed629 5%, #6aa621 95%);
-  --st-lib: #1b1e24;
-  --st-lib-side: #23262e;
-  --st-lib-row: #2f333c;
-  --st-lib-active: #3d4450;
-  --st-sale: #4c6b22;
-  --st-sale-text: #beee11;
-}
-body {
-  background: var(--st-store);
-  color: var(--st-text);
-  font-family: 'Motiva Sans', Arial, 'Segoe UI', sans-serif;
-}
-
 /* ---- scrollbars ---- */
 ::-webkit-scrollbar {
   width: 12px;
@@ -3493,14 +3422,12 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background-color: #4f5866;
 }
-
 /* ---- top bar: Steam client header ---- */
 .topbar {
   background: var(--st-header);
   box-shadow: 0 1px 0 #000;
 }
 .topbar nav {
-  align-items: center;
   gap: 4px;
 }
 .nav {
@@ -3515,15 +3442,6 @@ body {
 }
 .nav.active {
   color: var(--st-blue);
-}
-.nav.active:after {
-  background: var(--st-blue);
-  height: 2px;
-}
-#wish-count {
-  background: #3d4450;
-  color: #dcdedf;
-  border-radius: 2px;
 }
 .nav-history {
   display: inline-flex;
@@ -3556,18 +3474,10 @@ body {
 .profile-chip.connected .status-dot {
   background: #57cbde;
 }
-
 /* ---- toolbar (breadcrumb + search) ---- */
 .toolbar {
   background: transparent;
   border-bottom: 1px solid #00000066;
-}
-#breadcrumb {
-  color: var(--st-bright);
-  letter-spacing: 0.06em;
-}
-#breadcrumb span {
-  color: var(--st-muted);
 }
 .search {
   background: #316282;
@@ -3582,7 +3492,6 @@ body {
 .search kbd {
   color: #9fc0d8;
 }
-
 /* ---- store pages: blue glow at the top, as on the Steam store ---- */
 body[data-page='store'] main,
 body[data-page='game'] main,
@@ -3615,9 +3524,7 @@ select {
   border-radius: 2px;
 }
 .section-head h1 {
-  color: var(--st-bright);
   font-weight: 400;
-  letter-spacing: 0.01em;
 }
 .section-head h2,
 .shelf-title h2 {
@@ -3632,7 +3539,6 @@ select {
 .shelf-title span {
   color: var(--st-muted);
 }
-
 /* ---- buttons ---- */
 .primary {
   background: linear-gradient(90deg, #06bfff 0%, #2d73ff 100%);
@@ -3677,7 +3583,6 @@ select {
 .ghost:hover:not(:disabled) {
   color: var(--st-bright);
 }
-
 /* ---- prices: Steam discount block ---- */
 .sale-percent {
   background: var(--st-sale);
@@ -3690,7 +3595,6 @@ select {
 del {
   color: #738895;
 }
-
 /* ---- tags ---- */
 .preview-tags span,
 .pill {
@@ -3703,7 +3607,6 @@ del {
   background: #1a9fff33;
   color: #9ad4ff;
 }
-
 /* ---- store cards ---- */
 .game-card,
 .sale-rail .game-card,
@@ -3767,7 +3670,6 @@ del {
 .store-hover .review-summary.positive {
   color: #2a6ea5;
 }
-
 /* ---- notices ---- */
 .notice {
   background: #00000040;
@@ -3779,14 +3681,7 @@ del {
   background: #4d2b0f66;
   border-color: #a0581d80;
 }
-
 /* ---- detail dialog: Steam store page ---- */
-#details {
-  background: var(--st-store);
-  border: 0;
-  border-radius: 0;
-  box-shadow: 0 0 40px #000;
-}
 #details::backdrop {
   background: #000000b3;
 }
@@ -3795,7 +3690,6 @@ del {
   padding: 12px;
   border-radius: 4px;
 }
-
 /* ---- library: Steam client library ---- */
 body[data-page='library'],
 body[data-page='favorites'],
@@ -3808,10 +3702,6 @@ body[data-page='favorites'] main,
 body[data-page='recent'] main,
 body[data-page='accounts'] main {
   background: radial-gradient(ellipse 90% 360px at 50% 0, #2b303b 0%, transparent 100%), var(--st-lib);
-}
-aside {
-  background: var(--st-lib-side);
-  border-right: 1px solid #000;
 }
 .library-home {
   background: #ffffff0d;
@@ -3874,7 +3764,6 @@ aside {
 }
 .library-heading h1 {
   font-weight: 400;
-  color: var(--st-bright);
 }
 .library-view {
   background: #00000040;
@@ -3908,7 +3797,6 @@ aside {
 .quick-rail button small {
   color: #8b929a;
 }
-
 /* ---- library game page: hero, play bar with stats, tabs ---- */
 .library-game-actions {
   background: linear-gradient(90deg, #0e141bcc, #1a1f27e6);
@@ -3945,7 +3833,6 @@ aside {
   color: #dcdedf;
   font-size: 13px;
   font-weight: 400;
-  white-space: nowrap;
 }
 .library-game-right .secondary {
   background: #ffffff14;
@@ -3979,9 +3866,7 @@ aside {
 }
 .library-game-providers button.active {
   background: #3d4450;
-  box-shadow: inset 3px 0 0 var(--st-blue);
 }
-
 /* ---- accounts / settings: Steam settings panels ---- */
 .account-card,
 .settings-card {
@@ -4004,20 +3889,7 @@ textarea {
 input[type='checkbox'] {
   accent-color: var(--st-blue);
 }
-
 /* ---- bottom bar: Steam client footer ---- */
-footer {
-  display: grid;
-  /* The side groups take what they need; the middle (downloads) gets the rest.
-     With "1fr auto 1fr" the right group got under half the width, and its
-     items wrapped onto a second line out of the 34px bar. */
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 16px;
-  background: linear-gradient(180deg, #1b1f26, #12151b);
-  border-top: 1px solid #000;
-  color: #8b929a;
-}
 .footer-add {
   justify-self: start;
   background: transparent;
@@ -4083,7 +3955,6 @@ footer #scan:hover {
     display: none;
   }
 }
-
 /* ---- "Рекомендовано на основе игр, в которые вы играете" ---------------- */
 .rec-section {
   margin: 4px 0 30px;
@@ -4213,7 +4084,6 @@ footer #scan:hover {
     grid-auto-columns: calc((100% - 15px) / 2);
   }
 }
-
 /* ---- carousel: why a game is shown (Рекомендуем / Новинка / Лидер продаж) ---- */
 .feature-label {
   display: inline-block;
@@ -4241,7 +4111,6 @@ footer #scan:hover {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
 /* ---- store list preview, like the right panel of the Steam store lists ---- */
 .store-list-body {
   align-items: start;
@@ -4262,6 +4131,12 @@ footer #scan:hover {
   margin: 0;
   font-size: 13px;
   line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  max-height: none;
+  height: auto;
 }
 .preview-facts {
   display: flex;
@@ -4304,15 +4179,6 @@ footer #scan:hover {
   object-fit: cover;
 }
 /* Description: four whole lines with an ellipsis, never cut through a line. */
-.store-list-preview > p {
-  display: -webkit-box;
-  -webkit-line-clamp: 4;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  max-height: none;
-  height: auto;
-}
-
 /* ---- store lists: one list for both stores or each store on its own ---- */
 .store-list-tabs {
   display: flex;
@@ -4348,7 +4214,6 @@ footer #scan:hover {
   font-size: 12px;
   color: #8f98a0;
 }
-
 /* ---- downloads (Steam and Epic Games), like the downloads page of Steam ---- */
 body[data-page='downloads'] main {
   background:
@@ -4492,7 +4357,6 @@ body[data-page='downloads'] main {
     display: none;
   }
 }
-
 /* ---- in game: green, as in Steam --------------------------------------- */
 .profile-chip.in-game {
   background: linear-gradient(90deg, #4c6b2299, #ffffff0f);
@@ -4514,7 +4378,6 @@ body[data-page='downloads'] main {
 #detail-stop:hover:not(:disabled) {
   filter: brightness(1.15);
 }
-
 /* ---- friends: like Steam's "Друзья и чат" ------------------------------- */
 .footer-friends {
   background: transparent;
@@ -4993,7 +4856,6 @@ body.bp-on {
 .bigpicture ~ #toast {
   z-index: 1001;
 }
-
 /* ---- like the Steam client: download graph, news, Workshop, activity, profile ---- */
 .speed-graph {
   background: var(--panel);
@@ -5364,7 +5226,6 @@ body.bp-on {
     height: 70px;
   }
 }
-
 /* ---- a friend's profile (СООБЩЕСТВО / ПРОФИЛЬ ДРУГА), laid out like a Steam profile ---- */
 .friend-game {
   display: grid;
@@ -5585,6 +5446,10 @@ body.bp-on {
 .sp-game .friend-game-art {
   width: 184px;
   height: 69px;
+  position: relative;
+  transition:
+    transform 0.12s,
+    box-shadow 0.12s;
 }
 .sp-game-name {
   font-size: 16px;
@@ -5635,6 +5500,7 @@ body.bp-on {
   display: block;
   padding: 0;
   background: none;
+  width: 100%;
 }
 .sp-now .friend-game-art {
   width: 100%;
@@ -5685,10 +5551,6 @@ body.bp-on {
     text-align: left;
   }
 }
-.sp-now {
-  width: 100%;
-}
-
 /* =========================================================================
    Left panel like the Steam client's library: header, source and filter,
    search, folding categories, game rows with friend marks, "add a game".
@@ -5802,13 +5664,6 @@ body.bp-on {
 .side-search .side-icon {
   background: transparent;
 }
-#library-tree {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding-bottom: 6px;
-}
 .tree-group {
   display: flex;
   align-items: center;
@@ -5896,7 +5751,6 @@ body.bp-on {
   color: #8bc53f;
 }
 .tree-game small {
-  flex-shrink: 0;
   font-size: 10px;
   color: #6b7280;
 }
@@ -5947,7 +5801,6 @@ body[data-page='friend'] .layout > aside {
     width: 232px;
   }
 }
-
 /* ---- top menu: sections with their pages in a drop-down ---- */
 .nav-group {
   position: relative;
@@ -6027,7 +5880,6 @@ body[data-page='friend'] .layout > aside {
 .footer-storage.active {
   color: var(--st-blue);
 }
-
 /* ---- "Играющие друзья" on a game page, like the Steam client ---- */
 .game-friends {
   display: flex;
@@ -6138,7 +5990,6 @@ body[data-page='friend'] .layout > aside {
   font-size: 11px;
   color: #8b929a;
 }
-
 /* ---- my profile, laid out like my Steam page ---- */
 .sp-xp {
   margin: 4px 0 0;
@@ -6204,7 +6055,6 @@ body[data-page='friend'] .layout > aside {
   color: #57cbde;
   opacity: 0.75;
 }
-
 /* ---- "Профиль" tabs: Steam / Epic Games ---- */
 .profile-tabs {
   position: relative;
@@ -6235,7 +6085,6 @@ body[data-page='friend'] .layout > aside {
   background: #313131;
   box-shadow: inset 0 -2px 0 #26bbff;
 }
-
 /* ---- an Epic Games account, in the look of the Epic Games Store ---- */
 .sp.epic-profile {
   background: radial-gradient(ellipse 80% 260px at 50% 0, #26bbff1f, transparent 70%), #101014;
@@ -6302,7 +6151,6 @@ body[data-page='friend'] .layout > aside {
   letter-spacing: 0.18em;
   color: #26bbff;
 }
-
 /* ---- profile showcase: cards in a row, the time on the art, the name below ---- */
 .sp-games {
   display: grid;
@@ -6327,14 +6175,10 @@ body[data-page='friend'] .layout > aside {
   background: none;
 }
 .sp-game .friend-game-art {
-  position: relative;
   width: 100%;
   height: auto;
   aspect-ratio: 460 / 215;
   box-shadow: 0 2px 6px #0008;
-  transition:
-    transform 0.12s,
-    box-shadow 0.12s;
 }
 .sp-game:hover .friend-game-art {
   transform: translateY(-2px);
@@ -6390,7 +6234,6 @@ body[data-page='friend'] .layout > aside {
     height: auto;
   }
 }
-
 /* ---- profile statistics: the label is the link ---- */
 .sp-stat-link {
   padding: 0;
@@ -6446,7 +6289,6 @@ body[data-page='friend'] .layout > aside {
 .sp-list .sp-game[hidden] {
   display: none;
 }
-
 /* ---- comments under a profile, as on Steam Community ---- */
 .sp-comments {
   margin-top: 16px;
@@ -6498,6 +6340,7 @@ body[data-page='friend'] .layout > aside {
   background: #2a3542;
   border: 0;
   border-radius: 0;
+  position: relative;
 }
 .sp-comment-avatar img {
   width: 100%;
@@ -6563,10 +6406,8 @@ body[data-page='friend'] .layout > aside {
   display: block;
   margin: 0 12px 12px;
 }
-
 /* A profile frame over the commenter's avatar, as on Steam */
 .sp-comment-avatar {
-  position: relative;
   overflow: visible;
 }
 .sp-comment-avatar img.sp-comment-frame {
@@ -6576,7 +6417,6 @@ body[data-page='friend'] .layout > aside {
   height: 124%;
   pointer-events: none;
 }
-
 /* ---- a profile sub-page (all games, badges) over the whole width ---- */
 .sp-body.sp-body-full {
   grid-template-columns: minmax(0, 1fr);
@@ -6625,7 +6465,6 @@ body[data-page='friend'] .layout > aside {
 .sp-badge .sp-badge-game {
   color: #67c1f5;
 }
-
 /* ---- a game's store page, as on the Steam store ---- */
 .store-game {
   --sg-link: #67c1f5;
