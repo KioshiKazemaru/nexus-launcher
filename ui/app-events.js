@@ -1,23 +1,36 @@
 // Nexus window, part 5 of 6: Clicks, changes, forms and the search field.
 // The parts are classic scripts loaded in order by index.html and share one
 // global scope (see eslint.config.cjs); app-boot.js starts the window.
-document.addEventListener('click', event =>
-  run(async () => {
-    const el = event.target.closest('button');
-    if (!el || el.disabled) return;
-    if (el.dataset.unwatch) {
+
+// What a click on a button does. A button is found by its data attributes first
+// (CLICK_BY_DATA, in order: the first test that passes wins), then by its
+// data-sg-act or id (CLICK_BY_ID). app-social.js has its own listener for the
+// buttons of the profile pages.
+const CLICK_BY_DATA = [
+  [
+    el => el.dataset.unwatch,
+    async el => {
       state = await call('removeWatch', el.dataset.unwatch);
       render();
-      return;
-    }
-    if (el.dataset.page) return setPage(el.dataset.page);
-    if (el.dataset.filter) {
+    },
+  ],
+  [
+    el => el.dataset.page,
+    async el => {
+      return setPage(el.dataset.page);
+    },
+  ],
+  [
+    el => el.dataset.filter,
+    async el => {
       page = 'library';
       filter = el.dataset.filter;
       render();
-      return;
-    }
-    if (el.dataset.libraryView) {
+    },
+  ],
+  [
+    el => el.dataset.libraryView,
+    async el => {
       state = api
         ? await call('libraryView', el.dataset.libraryView)
         : { ...state, settings: { ...state.settings, libraryView: el.dataset.libraryView } };
@@ -38,24 +51,32 @@ document.addEventListener('click', event =>
             render();
           })
           .catch(e => toast(e.message));
-      return;
-    }
-    if (el.dataset.friend) {
+    },
+  ],
+  [
+    el => el.dataset.friend,
+    async el => {
       showFriend(el.dataset.friend);
-      return;
-    }
-    if (el.dataset.installCancel !== undefined) {
+    },
+  ],
+  [
+    el => el.dataset.installCancel !== undefined,
+    async el => {
       installDlg = null;
       renderInstallDialog();
-      return;
-    }
-    if (el.dataset.installRoot !== undefined && installDlg?.opts) {
+    },
+  ],
+  [
+    el => el.dataset.installRoot !== undefined && installDlg?.opts,
+    async el => {
       const r = await call('chooseInstallRoot', installDlg.root);
       if (r) Object.assign(installDlg, r);
       renderInstallDialog();
-      return;
-    }
-    if (el.dataset.installClient !== undefined && installDlg) {
+    },
+  ],
+  [
+    el => el.dataset.installClient !== undefined && installDlg,
+    async el => {
       const gid = installDlg.id;
       installDlg = null;
       renderInstallDialog();
@@ -67,9 +88,11 @@ document.addEventListener('click', event =>
           ? 'Открыта библиотека Epic Games: выберите игру там.'
           : 'Установка передана Epic Games Launcher.'
       );
-      return;
-    }
-    if (el.dataset.installStart !== undefined && installDlg?.opts) {
+    },
+  ],
+  [
+    el => el.dataset.installStart !== undefined && installDlg?.opts,
+    async el => {
       const x = installDlg;
       x.busy = true;
       renderInstallDialog();
@@ -91,9 +114,11 @@ document.addEventListener('click', event =>
         renderInstallDialog();
         throw e;
       }
-      return;
-    }
-    if (el.dataset.installImport !== undefined && installDlg) {
+    },
+  ],
+  [
+    el => el.dataset.installImport !== undefined && installDlg,
+    async el => {
       const gid = installDlg.id;
       const r = await call('importGame', gid);
       if (r.result.how === 'canceled') return;
@@ -106,44 +131,56 @@ document.addEventListener('click', event =>
           ? `Игра найдена. Не хватает или повреждено файлов: ${r.result.missing} — Nexus докачает их.`
           : 'Игра найдена и добавлена — можно играть.'
       );
-      return;
-    }
-    if (el.dataset.openFolder) {
+    },
+  ],
+  [
+    el => el.dataset.openFolder,
+    async el => {
       await call('openGameFolder', el.dataset.openFolder);
-      return;
-    }
-    if (el.dataset.moveGame) {
+    },
+  ],
+  [
+    el => el.dataset.moveGame,
+    async el => {
       el.disabled = true;
       const r = await call('moveGame', el.dataset.moveGame);
       state = r.state;
       storageState.data = null;
       render();
       if (r.result.how === 'moving') toast(`Переносим игру в ${r.result.to}…`);
-      return;
-    }
-    if (el.id === 'storage-refresh') {
+    },
+  ],
+  [
+    el => el.id === 'storage-refresh',
+    async el => {
       storageState.data = null;
       render();
-      return;
-    }
-    if (el.id === 'library-move') {
+    },
+  ],
+  [
+    el => el.id === 'library-move',
+    async el => {
       el.disabled = true;
       const r = await call('moveGame', librarySelection);
       state = r.state;
       render();
       if (r.result.how === 'moving') toast(`Переносим игру в ${r.result.to}…`);
-      return;
-    }
-    if (el.dataset.dlcInstall) {
+    },
+  ],
+  [
+    el => el.dataset.dlcInstall,
+    async el => {
       el.disabled = true;
       const r = await call('installDlc', { id: librarySelection, appId: el.dataset.dlcInstall });
       state = r.state;
       ownedDlcState.delete(librarySelection);
       render();
       toast('Дополнение добавлено в загрузки.');
-      return;
-    }
-    if (el.dataset.downloadAction) {
+    },
+  ],
+  [
+    el => el.dataset.downloadAction,
+    async el => {
       el.disabled = true;
       const action = el.dataset.downloadAction;
       const r = await call('downloadControl', { id: el.dataset.downloadId || librarySelection, action });
@@ -155,82 +192,118 @@ document.addEventListener('click', event =>
             ? 'Обновление началось — прогресс на странице «Загрузки».'
             : 'Проверяем файлы игры…'
         );
-      return;
-    }
-    if (el.dataset.clientDownloads) {
+    },
+  ],
+  [
+    el => el.dataset.clientDownloads,
+    async el => {
       await call('openClientDownloads', el.dataset.clientDownloads);
-      return;
-    }
-    if (el.dataset.listStore) {
+    },
+  ],
+  [
+    el => el.dataset.listStore,
+    async el => {
       listStore = el.dataset.listStore;
       listPreviewId = null;
       render();
       requestBrowse(storeList);
-      return;
-    }
-    if (el.dataset.storeList) {
+    },
+  ],
+  [
+    el => el.dataset.storeList,
+    async el => {
       storeList = el.dataset.storeList;
       listPreviewId = null;
       render();
       requestBrowse(storeList);
       document.querySelector('.store-lists')?.scrollIntoView({ block: 'nearest' });
-      return;
-    }
-    if (el.hasAttribute('data-library-back')) {
+    },
+  ],
+  [
+    el => el.hasAttribute('data-library-back'),
+    async el => {
       librarySelection = null;
       render();
-      return;
-    }
-    if (el.dataset.libraryProvider) {
+    },
+  ],
+  [
+    el => el.dataset.libraryProvider,
+    async el => {
       libraryProvider = el.dataset.libraryProvider;
       if (api && !demo) state = await call('preferred', { id: librarySelection, provider: libraryProvider });
       else state.settings.preferred[librarySelection] = libraryProvider;
       render();
-      return;
-    }
-    if (el.dataset.storePlatform) {
+    },
+  ],
+  [
+    el => el.dataset.storePlatform,
+    async el => {
       storeProvider = el.dataset.storePlatform;
       featuredIndex = 0;
       render();
-      return;
-    }
-    if (el.dataset.featureStep) {
+    },
+  ],
+  [
+    el => el.dataset.featureStep,
+    async el => {
       const count = Math.max(1, featuredItems().length);
       featuredIndex = (featuredIndex + Number(el.dataset.featureStep) + count) % count;
       updateShowcase();
-      return;
-    }
-    if (el.dataset.featureIndex !== undefined) {
+    },
+  ],
+  [
+    el => el.dataset.featureIndex !== undefined,
+    async el => {
       featuredIndex = Number(el.dataset.featureIndex);
       updateShowcase();
-      return;
-    }
-    if (el.dataset.storeTag !== undefined) {
+    },
+  ],
+  [
+    el => el.dataset.storeTag !== undefined,
+    async el => {
       storeTag = storeTag === el.dataset.storeTag ? null : el.dataset.storeTag;
       render();
       $('#store-catalog')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      return;
-    }
-    if (el.dataset.storeTagClear !== undefined) {
+    },
+  ],
+  [
+    el => el.dataset.storeTagClear !== undefined,
+    async el => {
       storeTag = null;
       render();
-      return;
-    }
-    if (el.dataset.listFilter) {
+    },
+  ],
+  [
+    el => el.dataset.listFilter,
+    async el => {
       filter = el.dataset.listFilter;
       libraryLimit = LIBRARY_PAGE;
       render();
-      return;
-    }
-    if (el.dataset.detail) return showDetail(el.dataset.detail, !!el.closest('#library-tree'));
-    if (el.dataset.wish) return toggle('wishlist', el.dataset.wish);
-    if (el.dataset.login || el.dataset.loginAdd) {
+    },
+  ],
+  [
+    el => el.dataset.detail,
+    async el => {
+      return showDetail(el.dataset.detail, !!el.closest('#library-tree'));
+    },
+  ],
+  [
+    el => el.dataset.wish,
+    async el => {
+      return toggle('wishlist', el.dataset.wish);
+    },
+  ],
+  [
+    el => el.dataset.login || el.dataset.loginAdd,
+    async el => {
       const provider = el.dataset.login || el.dataset.loginAdd;
       await call('login', { provider, add: !!el.dataset.loginAdd });
       toast('Вход выполняется на официальной странице магазина.');
-      return;
-    }
-    if (el.dataset.claim) {
+    },
+  ],
+  [
+    el => el.dataset.claim,
+    async el => {
       const r = await call('claimFree', {
         appId: el.dataset.claim,
         account: $('#claim-account')?.value || undefined,
@@ -238,24 +311,30 @@ document.addEventListener('click', event =>
       toast(
         `Открыта страница раздачи в Epic Games${r?.account ? ' · аккаунт ' + r.account : ''}. Нажмите «Получить» и подтвердите заказ.`
       );
-      return;
-    }
-    if (el.dataset.collection !== undefined) {
+    },
+  ],
+  [
+    el => el.dataset.collection !== undefined,
+    async el => {
       collectionFilter = el.dataset.collection || null;
       page = 'library';
       librarySelection = null;
       libraryLimit = LIBRARY_PAGE;
       render();
-      return;
-    }
-    if (el.dataset.deleteCollection) {
+    },
+  ],
+  [
+    el => el.dataset.deleteCollection,
+    async el => {
       state = await call('deleteCollection', el.dataset.deleteCollection);
       collectionFilter = null;
       render();
       toast('Коллекция удалена. Игры остались в библиотеке.');
-      return;
-    }
-    if (el.dataset.uninstall) {
+    },
+  ],
+  [
+    el => el.dataset.uninstall,
+    async el => {
       const r = await call('uninstallGame', {
         id: el.dataset.gameId || librarySelection,
         provider: el.dataset.uninstall,
@@ -274,9 +353,11 @@ document.addEventListener('click', event =>
               ? 'Открыта библиотека Epic Games: удалите игру там.'
               : 'Запрос на удаление передан клиенту — подтвердите его там.'
         );
-      return;
-    }
-    if (el.dataset.clientAction) {
+    },
+  ],
+  [
+    el => el.dataset.clientAction,
+    async el => {
       const g = activeGames().find(x => x.id === librarySelection);
       const provider = selectedLibraryOffer(g)?.provider;
       const r = await call('clientAction', {
@@ -299,9 +380,11 @@ document.addEventListener('click', event =>
                   install: 'Установка передана клиенту.',
                 }[el.dataset.clientAction]
       );
-      return;
-    }
-    if (el.dataset.fullHistory) {
+    },
+  ],
+  [
+    el => el.dataset.fullHistory,
+    async el => {
       const list = await call('watchHistory', el.dataset.fullHistory);
       const box = el.closest('details')?.querySelector('ul');
       if (box)
@@ -311,22 +394,28 @@ document.addEventListener('click', event =>
           .map(h => `<li>${new Date(h.at).toLocaleString('ru-RU')} · ${esc(money(h))}</li>`)
           .join('');
       el.remove();
-      return;
-    }
-    if (el.dataset.linkA) {
+    },
+  ],
+  [
+    el => el.dataset.linkA,
+    async el => {
       state = await call('linkGames', { a: el.dataset.linkA, b: el.dataset.linkB });
       render();
       toast('Игры объединены');
-      return;
-    }
-    if (el.dataset.split) {
+    },
+  ],
+  [
+    el => el.dataset.split,
+    async el => {
       state = await call('splitGame', el.dataset.split);
       librarySelection = null;
       render();
       toast('Игра разделена по магазинам');
-      return;
-    }
-    if (el.dataset.saveKey || el.dataset.clearKey) {
+    },
+  ],
+  [
+    el => el.dataset.saveKey || el.dataset.clearKey,
+    async el => {
       const name = el.dataset.saveKey || el.dataset.clearKey;
       const input = document.querySelector(`[data-key-input="${name}"]`);
       const value = el.dataset.clearKey ? '' : input?.value.trim() || '';
@@ -334,317 +423,329 @@ document.addEventListener('click', event =>
       state = await call('setKey', { name, value });
       render();
       toast(value ? 'Ключ сохранён' : 'Ключ удалён');
-      return;
-    }
-    if (el.dataset.browser) {
+    },
+  ],
+  [
+    el => el.dataset.browser,
+    async el => {
       await call('browser', el.dataset.browser);
       toast(
         el.dataset.browser === 'epic'
           ? 'Войдите в браузере, затем скопируйте authorizationCode со страницы и вставьте его в поле «Код из браузера».'
           : 'Открыт системный браузер. Его сессия хранится отдельно от Nexus.'
       );
-      return;
-    }
-    if (el.dataset.forget) {
+    },
+  ],
+  [
+    el => el.dataset.forget,
+    async el => {
       state = await call('forget', el.dataset.forget);
       render();
       toast('Сессия Nexus удалена. Официальный клиент остаётся в своём аккаунте.');
-      return;
-    }
-    if (el.dataset.buy) return buy(el.dataset.buy);
-
-    if (el.dataset.sgMore !== undefined) {
+    },
+  ],
+  [
+    el => el.dataset.buy,
+    async el => {
+      return buy(el.dataset.buy);
+    },
+  ],
+  [
+    el => el.dataset.sgMore !== undefined,
+    async el => {
       gameAboutOpen = true;
       renderDetail();
-      return;
-    }
-    if (el.dataset.sgOs) {
+    },
+  ],
+  [
+    el => el.dataset.sgOs,
+    async el => {
       gameReqOs = el.dataset.sgOs;
       renderDetail();
-      return;
-    }
-    if (el.dataset.gameShot !== undefined) {
+    },
+  ],
+  [
+    el => el.dataset.gameShot !== undefined,
+    async el => {
       gameShot = Number(el.dataset.gameShot) || 0;
       renderDetail();
-      return;
+    },
+  ],
+];
+// No prototype: an id such as "constructor" finds nothing.
+const CLICK_BY_ID = Object.create(null);
+CLICK_BY_ID['library-store'] = async el => {
+  const id = librarySelection;
+  await setPage('store');
+  showDetail(id);
+};
+CLICK_BY_ID['library-play'] = async el => {
+  {
+    const lg = activeGames().find(g => g.id === librarySelection);
+    if (wantsInstallWindow(lg, selectedLibraryOffer(lg)?.provider))
+      return openInstallDialog(librarySelection);
+  }
+  el.disabled = true;
+  try {
+    const r = await call('play', {
+      id: librarySelection,
+      provider: selectedLibraryOffer(activeGames().find(g => g.id === librarySelection))?.provider,
+    });
+    state = r.state || r;
+    toast(playToast(r.result));
+  } finally {
+    render();
+  }
+};
+CLICK_BY_ID['epic-sync'] = async el => {
+  el.disabled = true;
+  try {
+    const r = await call('epicSyncSaves', librarySelection);
+    state = r.state;
+    toast(
+      r.result?.supported
+        ? 'Сохранения синхронизированы с облаком Epic.'
+        : 'Эта игра не использует облачные сохранения Epic.'
+    );
+  } finally {
+    el.disabled = false;
+  }
+};
+CLICK_BY_ID['library-hide'] = async el => {
+  const g = activeGames().find(x => x.id === librarySelection);
+  state = await call('setHidden', { id: librarySelection, hidden: !g?.hidden });
+  toast(
+    g?.hidden ? 'Игра снова видна в библиотеке' : 'Игра скрыта. Её можно показать флажком «Показать скрытые».'
+  );
+  if (!g?.hidden && !showHidden) librarySelection = null;
+  render();
+};
+CLICK_BY_ID['import-collections'] = async el => {
+  el.disabled = true;
+  try {
+    const r = await call('importSteamCollections');
+    state = r.state;
+    render();
+    toast(
+      `Коллекций: ${r.report.collections}, скрытых: +${r.report.hidden}, избранных: +${r.report.favorites}${r.report.errors.length ? '. ' + r.report.errors.join('; ') : ''}`
+    );
+  } finally {
+    el.disabled = false;
+  }
+};
+CLICK_BY_ID['export-backup'] = async el => {
+  const r = await call('exportBackup');
+  if (r) toast('Резервная копия сохранена: ' + r.file);
+};
+CLICK_BY_ID['import-backup'] = async el => {
+  const r = await call('importBackup');
+  if (r?.result) {
+    state = r.state;
+    render();
+    toast('Настройки восстановлены');
+  }
+};
+CLICK_BY_ID['save-diagnostics'] = async el => {
+  const r = await call('saveDiagnostics');
+  if (r) toast('Диагностика сохранена: ' + r.file + '. Токены и ключи в ней скрыты.');
+};
+CLICK_BY_ID['open-logs'] = async el => {
+  await call('openLogs');
+};
+CLICK_BY_ID['library-favorite'] = async el => {
+  await toggle('favorites', librarySelection);
+};
+CLICK_BY_ID['library-wish'] = async el => {
+  await toggle('wishlist', librarySelection);
+};
+CLICK_BY_ID['sync-libraries'] = async el => {
+  el.disabled = true;
+  try {
+    state = await call('syncLibraries');
+    render();
+  } finally {
+    el.disabled = false;
+  }
+};
+CLICK_BY_ID['import-legendary'] = async el => {
+  el.disabled = true;
+  try {
+    state = await call('importLegendary');
+    render();
+    toast('Список Epic импортирован для подключённого аккаунта.');
+  } finally {
+    el.disabled = false;
+  }
+};
+CLICK_BY_ID['library-more'] = async el => {
+  libraryLimit += LIBRARY_PAGE;
+  render();
+};
+CLICK_BY_ID['import-wishlists'] = async el => {
+  el.disabled = true;
+  try {
+    const r = await call('importWishlists');
+    state = r.state;
+    render();
+    toast(
+      `Добавлено в желаемое: Steam ${r.report.steam}, Epic ${r.report.epic}${r.report.errors.length ? '. ' + r.report.errors.join('; ') : ''}`
+    );
+  } finally {
+    el.disabled = false;
+  }
+};
+CLICK_BY_ID['check-update'] = async el => {
+  state = await call('checkUpdate');
+  render();
+};
+CLICK_BY_ID['install-update'] = async el => {
+  await call('installUpdate');
+};
+CLICK_BY_ID['show-sales'] = async el => {
+  priceFilter.sale = true;
+  render();
+  document.querySelector('.price-controls')?.scrollIntoView({ behavior: 'smooth' });
+};
+CLICK_BY_ID['refresh-home'] = async el => {
+  await requestHome(true);
+};
+CLICK_BY_ID['refresh-detail-price'] = async el => {
+  el.disabled = true;
+  await refreshDetailPrice(true);
+};
+CLICK_BY_ID['watch-price'] = async el => {
+  state = await call('watchPrice', { id: detailId, provider: selectedProvider });
+  toast('Отслеживание включено. Цены будут проверяться каждый час, пока Nexus открыт.');
+};
+CLICK_BY_ID['open-tracking'] = async el => {
+  await setPage('tracking');
+};
+CLICK_BY_ID['check-prices'] = async el => {
+  el.disabled = true;
+  el.textContent = 'Проверяем…';
+  try {
+    state = await call('checkPrices');
+    render();
+  } finally {
+    el.disabled = false;
+  }
+};
+CLICK_BY_ID['retry-search'] = async el => {
+  await searchCatalog();
+};
+CLICK_BY_ID['more-results'] = async el => {
+  await searchCatalog(true);
+};
+CLICK_BY_ID['refresh-accounts'] = async el => {
+  el.disabled = true;
+  try {
+    state = await call('refreshAccounts');
+    render();
+  } finally {
+    el.disabled = false;
+  }
+};
+CLICK_BY_ID['refresh-recs'] = async el => {
+  return requestRecommendations(true);
+};
+for (const id of ['library-stop', 'detail-stop'])
+  CLICK_BY_ID[id] = async el => {
+    el.disabled = true;
+    el.textContent = 'Закрываем…';
+    const id = el.id === 'library-stop' ? librarySelection : detailId;
+    const r = await call('closeGame', id);
+    state = r.state || state;
+    if (r.result === 'kept') toast('Игра продолжает работать.');
+    render();
+    renderDetail();
+    return;
+  };
+CLICK_BY_ID['friends-toggle'] = async el => {
+  return call('openFriendsWindow');
+};
+CLICK_BY_ID['check-game-updates'] = async el => {
+  el.disabled = true;
+  const r = await call('checkUpdates');
+  state = r.state;
+  render();
+  const n = Object.keys(r.result || {}).length;
+  toast(
+    n ? `Обновления есть у ${n} ${plural(n, 'игры', 'игр', 'игр')}` : 'Все установленные игры Epic обновлены'
+  );
+  return;
+};
+for (const id of ['nav-back', 'nav-forward'])
+  CLICK_BY_ID[id] = async el => {
+    return goHistory(el.id === 'nav-back' ? -1 : 1);
+  };
+for (const id of ['scan', 'empty-scan'])
+  CLICK_BY_ID[id] = async el => {
+    el.disabled = true;
+    try {
+      state = await call('scan');
+      demo = false;
+      render();
+      toast(`Найдено игр: ${state.games.length}`);
+    } finally {
+      el.disabled = false;
     }
+  };
+for (const id of ['add-game', 'footer-add'])
+  CLICK_BY_ID[id] = async el => {
+    state = await call('add');
+    demo = false;
+    page = 'library';
+    render();
+  };
+CLICK_BY_ID['demo'] = async el => {
+  demo = true;
+  page = 'library';
+  filter = 'all';
+  query = '';
+  $('#search').value = '';
+  render();
+};
+CLICK_BY_ID['exit-demo'] = async el => {
+  demo = false;
+  if (api) state = await call('state');
+  render();
+};
+CLICK_BY_ID['steam-root'] = async el => {
+  state = await call('steamRoot');
+  render();
+};
+CLICK_BY_ID['buy-selected'] = async el => {
+  await buy(selectedProvider);
+};
+CLICK_BY_ID['detail-wish'] = async el => {
+  await toggle('wishlist', detailId);
+  renderDetail();
+};
+CLICK_BY_ID['favorite'] = async el => {
+  await toggle('favorites', detailId);
+  renderDetail();
+};
+CLICK_BY_ID['play'] = async el => {
+  if (wantsInstallWindow(game(detailId), selectedProvider)) {
+    return openInstallDialog(detailId);
+  }
+  el.disabled = true;
+  try {
+    const r = await call('play', { id: detailId, provider: selectedProvider });
+    state = r.state || r;
+    render();
+    toast(playToast(r.result));
+  } finally {
+    renderDetail();
+  }
+};
+document.addEventListener('click', event =>
+  run(async () => {
+    const el = event.target.closest('button');
+    if (!el || el.disabled) return;
+    for (const [test, act] of CLICK_BY_DATA) if (test(el)) return act(el);
     if (el.dataset.sgProvider) selectedProvider = el.dataset.sgProvider;
-    switch (el.dataset.sgAct || el.id) {
-      case 'library-store': {
-        const id = librarySelection;
-        await setPage('store');
-        showDetail(id);
-        break;
-      }
-      case 'library-play':
-        {
-          const lg = activeGames().find(g => g.id === librarySelection);
-          if (wantsInstallWindow(lg, selectedLibraryOffer(lg)?.provider))
-            return openInstallDialog(librarySelection);
-        }
-        el.disabled = true;
-        try {
-          const r = await call('play', {
-            id: librarySelection,
-            provider: selectedLibraryOffer(activeGames().find(g => g.id === librarySelection))?.provider,
-          });
-          state = r.state || r;
-          toast(playToast(r.result));
-        } finally {
-          render();
-        }
-        break;
-      case 'epic-sync': {
-        el.disabled = true;
-        try {
-          const r = await call('epicSyncSaves', librarySelection);
-          state = r.state;
-          toast(
-            r.result?.supported
-              ? 'Сохранения синхронизированы с облаком Epic.'
-              : 'Эта игра не использует облачные сохранения Epic.'
-          );
-        } finally {
-          el.disabled = false;
-        }
-        break;
-      }
-      case 'library-hide': {
-        const g = activeGames().find(x => x.id === librarySelection);
-        state = await call('setHidden', { id: librarySelection, hidden: !g?.hidden });
-        toast(
-          g?.hidden
-            ? 'Игра снова видна в библиотеке'
-            : 'Игра скрыта. Её можно показать флажком «Показать скрытые».'
-        );
-        if (!g?.hidden && !showHidden) librarySelection = null;
-        render();
-        break;
-      }
-      case 'import-collections': {
-        el.disabled = true;
-        try {
-          const r = await call('importSteamCollections');
-          state = r.state;
-          render();
-          toast(
-            `Коллекций: ${r.report.collections}, скрытых: +${r.report.hidden}, избранных: +${r.report.favorites}${r.report.errors.length ? '. ' + r.report.errors.join('; ') : ''}`
-          );
-        } finally {
-          el.disabled = false;
-        }
-        break;
-      }
-      case 'export-backup': {
-        const r = await call('exportBackup');
-        if (r) toast('Резервная копия сохранена: ' + r.file);
-        break;
-      }
-      case 'import-backup': {
-        const r = await call('importBackup');
-        if (r?.result) {
-          state = r.state;
-          render();
-          toast('Настройки восстановлены');
-        }
-        break;
-      }
-      case 'save-diagnostics': {
-        const r = await call('saveDiagnostics');
-        if (r) toast('Диагностика сохранена: ' + r.file + '. Токены и ключи в ней скрыты.');
-        break;
-      }
-      case 'open-logs':
-        await call('openLogs');
-        break;
-      case 'library-favorite':
-        await toggle('favorites', librarySelection);
-        break;
-      case 'library-wish':
-        await toggle('wishlist', librarySelection);
-        break;
-      case 'sync-libraries':
-        el.disabled = true;
-        try {
-          state = await call('syncLibraries');
-          render();
-        } finally {
-          el.disabled = false;
-        }
-        break;
-      case 'import-legendary':
-        el.disabled = true;
-        try {
-          state = await call('importLegendary');
-          render();
-          toast('Список Epic импортирован для подключённого аккаунта.');
-        } finally {
-          el.disabled = false;
-        }
-        break;
-      case 'library-more':
-        libraryLimit += LIBRARY_PAGE;
-        render();
-        break;
-      case 'import-wishlists': {
-        el.disabled = true;
-        try {
-          const r = await call('importWishlists');
-          state = r.state;
-          render();
-          toast(
-            `Добавлено в желаемое: Steam ${r.report.steam}, Epic ${r.report.epic}${r.report.errors.length ? '. ' + r.report.errors.join('; ') : ''}`
-          );
-        } finally {
-          el.disabled = false;
-        }
-        break;
-      }
-      case 'check-update':
-        state = await call('checkUpdate');
-        render();
-        break;
-      case 'install-update':
-        await call('installUpdate');
-        break;
-      case 'show-sales':
-        priceFilter.sale = true;
-        render();
-        document.querySelector('.price-controls')?.scrollIntoView({ behavior: 'smooth' });
-        break;
-      case 'refresh-home':
-        await requestHome(true);
-        break;
-      case 'refresh-detail-price':
-        el.disabled = true;
-        await refreshDetailPrice(true);
-        break;
-      case 'watch-price':
-        state = await call('watchPrice', { id: detailId, provider: selectedProvider });
-        toast('Отслеживание включено. Цены будут проверяться каждый час, пока Nexus открыт.');
-        break;
-      case 'open-tracking':
-        await setPage('tracking');
-        break;
-      case 'check-prices':
-        el.disabled = true;
-        el.textContent = 'Проверяем…';
-        try {
-          state = await call('checkPrices');
-          render();
-        } finally {
-          el.disabled = false;
-        }
-        break;
-      case 'retry-search':
-        await searchCatalog();
-        break;
-      case 'more-results':
-        await searchCatalog(true);
-        break;
-      case 'refresh-accounts':
-        el.disabled = true;
-        try {
-          state = await call('refreshAccounts');
-          render();
-        } finally {
-          el.disabled = false;
-        }
-        break;
-      case 'refresh-recs':
-        return requestRecommendations(true);
-      case 'library-stop':
-      case 'detail-stop': {
-        el.disabled = true;
-        el.textContent = 'Закрываем…';
-        const id = el.id === 'library-stop' ? librarySelection : detailId;
-        const r = await call('closeGame', id);
-        state = r.state || state;
-        if (r.result === 'kept') toast('Игра продолжает работать.');
-        render();
-        renderDetail();
-        return;
-      }
-      case 'friends-toggle':
-        return call('openFriendsWindow');
-      case 'check-game-updates': {
-        el.disabled = true;
-        const r = await call('checkUpdates');
-        state = r.state;
-        render();
-        const n = Object.keys(r.result || {}).length;
-        toast(
-          n
-            ? `Обновления есть у ${n} ${plural(n, 'игры', 'игр', 'игр')}`
-            : 'Все установленные игры Epic обновлены'
-        );
-        return;
-      }
-      case 'nav-back':
-      case 'nav-forward':
-        return goHistory(el.id === 'nav-back' ? -1 : 1);
-      case 'scan':
-      case 'empty-scan':
-        el.disabled = true;
-        try {
-          state = await call('scan');
-          demo = false;
-          render();
-          toast(`Найдено игр: ${state.games.length}`);
-        } finally {
-          el.disabled = false;
-        }
-        break;
-      case 'add-game':
-      case 'footer-add':
-        state = await call('add');
-        demo = false;
-        page = 'library';
-        render();
-        break;
-      case 'demo':
-        demo = true;
-        page = 'library';
-        filter = 'all';
-        query = '';
-        $('#search').value = '';
-        render();
-        break;
-      case 'exit-demo':
-        demo = false;
-        if (api) state = await call('state');
-        render();
-        break;
-      case 'steam-root':
-        state = await call('steamRoot');
-        render();
-        break;
-      case 'buy-selected':
-        await buy(selectedProvider);
-        break;
-      case 'detail-wish':
-        await toggle('wishlist', detailId);
-        renderDetail();
-        break;
-      case 'favorite':
-        await toggle('favorites', detailId);
-        renderDetail();
-        break;
-      case 'play':
-        if (wantsInstallWindow(game(detailId), selectedProvider)) {
-          return openInstallDialog(detailId);
-        }
-        el.disabled = true;
-        try {
-          const r = await call('play', { id: detailId, provider: selectedProvider });
-          state = r.state || r;
-          render();
-          toast(playToast(r.result));
-        } finally {
-          renderDetail();
-        }
-        break;
-    }
+    return CLICK_BY_ID[el.dataset.sgAct || el.id]?.(el);
   })
 );
 document.addEventListener('change', event =>
