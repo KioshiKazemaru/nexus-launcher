@@ -36,10 +36,11 @@ function steamError(e) {
 }
 
 // Signing in to Steam's chat servers while the Steam client runs makes Steam
-// show the whole account offline in the client (friends turn grey until the
-// status is switched by hand), whatever status Nexus sets afterwards. So with
-// the Steam client open Nexus stays off the chat servers: friends' statuses
-// come from the Web API and messages are written in the Steam client.
+// show the account offline in the client, however the sign-in is made: tried
+// as steam-user signs in, with "online" set right after it, and exactly like
+// steamcommunity.com/chat (ui_mode 3, qos_level 2, "online" not set by the
+// user). So with the Steam client open Nexus stays off the chat servers:
+// friends' statuses come from the Web API, history and new messages too.
 const STEAM_CLIENT_OPEN =
   'Клиент Steam запущен — переписка Steam идёт в нём (вход Nexus в чат Steam сбросил бы ваш статус в клиенте)';
 
@@ -122,7 +123,7 @@ class SteamCm extends EventEmitter {
       const r = await client.chat.sendFriendMessage(friendId, text);
       return +r?.server_timestamp || Date.now();
     } catch (e) {
-      throw Error(steamError(e));
+      throw Object.assign(Error(steamError(e)), { eresult: Number(e?.eresult) || 0 });
     }
   }
   ack(friendId) {
@@ -271,8 +272,13 @@ class EpicXmpp extends EventEmitter {
 }
 
 class ChatService {
-  constructor(ctx, { WebSocketImpl, SteamUserImpl } = {}) {
+  constructor(ctx, { WebSocketImpl, SteamUserImpl, steamCef } = {}) {
     this.ctx = ctx;
+    this.steamCef = steamCef || require('./steam-cef.cjs');
+    // New messages straight from a running Steam client (no polling delay).
+    this.steamEvents = this.steamCef.SteamClientEvents
+      ? new this.steamCef.SteamClientEvents({ onMessage: e => this.onSteamClientMessage(e), log: ctx.log })
+      : null;
     this.WebSocketImpl = WebSocketImpl;
     this.SteamUserImpl = SteamUserImpl;
     this.file = new JsonFile(ctx.storage.file('chat-history.json'), 1500);
@@ -296,14 +302,23 @@ class ChatService {
     this.timer = null;
     for (const x of this.epic.values()) x.stop();
     for (const x of this.steamCm.values()) x.stop();
+    this.steamEvents?.close();
     this.file.flushSync();
   }
   schedule(ms) {
     clearTimeout(this.timer);
     this.timer = setTimeout(
       () =>
-        this.pollSteam()
-          .catch(e => this.ctx.log.debug?.('chat', `steam poll: ${e.message}`))
+        this.watchSteamClient()
+          .catch(() => {})
+          .then(() => this.pollSteam())
+          .then(() => (this.pollError = ''))
+          .catch(e => {
+            // Each new reason once in the log; the same one again only in debug.
+            if (e.message !== this.pollError) this.ctx.log.warn('chat', `steam poll: ${e.message}`);
+            else this.ctx.log.debug?.('chat', `steam poll: ${e.message}`);
+            this.pollError = e.message;
+          })
           .finally(() => this.schedule(this.ctx.social?.anyOpen() ? POLL_OPEN_MS : POLL_IDLE_MS)),
       ms
     );
@@ -534,34 +549,8 @@ class ChatService {
         at = await this.steam(account).send(k.friendId, clean);
       } catch (e) {
         if (e.code !== 'STEAM_CLIENT_OPEN') throw e;
-        // The Steam client is open: send through the Web API (no chat sign-in,
-        // so the client keeps its status); the client shows the message too.
-        try {
-          const r = await this.steamApi(
-            account,
-            'SendMessage',
-            {
-              steamid: k.friendId,
-              chat_entry_type: 1,
-              message: clean,
-              contains_bbcode: false,
-              echo_to_sender: true,
-            },
-            true
-          );
-          at = (+r?.response?.server_timestamp || 0) * 1000 || Date.now();
-          this.ctx.log.info('chat', 'steam: sent through the Web API (the Steam client is open)');
-        } catch (webErr) {
-          this.ctx.log.warn('chat', `steam web send: ${webErr.message}`);
-          if (/нет доступа|слишком много/.test(webErr.message)) throw webErr;
-          // Last resort: the conversation opens in the client with the text ready to paste.
-          const { clipboard, shell } = require('electron');
-          clipboard.writeText(clean);
-          await shell.openExternal(`steam://friends/message/${k.friendId}`);
-          throw Error(
-            'Steam не принял сообщение — чат с другом открыт в клиенте Steam, текст скопирован: вставьте его (Ctrl+V)'
-          );
-        }
+        // The Steam client is open: it sends the message itself (see steam-cef.cjs).
+        at = await this.sendViaSteamClient(k.friendId, clean);
       }
       const seen = this.steamSeen.get(k.accountId);
       if (seen) seen.set(k.friendId, Math.max(seen.get(k.friendId) || 0, at));
@@ -570,6 +559,62 @@ class ChatService {
     this.store(k.key, c.addToHistory(this.history[k.key], msg));
     this.emit({ type: 'message', conv: k.key, message: msg });
     return msg;
+  }
+  // Through the Steam client's DevTools port; the first time the port is
+  // switched on and Steam restarted quietly (only while no game runs).
+  async sendViaSteamClient(friendId, text) {
+    const cef = this.steamCef;
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    let restarted = false;
+    for (let i = 0; ; i++) {
+      try {
+        const at = await cef.sendFriendMessage(friendId, text);
+        this.ctx.log.info('chat', 'steam: sent through the Steam client');
+        return at;
+      } catch (e) {
+        if (e.code === 'NO_PORT' && !restarted) {
+          restarted = true;
+          await this.openSteamPort();
+        } else if ((e.code !== 'NO_PORT' && e.code !== 'NOT_READY') || i >= 60) {
+          this.ctx.log.warn('chat', `steam client send: ${e.message}`);
+          throw e.eresult ? e : Error(`Не отправлено: ${e.message}`);
+        }
+        await wait(1500);
+      }
+    }
+  }
+  async openSteamPort() {
+    const exe = this.ctx.actions?.steamExe?.();
+    if (!exe) throw Error('Steam не найден');
+    const dir = path.dirname(exe);
+    if (!this.steamCef.enabled(dir)) {
+      this.steamCef.enable(dir);
+      this.ctx.log.info('chat', 'steam: the DevTools port of the Steam client is switched on');
+    }
+    if ((await this.ctx.actions.runningSteamApp?.().catch(() => '0')) !== '0')
+      throw Error('Steam сейчас в игре: отправка из Nexus заработает после перезапуска Steam');
+    // Steam reads the switch at start: a quiet restart (tray only).
+    await this.ctx.steamInstall.stopSteam(exe);
+    this.ctx.steamInstall.startSteam(exe);
+    this.ctx.log.info('chat', 'steam: restarted for the DevTools port');
+  }
+  // Live messages only with a Steam account in Nexus and the Steam client running.
+  async watchSteamClient() {
+    if (!this.steamEvents || this.steamEvents.connected) return;
+    // The app's own tests never reach the real Steam client of the PC.
+    if (process.env.NEXUS_TEST === '1') return;
+    if (!this.ctx.accounts.connected('steam').length) return;
+    if (!(await this.ctx.actions?.processRunning?.('steam.exe'))) return;
+    await this.steamEvents.ensure();
+  }
+  onSteamClientMessage(e) {
+    if (!this.ctx.accounts.connected('steam').some(a => a.id === e.accountId)) return;
+    const text = c.steamText(e.text);
+    if (!text) return;
+    // The poll then sees nothing new in this conversation.
+    const seen = this.steamSeen.get(e.accountId);
+    if (seen) seen.set(e.friendId, Math.max(seen.get(e.friendId) || 0, e.at));
+    this.received('steam', e.accountId, e.friendId, text, e.at, e.from);
   }
   received(provider, accountId, friendId, text, at, from = 'them') {
     const key = c.convKey(provider, accountId, friendId);

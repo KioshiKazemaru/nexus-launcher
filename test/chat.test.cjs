@@ -218,9 +218,11 @@ class FakeSteamUser extends EventEmitter {
   static EConnectionProtocol = { WebSocket: 2 };
   static last = null;
   static fail = null; // EResult for the next send
+  static EMsg = { ClientLogon: 5514, ClientChangeStatus: 716 };
   constructor(options) {
     super();
     this.options = options;
+    this.msgs = [];
     this.sent = [];
     this.acked = [];
     FakeSteamUser.last = this;
@@ -233,8 +235,13 @@ class FakeSteamUser extends EventEmitter {
     chat.ackFriendMessage = id => this.acked.push(String(id));
     this.chat = chat;
   }
+  _send(header, body) {
+    this.msgs.push([header, body]);
+  }
   logOn(details) {
     this.details = details;
+    // steam-user's own sign-in message for a web logon token
+    this._send(5514, { web_logon_nonce: details.webLogonToken, ui_mode: 4, client_os_type: 4294966596 });
     setImmediate(() =>
       details.webLogonToken === 'web-token'
         ? this.emit('loggedOn', {})
@@ -300,7 +307,8 @@ function steamChat({ webToken = 'web-token', loggedIn = true } = {}) {
     },
   };
   FakeSteamUser.fail = null;
-  const chat = new ChatService(ctx, { SteamUserImpl: FakeSteamUser });
+  // Never the real Steam client of this PC.
+  const chat = new ChatService(ctx, { SteamUserImpl: FakeSteamUser, steamCef: fakeCef({ port: false }) });
   chat.steamToken = async () => 'tok';
   return {
     chat,
@@ -452,58 +460,247 @@ test('chat history: an old plain-text file is encrypted; without encryption noth
   assert.equal(fs.readFileSync(file, 'utf8'), '{}');
 });
 
-test('Steam chat with the Steam client open: Nexus stays off the chat servers; a refused Web API send opens the chat in Steam', async () => {
-  // Signing in to the chat servers greys out a running Steam client (all friends offline).
-  const { __test } = require('electron');
-  const t = steamChat({ loggedIn: false });
+function fakeCef({ port = true, fail = null } = {}) {
+  const cef = {
+    port,
+    on: false,
+    sent: [],
+    enabled: () => cef.on,
+    enable: dir => ((cef.on = true), (cef.dir = dir)),
+    async sendFriendMessage(id, text) {
+      if (!cef.port) throw Object.assign(Error('порт клиента Steam закрыт'), { code: 'NO_PORT' });
+      if (fail) throw fail;
+      cef.sent.push([id, text]);
+      return 1700000000000;
+    },
+  };
+  return cef;
+}
+
+test('Steam chat with the Steam client open: Nexus stays off the chat servers; the client sends it through its port', async () => {
+  // Any sign-in to the chat servers shows the account offline in a running Steam client.
+  const t = steamChat();
   t.chat.ctx.actions = { processRunning: async name => name === 'steam.exe' };
+  t.chat.steamCef = fakeCef();
   const key = c.convKey('steam', ME, FRIEND);
   FakeSteamUser.last = null;
-  const opened = __test.opened.length;
-  await assert.rejects(t.chat.send(key, ' привет '), /Steam не принял сообщение.*Ctrl\+V/);
-  assert.equal(FakeSteamUser.last, null, 'no sign-in to Steam CM');
-  assert.deepEqual(__test.opened.slice(opened), [`steam://friends/message/${FRIEND}`]);
-  assert.equal(__test.clipboard.text, 'привет');
-  assert.equal(t.chat.history[key], undefined, 'nothing pretends to be sent');
-  const state = t.events.filter(e => e.type === 'chat-state').at(-1);
-  assert.equal(state.state, 'client');
-  // Opening the friends window does not sign in either, and logs no warning.
   t.chat.connectChats();
   await new Promise(r => setImmediate(r));
-  assert.equal(FakeSteamUser.last, null);
+  const msg = await t.chat.send(key, ' привет ');
+  assert.equal(FakeSteamUser.last, null, 'no sign-in to Steam CM');
+  assert.deepEqual(t.chat.steamCef.sent, [[FRIEND, 'привет']]);
+  assert.deepEqual(msg, { from: 'me', text: 'привет', at: 1700000000000 });
+  assert.equal(t.chat.history[key].at(-1).text, 'привет');
+  assert.equal(t.events.filter(e => e.type === 'chat-state').at(-1).state, 'client');
 });
 
-test('Steam chat with the Steam client open: the message goes through the Web API, no chat sign-in', async () => {
-  const { __test } = require('electron');
-  const t = steamChat({ loggedIn: false });
-  t.chat.ctx.actions = { processRunning: async name => name === 'steam.exe' };
-  const fetchBefore = t.chat.ctx.publicFetch;
-  t.chat.ctx.publicFetch = async (url, o = {}) => {
-    if (url.includes('IFriendMessagesService/SendMessage/'))
-      return (
-        t.requests.push({ url, o }),
-        {
-          ok: true,
-          status: 200,
-          headers: { get: () => '1' },
-          json: async () => ({ response: { server_timestamp: 1700000000 } }),
-        }
-      );
-    return fetchBefore(url, o);
+test('Steam chat through the client: the port is switched on once, with a quiet Steam restart, never during a game', async () => {
+  const t = steamChat();
+  const calls = [];
+  const cef = fakeCef({ port: false });
+  t.chat.steamCef = cef;
+  let app = '0';
+  t.chat.ctx.actions = {
+    processRunning: async name => name === 'steam.exe',
+    steamExe: () => path.join('D:', 'steam', 'steam.exe'),
+    runningSteamApp: async () => app,
+  };
+  t.chat.ctx.steamInstall = {
+    stopSteam: async exe => calls.push(['stop', exe]),
+    startSteam: exe => (calls.push(['start', exe]), (cef.port = true)),
   };
   const key = c.convKey('steam', ME, FRIEND);
-  FakeSteamUser.last = null;
-  const opened = __test.opened.length;
-  const msg = await t.chat.send(key, ' привет [b]x[/b] ');
-  assert.deepEqual(msg, { from: 'me', text: 'привет [b]x[/b]', at: 1700000000000 });
-  assert.equal(FakeSteamUser.last, null, 'no sign-in to Steam CM');
-  assert.equal(__test.opened.length, opened, 'the Steam client is not opened');
-  const req = t.requests.find(r => r.url.includes('SendMessage'));
-  assert.equal(req.o.method, 'POST');
-  const body = new URLSearchParams(String(req.o.body));
-  assert.equal(body.get('steamid'), FRIEND);
-  assert.equal(body.get('message'), 'привет [b]x[/b]');
-  assert.equal(body.get('contains_bbcode'), 'false');
-  assert.equal(body.get('access_token'), 'tok');
-  assert.equal(t.chat.history[key].at(-1).text, 'привет [b]x[/b]');
+  const msg = await t.chat.send(key, 'привет');
+  assert.equal(msg.text, 'привет');
+  assert.equal(cef.on, true);
+  assert.equal(cef.dir, path.join('D:', 'steam'));
+  assert.deepEqual(
+    calls.map(x => x[0]),
+    ['stop', 'start']
+  );
+  // In a game Steam is not restarted.
+  cef.port = false;
+  app = '730';
+  calls.length = 0;
+  await assert.rejects(t.chat.send(key, 'ещё'), /в игре/);
+  assert.equal(calls.length, 0);
+});
+
+test('Steam chat through the client: a refusal of Steam is shown as is', async () => {
+  const t = steamChat();
+  t.chat.ctx.actions = { processRunning: async name => name === 'steam.exe' };
+  t.chat.steamCef = fakeCef({
+    fail: Object.assign(Error('Steam не разрешил отправку: вы не друзья'), { eresult: 15 }),
+  });
+  const key = c.convKey('steam', ME, FRIEND);
+  await assert.rejects(t.chat.send(key, 'x'), /не разрешил/);
+  t.chat.steamCef = fakeCef({ fail: Error('клиент Steam не открыл чат с другом') });
+  await assert.rejects(t.chat.send(key, 'x'), /Не отправлено: клиент Steam не открыл чат/);
+  assert.equal(t.chat.history[key], undefined);
+});
+
+test('steam-cef: only the local Steam client; the text is a JSON string with BBCode escaped', async () => {
+  const cef = require('../src/main/steam-cef.cjs');
+  const page = (title, ws, url = 'https://steamloopback.host/index.html') => ({
+    title,
+    webSocketDebuggerUrl: ws,
+    url,
+  });
+  const fetchList = list => async () => ({ ok: true, json: async () => list });
+  assert.equal(
+    await cef.target(
+      fetchList([
+        page('Steam', 'ws://127.0.0.1:8080/devtools/page/A'),
+        page('SharedJSContext', 'ws://127.0.0.1:8080/devtools/page/B1'),
+      ])
+    ),
+    'ws://127.0.0.1:8080/devtools/page/B1'
+  );
+  assert.equal(
+    await cef.target(fetchList([page('SharedJSContext', 'ws://evil.example:8080/devtools/page/B')])),
+    null
+  );
+  assert.equal(
+    await cef.target(
+      fetchList([page('SharedJSContext', 'ws://127.0.0.1:8080/devtools/page/B', 'https://evil.example/')])
+    ),
+    null
+  );
+  assert.equal(await cef.target(async () => null), null);
+  const expr = cef.sendExpression(39734292, 'a "b" [b]x[/b]\n`${1}`');
+  assert.match(expr, /GetFriendChat\(39734292, true\)/);
+  assert.ok(expr.includes(JSON.stringify('a "b" \\[b]x\\[/b]\n`${1}`')));
+  // A friend id turns into the account id; the client's answer into ms or a reason.
+  class FakeWs {
+    constructor(url) {
+      FakeWs.url = url;
+      setImmediate(() => this.onopen());
+    }
+    send(m) {
+      FakeWs.sent = JSON.parse(m);
+      setImmediate(() =>
+        this.onmessage({ data: JSON.stringify({ id: 1, result: { result: { value: FakeWs.answer } } }) })
+      );
+    }
+    close() {}
+  }
+  const deps = {
+    fetch: fetchList([page('SharedJSContext', 'ws://127.0.0.1:8080/devtools/page/X')]),
+    WebSocketImpl: FakeWs,
+  };
+  FakeWs.answer = { result: 0, at: 1700000000 };
+  assert.equal(await cef.sendFriendMessage(FRIEND, 'hi', deps), 1700000000000);
+  assert.match(
+    FakeWs.sent.params.expression,
+    new RegExp('GetFriendChat\\(' + c.steamId32(FRIEND) + ', true\\)')
+  );
+  FakeWs.answer = { result: 2 };
+  await assert.rejects(cef.sendFriendMessage(FRIEND, 'hi', deps), /не друзья/);
+  FakeWs.answer = { result: 4 };
+  await assert.rejects(cef.sendFriendMessage(FRIEND, 'hi', deps), /слишком много/);
+  FakeWs.answer = { error: 'notready' };
+  await assert.rejects(cef.sendFriendMessage(FRIEND, 'hi', deps), e => e.code === 'NOT_READY');
+  await assert.rejects(
+    cef.sendFriendMessage(FRIEND, 'hi', { fetch: async () => null }),
+    e => e.code === 'NO_PORT'
+  );
+});
+
+test('steam-cef events: the client tells Nexus about new messages at once', async () => {
+  const cef = require('../src/main/steam-cef.cjs');
+  const self32 = Number(c.steamId32(ME)),
+    friend32 = Number(c.steamId32(FRIEND));
+  assert.deepEqual(
+    cef.parseEvent(
+      JSON.stringify({ self: self32, friend: friend32, from: 'them', text: 'hi', at: 1700000000 })
+    ),
+    {
+      accountId: ME,
+      friendId: FRIEND,
+      from: 'them',
+      text: 'hi',
+      at: 1700000000000,
+    }
+  );
+  assert.equal(cef.parseEvent('{"self":0,"friend":1,"text":"x"}'), null);
+  assert.equal(cef.parseEvent('not json'), null);
+  assert.equal(cef.parseEvent(JSON.stringify({ self: self32, friend: friend32, text: '' })), null);
+  // The connection: binding, hook, then events.
+  const got = [];
+  class FakeWs {
+    constructor(url) {
+      FakeWs.last = this;
+      this.url = url;
+      this.calls = [];
+      setImmediate(() => this.onopen());
+    }
+    send(m) {
+      const r = JSON.parse(m);
+      this.calls.push(r.method);
+      const result = r.method === 'Runtime.evaluate' ? { result: { value: 'ok' } } : {};
+      setImmediate(() => this.onmessage({ data: JSON.stringify({ id: r.id, result }) }));
+    }
+    close() {
+      this.onclose?.();
+    }
+  }
+  const ev = new cef.SteamClientEvents({
+    onMessage: e => got.push(e),
+    fetch: async () => ({
+      ok: true,
+      json: async () => [
+        {
+          title: 'SharedJSContext',
+          webSocketDebuggerUrl: 'ws://127.0.0.1:8080/devtools/page/Z',
+          url: 'https://steamloopback.host/index.html',
+        },
+      ],
+    }),
+    WebSocketImpl: FakeWs,
+  });
+  assert.equal(await ev.ensure(), true);
+  assert.deepEqual(FakeWs.last.calls, ['Runtime.addBinding', 'Runtime.evaluate']);
+  const payload = JSON.stringify({
+    self: self32,
+    friend: friend32,
+    from: 'them',
+    text: 'привет',
+    at: 1700000001,
+  });
+  FakeWs.last.onmessage({
+    data: JSON.stringify({ method: 'Runtime.bindingCalled', params: { name: cef.BINDING, payload } }),
+  });
+  FakeWs.last.onmessage({
+    data: JSON.stringify({ method: 'Runtime.bindingCalled', params: { name: 'other', payload } }),
+  });
+  assert.equal(got.length, 1);
+  assert.equal(got[0].text, 'привет');
+  // A closed connection is opened again on the next look.
+  FakeWs.last.close();
+  assert.equal(ev.connected, false);
+  assert.equal(await ev.ensure(), true);
+});
+
+test('Steam chat: a message from the Steam client arrives without waiting for the poll', async () => {
+  const t = steamChat();
+  const key = c.convKey('steam', ME, FRIEND);
+  await t.chat.pollSteam(); // first look
+  t.chat.onSteamClientMessage({
+    accountId: ME,
+    friendId: FRIEND,
+    from: 'them',
+    text: 'привет [b]x[/b]',
+    at: Date.now(),
+  });
+  assert.equal(t.chat.history[key].at(-1).text, 'привет x');
+  assert.equal(t.chat.unreadMap()[key], 1);
+  // Not one of the connected accounts: ignored.
+  t.chat.onSteamClientMessage({
+    accountId: '76561198000000099',
+    friendId: FRIEND,
+    from: 'them',
+    text: 'x',
+    at: Date.now(),
+  });
+  assert.equal(t.chat.history[key].length, 1);
 });
