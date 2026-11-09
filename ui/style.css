@@ -5681,3 +5681,332 @@ body.bp-on {
 .sp-now {
   width: 100%;
 }
+
+/* =========================================================================
+   Left panel like the Steam client's library: header, source and filter,
+   search, folding categories, game rows with friend marks, "add a game".
+   ========================================================================= */
+aside {
+  flex: 0 0 272px;
+  width: 272px;
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--st-lib-side);
+  border-right: 1px solid #000;
+}
+.side-head {
+  display: flex;
+  gap: 4px;
+  padding: 8px 8px 6px;
+}
+.side-head .library-home {
+  flex: 1;
+  min-width: 0;
+  padding: 0 12px;
+  height: 36px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: linear-gradient(120deg, #3d4450, #31353e);
+  color: #dcdedf;
+  border-radius: 2px;
+}
+.side-icon {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  font-size: 15px;
+  line-height: 1;
+  color: #8b929a;
+  background: #ffffff0d;
+  border: 0;
+  border-radius: 2px;
+}
+.side-head .side-icon {
+  width: 36px;
+  height: 36px;
+  font-size: 18px;
+}
+.side-icon:hover {
+  color: var(--st-bright);
+  background: var(--st-lib-active);
+}
+.side-icon.active {
+  color: var(--st-bright);
+  background: #3a6f9c;
+}
+.side-tools {
+  display: flex;
+  gap: 4px;
+  padding: 0 8px 6px;
+}
+#side-source {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  padding: 0 8px;
+  font: inherit;
+  font-size: 12px;
+  color: #dcdedf;
+  background: #ffffff0d;
+  border: 0;
+  border-radius: 2px;
+  cursor: pointer;
+}
+#side-source option {
+  background: #3d4450;
+  color: #dcdedf;
+}
+.side-search {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 8px 8px;
+  padding-left: 8px;
+  background: #ffffff0d;
+  border-radius: 2px;
+}
+.side-search > span {
+  color: #8b929a;
+  font-size: 15px;
+}
+#side-search {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  padding: 0 4px;
+  font: inherit;
+  font-size: 12px;
+  color: #dcdedf;
+  background: transparent;
+  border: 0;
+  outline: none;
+}
+.side-search:focus-within {
+  box-shadow: inset 0 0 0 1px #3a6f9c;
+}
+.side-search .side-icon {
+  background: transparent;
+}
+#library-tree {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-bottom: 6px;
+}
+.tree-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 10px 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-align: left;
+  color: #8b929a;
+  background: none;
+  border: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tree-group b {
+  width: 10px;
+  flex-shrink: 0;
+  font-weight: 700;
+}
+.tree-group span {
+  color: #6b727a;
+}
+.tree-group:hover {
+  color: var(--st-bright);
+}
+.tree-game {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 26px;
+  padding: 0 8px 0 4px;
+  font-size: 13px;
+  text-align: left;
+  color: #b8bcbf;
+  background: none;
+  border: 0;
+  border-radius: 0;
+}
+.tree-game .tree-friends {
+  flex: 0 0 10px;
+  width: 10px;
+  display: grid;
+  place-items: center;
+}
+.tree-friends svg {
+  width: 9px;
+  height: 11px;
+  fill: #6dcff6;
+}
+.tree-game .tree-icon {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  overflow: hidden;
+  background: #2a3542;
+}
+.tree-icon img,
+.tree-icon .cover-missing {
+  width: 18px;
+  height: 18px;
+  object-fit: cover;
+  display: block;
+  font-size: 0;
+}
+.tree-game .tree-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tree-game.not-installed {
+  color: #6b727a;
+}
+.tree-game.not-installed .tree-icon {
+  opacity: 0.45;
+}
+.tree-game.running,
+.tree-game.running small {
+  color: #8bc53f;
+}
+.tree-game small {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: #6b7280;
+}
+.tree-game:hover {
+  background: var(--st-lib-row);
+  color: var(--st-bright);
+}
+.tree-game.active {
+  background: var(--st-lib-active);
+  color: var(--st-bright);
+}
+.tree-game.active .tree-icon,
+.tree-game:hover .tree-icon {
+  opacity: 1;
+}
+.side-add {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 40px;
+  padding: 0 14px;
+  font-size: 13px;
+  text-align: left;
+  color: #b8bcbf;
+  background: #1a1d22;
+  border: 0;
+  border-top: 1px solid #000;
+  border-radius: 0;
+}
+.side-add b {
+  font-size: 16px;
+  font-weight: 400;
+}
+.side-add:hover {
+  color: var(--st-bright);
+  background: var(--st-lib-row);
+}
+/* A profile page takes the whole width, as in Steam. */
+body[data-page='profile'] aside,
+body[data-page='friend'] aside {
+  display: none;
+}
+@media (max-width: 1150px) {
+  aside {
+    flex-basis: 232px;
+    width: 232px;
+  }
+}
+
+/* ---- top menu: sections with their pages in a drop-down ---- */
+.nav-group {
+  position: relative;
+  display: flex;
+  align-self: stretch;
+}
+.nav-group > .nav {
+  height: 100%;
+}
+.nav-menu {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 60;
+  min-width: 190px;
+  padding: 4px 0;
+  flex-direction: column;
+  background: #3d4450;
+  box-shadow: 0 6px 18px #000a;
+}
+.nav-group:hover .nav-menu,
+.nav-group:has(:focus-visible) .nav-menu {
+  display: flex;
+}
+.nav-menu button {
+  padding: 8px 14px;
+  font-size: 13px;
+  text-align: left;
+  white-space: nowrap;
+  color: #dcdedf;
+  background: none;
+  border: 0;
+  border-radius: 0;
+}
+.nav-menu button:hover {
+  color: #171d25;
+  background: #dcdedf;
+}
+.nav-menu button.active {
+  color: var(--st-bright);
+}
+.nav-menu button.active:hover {
+  color: #171d25;
+}
+.nav-group.closed .nav-menu {
+  display: none;
+}
+.tree-head {
+  display: flex;
+  align-items: center;
+  padding-right: 6px;
+}
+.tree-head .tree-group {
+  flex: 1;
+  min-width: 0;
+}
+.tree-open {
+  width: 22px;
+  height: 22px;
+  margin-top: 4px;
+  font-size: 13px;
+  background: transparent;
+  opacity: 0;
+}
+.tree-head:hover .tree-open,
+.tree-open:focus-visible {
+  opacity: 1;
+}

@@ -409,6 +409,8 @@ async function loadFriends(force = false) {
     friendsState = { ...friendsState, loading: false };
   }
   renderFriends();
+  // The green "friends play it" marks in the left panel.
+  if (typeof renderLibraryTree === 'function') renderLibraryTree();
 }
 function renderFriends() {
   const count = $('#friends-count');

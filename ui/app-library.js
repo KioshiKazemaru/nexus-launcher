@@ -231,35 +231,147 @@ function libraryGamePage() {
       : '';
   return `<div class="library-game-page" data-price-game="${esc(g.id)}"><div class="library-game-hero">${hero ? `<img src="${esc(steamHero || hero)}" data-fallback="${esc(hero)}" alt="Баннер ${esc(g.name)}" referrerpolicy="no-referrer">` : ''}<div class="library-game-hero-shade"></div><h1>${esc(g.name)}</h1></div><div class="library-game-actions">${isRunning(g.id) ? `<button class="play-main stop" id="library-stop" title="Закрыть игру; сохранения уйдут в облако">■ ЗАКРЫТЬ</button>` : `<button class="play-main" id="library-play" ${demo ? 'disabled' : ''}>${action}</button>`}<div class="library-game-launch"><div><small>СТАТУС</small><strong>${esc(status)}</strong></div><div><small>ПОСЛЕДНИЙ ЗАПУСК</small><strong>${played ? new Date(played).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Пока не запускалась'}</strong></div><div><small>ВЫ ИГРАЛИ</small><strong>${owned.playtime ? hours(owned.playtime) : '—'}</strong></div></div>${progressLine(owned)}<div class="library-game-right">${clientButtons(preferred)}<button class="secondary" id="library-hide" title="${owned.hidden ? 'Показать в библиотеке' : 'Скрыть из библиотеки'}">${owned.hidden ? '👁 Показать' : 'Скрыть'}</button><button class="secondary" id="library-favorite" aria-label="Избранное">${has('favorites', g.id) ? '★' : '☆'}</button><button class="secondary" id="library-wish" aria-label="Желаемое">${has('wishlist', g.id) ? '♥' : '♡'}</button></div></div><div class="library-game-links"><button data-library-back>← Все игры</button><button id="library-store">Страница в магазине</button><button data-page="tracking">Отслеживание скидок</button></div><div class="library-game-columns"><section><h2>ОБ ИГРЕ</h2><p>${esc(g.desc || g.storeOffers?.find(o => o.description)?.description || 'Описание пока не получено от магазина.')}</p><div class="preview-tags">${(g.tags || []).map(t => `<span>${esc(t)}</span>`).join('')}</div>${collectionsBox(owned)}${trackProcessBox(owned)}${launchOptionsBox(owned)}<h2>ПЛАТФОРМЫ</h2><div class="library-game-providers">${offers.map(o => `<button data-library-provider="${esc(o.provider)}" class="${p === o.provider ? 'active' : ''}"><strong>${names[o.provider]}</strong><span>${o.installed ? 'Установлена' : o.owned ? 'Имеется в аккаунте' : 'На диске'}${o.accountIds?.length > 1 ? ' · на ' + o.accountIds.length + ' аккаунтах' : ''}</span></button>`).join('')}</div>${newsBox(owned)}</section><aside class="library-game-activity"><h2>АКТИВНОСТЬ</h2><div class="library-activity-box"><strong>${played ? 'Последний запуск' : 'Данных о запусках пока нет'}</strong><p>${played ? new Date(played).toLocaleString('ru-RU') : 'Дата появится после запуска через Nexus или из данных платформы.'}${last && last !== played ? '<br>Через Nexus: ' + new Date(last).toLocaleString('ru-RU') : ''}</p>${playtimeRows ? '<strong>Время в игре</strong>' + playtimeRows : ''}</div>${merged}${achievementsBox(owned)}${dlcBox(owned)}${workshopBox(owned)}<h2>СКРИНШОТЫ</h2><div class="library-gallery">${(g.storeOffers?.find(o => o.screenshots?.length)?.screenshots || []).map(src => `<img src="${esc(safeImage(src))}" alt="Скриншот ${esc(g.name)}" referrerpolicy="no-referrer" loading="lazy">`).join('') || `<div class="library-activity-box">${artTag(g)}</div>`}</div></aside></div></div>`;
 }
-function renderCollections() {
-  const el = $('#collection-list');
-  if (!el) return;
-  const list = state.settings.collections || [];
-  el.innerHTML = list.length
-    ? `<div class="collection-title">Коллекции</div>${list
-        .map(
-          c =>
-            `<button class="collection-link ${collectionFilter === c.id ? 'active' : ''}" data-collection="${esc(c.id)}">${esc(c.name)} <span>${c.games.length}</span></button>`
-        )
-        .join('')}`
-    : '';
+// ---- the left panel, laid out like the Steam client's library ----------------------
+// Sections: Избранное, the user's collections, then "Без категории", each folding.
+let treeQuery = '';
+const TREE_KEY = 'nexus.treeCollapsed';
+const treeCollapsed = new Set(
+  (() => {
+    try {
+      return JSON.parse(localStorage.getItem(TREE_KEY) || '[]');
+    } catch {
+      return [];
+    }
+  })()
+);
+function toggleTreeGroup(id) {
+  if (treeCollapsed.has(id)) treeCollapsed.delete(id);
+  else treeCollapsed.add(id);
+  try {
+    localStorage.setItem(TREE_KEY, JSON.stringify([...treeCollapsed]));
+  } catch {}
+  renderLibraryTree();
+}
+const SORT_NAMES = { name: 'по названию', recent: 'недавно запущенные', playtime: 'больше всего времени' };
+// Steam app id → how many friends play it now (the green mark next to a game).
+function friendsPlaying() {
+  const out = new Map();
+  const seen = new Set();
+  for (const group of friendsState.data?.steam || [])
+    for (const f of group.friends || [])
+      if (f.status === 'ingame' && f.gameId && !seen.has(f.id)) {
+        seen.add(f.id);
+        out.set(String(f.gameId), (out.get(String(f.gameId)) || 0) + 1);
+      }
+  return out;
+}
+function treeRow(g, playing) {
+  const installed = g.offers?.some(o => o.installed);
+  const friends = g.steam ? playing.get(String(g.steam)) || 0 : 0;
+  const cls = [
+    'tree-game',
+    librarySelection === g.id ? 'active' : '',
+    installed || g.progress ? '' : 'not-installed',
+    isRunning(g.id) ? 'running' : '',
+  ].join(' ');
+  return `<button class="${cls}" data-detail="${esc(g.id)}" title="${esc(g.name)}${friends ? ` · играют друзья: ${friends}` : ''}"><span class="tree-friends">${
+    friends
+      ? '<svg viewBox="0 0 10 12" aria-label="Играют друзья"><circle cx="5" cy="3" r="2.6"/><path d="M0 12c0-3.6 2.2-5.6 5-5.6s5 2 5 5.6z"/></svg>'
+      : ''
+  }</span><span class="tree-icon">${artTag(g)}</span><span class="tree-name">${esc(g.name)}</span>${
+    isRunning(g.id) ? '<small>Запущено</small>' : g.progress ? '<small>Загрузка</small>' : ''
+  }</button>`;
 }
 function renderLibraryTree() {
-  renderCollections();
   const el = $('#library-tree');
   if (!el) return;
-  const all = filteredLibrary();
-  el.innerHTML =
-    all
-      .slice(0, 400)
-      .map(
-        g =>
-          `<button class="tree-game ${librarySelection === g.id ? 'active' : ''}" data-detail="${esc(g.id)}">${artTag(g)}<span>${esc(g.name)}</span><small>${[...new Set(g.offers.map(o => (o.provider === 'epic' ? 'E' : o.provider === 'steam' ? 'S' : '•')))].join('')}</small></button>`
+  // The panel's own controls follow the library's state.
+  const source = $('#side-source');
+  if (source && source.value !== filter) source.value = filter;
+  const ready = $('#side-ready');
+  if (ready) {
+    const installedOnly = libraryMode() !== 'owned';
+    ready.classList.toggle('active', installedOnly);
+    ready.dataset.libraryView = installedOnly ? 'owned' : 'installed';
+    ready.title = installedOnly
+      ? 'Показаны установленные · показать все игры'
+      : 'Показать только установленные';
+  }
+  const sort = $('#side-sort');
+  if (sort) sort.title = 'Порядок: ' + SORT_NAMES[librarySort];
+  const q = treeQuery.trim().toLowerCase();
+  const shown = filteredLibrary().filter(g => !q || g.name.toLowerCase().includes(q));
+  // Totals like Steam's "(30/386)": every game of the account, installed or not.
+  const everything = activeGames().filter(
+    g =>
+      !g.hidden &&
+      g.offers?.some(
+        o => (filter === 'all' || o.provider === filter) && (o.owned === true || o.installed === true)
       )
-      .join('') +
-      (all.length > 400 ? `<p class="tree-empty">и ещё ${all.length - 400} — используйте поиск</p>` : '') ||
-    '<p class="tree-empty">Нет игр в выбранном списке</p>';
+  );
+  const favorites = new Set(state.settings.favorites || []);
+  const collections = state.settings.collections || [];
+  const sorted = new Set();
+  const groups = [
+    { id: 'favorites', name: 'Избранное', has: g => favorites.has(g.id) },
+    ...collections.map(c => ({
+      id: 'c:' + c.id,
+      name: c.name,
+      has: g => c.games.includes(g.id),
+      open: c.id,
+    })),
+  ];
+  for (const x of groups) for (const g of everything) if (x.has(g)) sorted.add(g.id);
+  groups.push({ id: 'none', name: 'Без категории', has: g => !sorted.has(g.id), always: true });
+  const playing = friendsPlaying();
+  let rows = 0;
+  const html = groups
+    .map(x => {
+      const list = shown.filter(x.has);
+      const total = everything.filter(x.has).length;
+      if (!list.length && !x.always && !total) return '';
+      const open = !treeCollapsed.has(x.id);
+      const count = total > list.length ? `${list.length}/${total}` : `${list.length}`;
+      const body = open
+        ? list
+            .slice(0, Math.max(0, 2000 - rows))
+            .map(g => (rows++, treeRow(g, playing)))
+            .join('')
+        : '';
+      const grid =
+        x.open !== undefined
+          ? `<button class="side-icon tree-open" data-collection="${esc(x.open)}" title="Открыть коллекцию сеткой" aria-label="Открыть коллекцию сеткой">▦</button>`
+          : '';
+      return `<div class="tree-head"><button class="tree-group" data-tree-group="${esc(x.id)}" aria-expanded="${open}"><b>${open ? '—' : '+'}</b> ${esc(x.name)} <span>(${count})</span></button>${grid}</div>${body}`;
+    })
+    .join('');
+  el.innerHTML =
+    (shown.length ? html : html + '<p class="tree-empty">Нет игр в выбранном списке</p>') +
+    (rows >= 2000 ? '<p class="tree-empty">Показаны первые 2000 — используйте поиск</p>' : '');
 }
+document.addEventListener('click', event => {
+  const el = event.target.closest('#library-tree [data-tree-group], #side-sort');
+  if (!el) return;
+  if (el.id === 'side-sort') {
+    const order = Object.keys(SORT_NAMES);
+    librarySort = order[(order.indexOf(librarySort) + 1) % order.length];
+    render();
+    toast('Порядок: ' + SORT_NAMES[librarySort]);
+    return;
+  }
+  toggleTreeGroup(el.dataset.treeGroup);
+});
+document.addEventListener('change', event => {
+  if (event.target.id !== 'side-source') return;
+  filter = event.target.value;
+  libraryLimit = LIBRARY_PAGE;
+  render();
+});
+document.addEventListener('input', event => {
+  if (event.target.id !== 'side-search') return;
+  treeQuery = event.target.value;
+  renderLibraryTree();
+});
 const accountStatusText = a =>
   a?.status === 'connected'
     ? a.name
@@ -596,6 +708,10 @@ function render() {
   document
     .querySelectorAll('[data-page]')
     .forEach(el => el.classList.toggle('active', el.dataset.page === page));
+  // Top menu items with a drop-down light up for every page of their menu.
+  document
+    .querySelectorAll('[data-nav-pages]')
+    .forEach(el => el.classList.toggle('active', el.dataset.navPages.split(' ').includes(page)));
   $('#breadcrumb').innerHTML =
     page === 'library' && librarySelection
       ? 'БИБЛИОТЕКА <span>/ ' + esc(game(librarySelection)?.name || 'ИГРА') + '</span>'
@@ -819,3 +935,14 @@ async function buy(p) {
       `Открыт официальный магазин${r.account ? ' · аккаунт ' + r.account : ''}. Проверь издание перед оплатой.`
     );
 }
+// A top-menu drop-down closes once a page is picked, even with the mouse still over it.
+document.addEventListener('click', event => {
+  const group = event.target.closest('.nav-group');
+  if (!group || !event.target.closest('[data-page]')) return;
+  group.classList.add('closed');
+  document.activeElement?.blur?.();
+});
+document.addEventListener('mouseout', event => {
+  const group = event.target.closest?.('.nav-group.closed');
+  if (group && !group.contains(event.relatedTarget)) group.classList.remove('closed');
+});
