@@ -6010,3 +6010,13 @@ body[data-page='friend'] aside {
 .tree-open:focus-visible {
   opacity: 1;
 }
+/* "Add a game" and "Storage" sit together at the bottom left. */
+.footer-left {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.footer-storage.active {
+  color: var(--st-blue);
+}
