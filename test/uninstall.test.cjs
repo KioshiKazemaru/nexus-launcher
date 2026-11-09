@@ -28,7 +28,8 @@ function setup(games, extra = {}) {
     ...extra,
   };
   const u = new Uninstaller(ctx);
-  u.closeEpicLauncher = async () => true; // never touches the real Epic launcher
+  u.closeEpicLauncher = async () => null; // never touches the real Epic launcher
+  u.startEpicLauncher = () => {};
   return { u, toasts, scans, ctx };
 }
 async function answer(response, fn) {
@@ -86,14 +87,27 @@ test('Steam: deletes the game folder, its manifest, workshop and shader cache; o
     { id: 'steam:10', name: 'Game', offers: [offer('10', 'Game')] },
     { id: 'steam:20', name: 'Other', offers: [offer('20', 'Other')] },
   ];
-  const { u, toasts, scans } = setup(games);
+  // Steam is open and idle: restarted in the tray so it rereads its library.
+  const steamCalls = [];
+  const { u, toasts, scans } = setup(games, {
+    actions: {
+      steamExe: () => 'C:\\Steam\\steam.exe',
+      processRunning: async () => true,
+      runningSteamApp: async () => '0',
+    },
+    steamInstall: {
+      stopSteam: async () => steamCalls.push('stop'),
+      startSteam: () => steamCalls.push('start'),
+    },
+  });
   const { result, asked } = await answer(0, () => u.uninstall('steam:10', 'steam'));
   assert.deepEqual(result, { how: 'started' });
-  assert.match(asked[0].message, /Удалить «Game»/);
-  assert.match(asked[0].detail, /Steam Cloud/);
+  assert.equal(asked.length, 0, 'no question before removing');
   assert.equal(u.progress()['steam:10'].state, 'uninstalling');
-  assert.equal(u.progress()['steam:10'].total, 4000);
+  // Pressed again while it runs.
+  assert.deepEqual(await u.uninstall('steam:10', 'steam'), { how: 'running' });
   await finished(u);
+  assert.deepEqual(steamCalls, ['stop', 'start']);
   assert.equal(exists(dir), false);
   assert.equal(exists(path.join(steamapps, 'appmanifest_10.acf')), false);
   assert.equal(exists(path.join(steamapps, 'appworkshop_10.acf')), false);
@@ -144,12 +158,16 @@ test('Epic: deletes the folder, the .item manifest and the LauncherInstalled.dat
     ];
     const { u, toasts } = setup(games);
     let closedLauncher = 0;
-    u.closeEpicLauncher = async () => (closedLauncher++, true);
+    const started = [];
+    u.closeEpicLauncher = async () => (closedLauncher++, 'C:\\Epic\\EpicGamesLauncher.exe');
+    u.startEpicLauncher = exe => started.push(exe);
     const { result, asked } = await answer(0, () => u.uninstall('epic:fennec', 'epic'));
     assert.deepEqual(result, { how: 'started' });
-    assert.match(asked[0].detail, /Epic/);
+    assert.equal(asked.length, 0, 'no question before removing');
     await finished(u);
     assert.equal(closedLauncher, 1);
+    // The launcher was open: started again in the tray afterwards.
+    assert.deepEqual(started, ['C:\\Epic\\EpicGamesLauncher.exe']);
     assert.equal(exists(dir), false);
     assert.equal(exists(path.join(manifests, 'AAA.item')), false);
     assert.equal(exists(path.join(manifests, 'BBB.item')), true);
@@ -164,7 +182,7 @@ test('Epic: deletes the folder, the .item manifest and the LauncherInstalled.dat
   }
 });
 
-test('nothing is deleted when canceled, when the game runs, or for an unsafe folder; "через клиент" hands over', async () => {
+test('nothing is deleted when the game runs or for an unsafe folder', async () => {
   const lib = tmp();
   const steamapps = path.join(lib, 'steamapps');
   const dir = path.join(steamapps, 'common', 'Game');
@@ -179,12 +197,7 @@ test('nothing is deleted when canceled, when the game runs, or for an unsafe fol
   };
   const games = [{ id: 'steam:10', name: 'Game', offers: [offer] }];
 
-  let s = setup(games);
-  assert.deepEqual((await answer(2, () => s.u.uninstall('steam:10', 'steam'))).result, { how: 'canceled' });
-  assert.deepEqual((await answer(1, () => s.u.uninstall('steam:10', 'steam'))).result, { how: 'client' });
-  assert.equal(exists(path.join(dir, 'game.exe')), true);
-
-  s = setup(games, { running: { isRunning: id => id === 'steam:10' } });
+  let s = setup(games, { running: { isRunning: id => id === 'steam:10' } });
   await assert.rejects(
     answer(0, () => s.u.uninstall('steam:10', 'steam')),
     /закройте игру/
@@ -226,4 +239,50 @@ test('nothing is deleted when canceled, when the game runs, or for an unsafe fol
   await assert.rejects(s.u.uninstall('epic:zzz', 'epic'), /не установлена/);
   assert.equal(exists(path.join(dir, 'game.exe')), true);
   assert.equal(exists(path.join(steamapps, 'appmanifest_10.acf')), true);
+});
+
+test('a removal that stopped half way keeps "Удалить снова", also after a restart', async () => {
+  const lib = tmp();
+  const steamapps = path.join(lib, 'steamapps');
+  const dir = path.join(steamapps, 'common', 'Game');
+  write(path.join(dir, 'game.exe'), 'a'.repeat(100));
+  write(path.join(steamapps, 'appmanifest_10.acf'));
+  const offer = {
+    provider: 'steam',
+    appId: '10',
+    installed: true,
+    installDir: dir,
+    manifestFile: path.join(steamapps, 'appmanifest_10.acf'),
+  };
+  const games = [{ id: 'steam:10', name: 'Game', offers: [offer] }];
+  let saved = 0;
+  const { u, toasts, ctx } = setup(games, { storage: { saveSettings: () => saved++ } });
+  const realRemove = u.removeFolder.bind(u);
+  u.removeFolder = async () => {
+    throw Error('файл занят другой программой: game.exe');
+  };
+  assert.deepEqual(await u.uninstall('steam:10', 'steam'), { how: 'started' });
+  await finished(u);
+  // The manifest is gone (Steam counts the game as removed); the folder is still there.
+  assert.equal(exists(path.join(steamapps, 'appmanifest_10.acf')), false);
+  assert.equal(exists(path.join(dir, 'game.exe')), true);
+  const left = u.progress()['steam:10'];
+  assert.equal(left.uninstallFailed, true);
+  assert.equal(left.provider, 'steam');
+  assert.match(left.error, /занят/);
+  assert.match(toasts.at(-1), /Удалить снова/);
+  assert.ok(saved >= 1);
+  assert.equal(ctx.settings.uninstallLeftovers['steam:10'].dir, dir);
+
+  // After a restart of Nexus the game is no longer installed; one more press removes the rest.
+  games[0].offers[0] = { ...offer, installed: false };
+  const again = setup(games, { settings: ctx.settings, storage: { saveSettings() {} } });
+  assert.equal(again.u.progress()['steam:10'].uninstallFailed, true);
+  again.u.removeFolder = realRemove;
+  assert.deepEqual(await again.u.uninstall('steam:10', 'steam'), { how: 'started' });
+  await finished(again.u);
+  assert.equal(exists(dir), false);
+  assert.deepEqual(again.u.progress(), {});
+  assert.deepEqual(ctx.settings.uninstallLeftovers, {});
+  assert.match(again.toasts.at(-1), /«Game» удалена/);
 });

@@ -203,7 +203,8 @@ class FriendsService {
     await this.list().catch(() => {});
     const isFriend = a =>
       !!this.cache?.steam.some(g => g.account.id === a.id && g.friends.some(x => x.id === id));
-    const account = accounts.find(isFriend) || accounts[0];
+    // My own profile: through my own account.
+    const account = accounts.find(a => a.id === id) || accounts.find(isFriend) || accounts[0];
     const api = await this.steamApi(account);
     const soft = (promise, what) =>
       promise.catch(e => {

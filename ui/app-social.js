@@ -196,11 +196,11 @@ function newsShelf() {
     .join('')}</div>`;
 }
 let profileState = { loading: false, data: null, error: '' };
-async function loadProfile() {
+async function loadProfile(force = false) {
   if (!api?.profile || demo || profileState.loading) return;
   profileState = { ...profileState, loading: true };
   try {
-    const data = await call('profile');
+    const data = await call('profile', { force });
     profileState = data?.stats
       ? { loading: false, data, error: '' }
       : { loading: false, data: null, error: 'Профиль недоступен' };
@@ -209,11 +209,240 @@ async function loadProfile() {
   }
   if (page === 'profile') render();
 }
+// "Профиль" laid out like my Steam profile page: the Steam background, frame and
+// «О себе» on top, Nexus statistics of every store below.
+function myProfilePage(d) {
+  const sp = d.steamProfile;
+  const s = d.stats;
+  const steam = d.accounts.find(a => a.provider === 'steam') || {};
+  const epics = d.accounts.filter(a => a.provider === 'epic');
+  const h = m => (m / 60).toLocaleString('ru-RU', { maximumFractionDigits: m < 600 ? 1 : 0 });
+  const art = appId => `nexus-art://steam/${encodeURIComponent(appId)}/header`;
+  const cover = (appId, image) =>
+    `<span class="friend-game-art"><img src="${art(appId)}" ${safeImage(image) ? `data-fallback="${esc(safeImage(image))}"` : ''} alt="" loading="lazy"></span>`;
+  const open = g =>
+    g.gameId
+      ? `data-detail="${esc(g.gameId)}"`
+      : `data-open-link="https://store.steampowered.com/app/${esc(g.appId)}/"`;
+  const panel = (title, body, extra = '') =>
+    `<section class="sp-panel"><div class="sp-panel-head"><span>${title}</span>${extra}</div>${body}</section>`;
+  const stat = (label, value) =>
+    value === null || value === undefined || value === ''
+      ? ''
+      : `<div class="sp-stat"><span>${label}</span><b>${value}</b></div>`;
+  // My status: in game when Nexus runs one, otherwise the status set for friends.
+  const runningId = Object.keys(state.running || {})[0];
+  const runningName = runningId ? game(runningId)?.name || '' : '';
+  const status = runningId
+    ? 'ingame'
+    : d.status === 'away'
+      ? 'away'
+      : d.status === 'online'
+        ? 'online'
+        : 'offline';
+  const statusText = runningId
+    ? 'В игре' + (runningName ? ': ' + runningName : '')
+    : { online: 'В сети', away: 'Нет на месте', invisible: 'Невидимка', offline: 'Не в сети' }[d.status] ||
+      'В сети';
+  const bg = safeImage(sp.background);
+  const avatarSrc = safeImage(sp.avatar) || safeImage(steam.avatar);
+  const avatar = avatarSrc
+    ? `<img src="${esc(avatarSrc)}" alt="" referrerpolicy="no-referrer">`
+    : `<b>${esc((sp.name || steam.name || '?').slice(0, 1).toUpperCase())}</b>`;
+  const frame = safeImage(sp.frame)
+    ? `<img class="sp-frame" src="${esc(safeImage(sp.frame))}" alt="" referrerpolicy="no-referrer">`
+    : '';
+  const realLine = [sp.realName, sp.location].filter(Boolean).map(esc).join(' &nbsp;·&nbsp; ');
+  const level = sp.level ?? steam.level;
+  const xpLine =
+    steam.xp !== undefined
+      ? `<p class="sp-xp">${steam.xp.toLocaleString('ru-RU')} XP${steam.xpNeeded ? ` · до следующего уровня ${steam.xpNeeded.toLocaleString('ru-RU')} XP` : ''}</p>`
+      : '';
+  // Steam's "Недавняя активность" (two weeks), as on the Steam page.
+  const recentList = sp.recent || [];
+  const recentMinutes = recentList.reduce((n, x) => n + (x.minutes2w || 0), 0);
+  const recent = recentList.length
+    ? `<div class="sp-games">${recentList
+        .map(
+          x =>
+            `<button class="sp-game" ${open(x)}>${cover(x.appId, x.image)}<span class="sp-game-name">${esc(x.name)}</span><span class="sp-game-meta">${h(x.minutes2w || 0)} ч за 2 недели · ${h(x.minutes)} ч всего</span></button>`
+        )
+        .join('')}</div>`
+    : '<p class="hint">За последние две недели игр в Steam не было.</p>';
+  // Most played across every store (Nexus counts Steam, Epic and its own launches).
+  const top = s.top.length
+    ? `<div class="top-games">${s.top
+        .map((g, i) => {
+          const w = Math.max(2, Math.round((g.minutes / s.top[0].minutes) * 100));
+          return `<button class="top-game" data-detail="${esc(g.id)}"><span class="top-rank">${i + 1}</span><span class="top-name">${esc(game(g.id)?.name || g.name)}</span><span class="top-bar"><i style="width:${w}%"></i></span><b>${h(g.minutes)} ч</b></button>`;
+        })
+        .join('')}</div>`
+    : '<p class="hint">Время в играх появится после синхронизации аккаунтов.</p>';
+  const achievements = d.achievements.length
+    ? `<div class="achievements"><ul>${d.achievements
+        .map(
+          x =>
+            `<li class="done">${safeImage(x.icon) ? `<img src="${esc(safeImage(x.icon))}" alt="" loading="lazy" referrerpolicy="no-referrer">` : '<span class="achievement-icon"></span>'}<span><strong>${esc(x.name)}</strong><small>${esc(x.game)} · ${new Date(x.at).toLocaleDateString('ru-RU')}</small></span></li>`
+        )
+        .join('')}</ul></div>`
+    : '<p class="hint">Достижения появятся здесь после того, как вы откроете страницы игр Steam.</p>';
+  const by = s.byProvider;
+  const platforms = [
+    ['steam', 'Steam'],
+    ['epic', 'Epic Games'],
+    ['custom', 'Добавленные вручную'],
+  ]
+    .filter(([p]) => by[p]?.games)
+    .map(
+      ([p, n]) => `<div class="sp-stat"><span>${n}</span><b>${by[p].games} · ${h(by[p].minutes)} ч</b></div>`
+    )
+    .join('');
+  const epicCards = epics
+    .map(
+      a =>
+        `<div class="sp-account"><span class="sp-account-avatar">${safeImage(a.avatar) ? `<img src="${esc(safeImage(a.avatar))}" alt="" referrerpolicy="no-referrer">` : 'E'}</span><span><small>Epic Games</small><strong>${esc(a.name)}</strong></span></div>`
+    )
+    .join('');
+  const id = sp.id || steam.id;
+  return `<div class="sp my-profile ${bg ? 'has-bg' : ''}" ${bg ? `style="--sp-bg:url('${esc(bg)}')"` : ''}><div class="sp-inner"><header class="sp-header"><div class="sp-avatar ${esc(status)}">${avatar}${frame}</div><div class="sp-id"><h1>${esc(sp.name || steam.name || 'Мой профиль')}</h1>${realLine ? `<p class="sp-real">${realLine}</p>` : ''}${
+    sp.summary
+      ? `<p class="sp-summary">${esc(sp.summary)}</p>`
+      : '<p class="sp-summary hint">«О себе» пусто — заполните его в Steam.</p>'
+  }</div><div class="sp-side">${
+    level !== null && level !== undefined
+      ? `<div class="sp-level">Уровень <span class="steam-level">${level}</span></div>${xpLine}`
+      : ''
+  }<div class="sp-actions">${
+    id
+      ? `<button class="primary" data-open-link="https://steamcommunity.com/profiles/${esc(id)}/edit/info">Редактировать профиль ↗</button><button class="secondary" data-open-link="https://steamcommunity.com/profiles/${esc(id)}/">Открыть в Steam ↗</button>`
+      : ''
+  }<button class="secondary" id="profile-refresh" title="Обновить" ${profileState.loading ? 'disabled' : ''}>↻</button></div></div></header><div class="sp-body"><div class="sp-main">${panel(
+    'Недавняя активность',
+    recent,
+    recentMinutes ? `<small>${h(recentMinutes)} ч за последние 2 недели</small>` : ''
+  )}${panel('Больше всего времени', top, '<small>Steam, Epic Games и Nexus</small>')}${panel(
+    'Последние достижения',
+    achievements
+  )}</div><aside class="sp-right"><div class="sp-status ${esc(status)}"><strong>${esc(statusText)}</strong></div><div class="sp-stats">${stat(
+    'Игр в библиотеке',
+    s.games.toLocaleString('ru-RU')
+  )}${stat('Установлено', s.installed)}${stat('Часов в играх', h(s.minutes))}${stat('Запускались', s.played)}${stat(
+    'За последние 30 дней',
+    s.playedThisMonth
+  )}${stat('Значки', sp.badges ?? steam.badges)}${stat('В Steam с', memberSince(sp.memberSince))}</div>${
+    platforms ? `<div class="sp-stats"><h3>По платформам</h3>${platforms}</div>` : ''
+  }${epicCards ? `<div class="sp-stats">${epicCards}</div>` : ''}</aside></div></div></div>`;
+}
+// ---- "Профиль" tabs: Steam and every Epic Games account ----------------------------
+let profileTab = (() => {
+  try {
+    return localStorage.getItem('nexus.profileTab') || 'steam';
+  } catch {
+    return 'steam';
+  }
+})();
+function setProfileTab(tab) {
+  profileTab = tab;
+  try {
+    localStorage.setItem('nexus.profileTab', tab);
+  } catch {}
+  render();
+}
+function profileTabsPage(d) {
+  const tabs = [
+    ...(d.steamProfile ? [{ id: 'steam', label: 'Steam', cls: 'steam' }] : []),
+    ...(d.epic || []).map((e, i, all) => ({
+      id: 'epic:' + e.id,
+      label: all.length > 1 ? 'Epic Games · ' + e.name : 'Epic Games',
+      cls: 'epic',
+      e,
+    })),
+  ];
+  const current = tabs.find(t => t.id === profileTab) || tabs[0];
+  const bar =
+    tabs.length > 1
+      ? `<div class="profile-tabs" role="tablist">${tabs
+          .map(
+            t =>
+              `<button class="${t.cls} ${t === current ? 'active' : ''}" role="tab" aria-selected="${t === current}" data-profile-tab="${esc(t.id)}">${esc(t.label)}</button>`
+          )
+          .join('')}</div>`
+      : '';
+  // The tabs sit at the top of the profile card, over its background.
+  const body = current.e ? epicProfilePage(d, current.e) : myProfilePage(d);
+  return notice() + body.replace('<div class="sp-inner">', '<div class="sp-inner">' + bar);
+}
+// An Epic Games account, in the look of the Epic Games Store.
+function epicProfilePage(d, e) {
+  const h = m => (m / 60).toLocaleString('ru-RU', { maximumFractionDigits: m < 600 ? 1 : 0 });
+  const stat = (label, value) =>
+    value === null || value === undefined || value === ''
+      ? ''
+      : `<div class="sp-stat"><span>${label}</span><b>${value}</b></div>`;
+  const panel = (title, body, extra = '') =>
+    `<section class="sp-panel"><div class="sp-panel-head"><span>${title}</span>${extra}</div>${body}</section>`;
+  let country = '';
+  try {
+    country = e.country ? new Intl.DisplayNames(['ru'], { type: 'region' }).of(e.country) : '';
+  } catch {
+    country = e.country;
+  }
+  const runningId = Object.keys(state.running || {}).find(id =>
+    game(id)?.offers?.some(o => o.provider === 'epic')
+  );
+  const status = runningId
+    ? 'ingame'
+    : d.status === 'away'
+      ? 'away'
+      : d.status === 'online'
+        ? 'online'
+        : 'offline';
+  const statusText = runningId
+    ? 'В игре: ' + (game(runningId)?.name || '')
+    : { online: 'В сети', away: 'Нет на месте', invisible: 'Невидимка', offline: 'Не в сети' }[d.status] ||
+      'В сети';
+  const letter = esc((e.name || 'E').trim().slice(0, 1).toUpperCase());
+  const cover = id => {
+    const g = game(id);
+    return `<span class="friend-game-art">${g ? artTag(g) : ''}</span>`;
+  };
+  const recent = e.recent.length
+    ? `<div class="sp-games">${e.recent
+        .map(
+          x =>
+            `<button class="sp-game" data-detail="${esc(x.id)}">${cover(x.id)}<span class="sp-game-name">${esc(game(x.id)?.name || x.name)}</span><span class="sp-game-meta">${x.minutes ? h(x.minutes) + ' ч всего · ' : ''}запуск ${new Date(x.lastPlayed).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}</span></button>`
+        )
+        .join(
+          ''
+        )}</div><p class="hint">Epic не сообщает даты запусков другим программам — здесь игры, запущенные через Nexus.</p>`
+    : '<p class="hint">Epic не сообщает даты запусков другим программам. Игры, запущенные через Nexus, появятся здесь.</p>';
+  const top = e.top.length
+    ? `<div class="top-games">${e.top
+        .map((g, i) => {
+          const w = Math.max(2, Math.round((g.minutes / e.top[0].minutes) * 100));
+          return `<button class="top-game" data-detail="${esc(g.id)}"><span class="top-rank">${i + 1}</span><span class="top-name">${esc(game(g.id)?.name || g.name)}</span><span class="top-bar"><i style="width:${w}%"></i></span><b>${h(g.minutes)} ч</b></button>`;
+        })
+        .join('')}</div>`
+    : '<p class="hint">Время в играх Epic появится после синхронизации аккаунта.</p>';
+  return `<div class="sp epic-profile"><div class="sp-inner"><header class="sp-header"><div class="sp-avatar epic-avatar ${esc(status)}"><b>${letter}</b></div><div class="sp-id"><small class="epic-mark">EPIC GAMES</small><h1>${esc(e.name || 'Аккаунт Epic Games')}</h1>${
+    country ? `<p class="sp-real">${esc(country)}</p>` : ''
+  }</div><div class="sp-side"><div class="sp-actions"><button class="primary" data-open-link="https://store.epicgames.com/u/${esc(e.id)}">Профиль в Epic ↗</button><button class="secondary" data-open-link="https://www.epicgames.com/account/personal">Аккаунт ↗</button><button class="secondary" id="profile-refresh" title="Обновить" ${profileState.loading ? 'disabled' : ''}>↻</button></div></div></header><div class="sp-body"><div class="sp-main">${panel(
+    'Недавно запущенные',
+    recent
+  )}${panel('Больше всего времени', top, e.minutes ? `<small>${h(e.minutes)} ч всего</small>` : '')}</div><aside class="sp-right"><div class="sp-status ${esc(status)}"><strong>${esc(statusText)}</strong></div><div class="sp-stats">${stat(
+    'Игр в Epic',
+    e.games.toLocaleString('ru-RU')
+  )}${stat('Установлено', e.installed)}${stat('Часов в играх', h(e.minutes))}${stat('Запускались', e.played)}${stat(
+    'Друзей в Epic',
+    e.friends
+  )}</div></aside></div></div></div>`;
+}
 function profilePage() {
   if (!profileState.data && !profileState.loading && !profileState.error) loadProfile();
   const d = profileState.data;
   if (!d)
     return `${notice()}<div class="empty"><h2>${esc(profileState.error || 'Загружаем профиль…')}</h2></div>`;
+  if (d.steamProfile || d.epic?.length) return profileTabsPage(d);
   const s = d.stats;
   const h = m => (m / 60).toLocaleString('ru-RU', { maximumFractionDigits: 0 });
   const accounts = d.accounts.length
@@ -234,7 +463,7 @@ function profilePage() {
     ? s.top
         .map((g, i) => {
           const w = Math.max(2, Math.round((g.minutes / s.top[0].minutes) * 100));
-          return `<button class="top-game" data-detail="${esc(g.id)}"><span class="top-rank">${i + 1}</span><span class="top-name">${esc(g.name)}</span><span class="top-bar"><i style="width:${w}%"></i></span><b>${h(g.minutes)} ч</b></button>`;
+          return `<button class="top-game" data-detail="${esc(g.id)}"><span class="top-rank">${i + 1}</span><span class="top-name">${esc(game(g.id)?.name || g.name)}</span><span class="top-bar"><i style="width:${w}%"></i></span><b>${h(g.minutes)} ч</b></button>`;
         })
         .join('')
     : '<p class="hint">Время в играх появится после синхронизации аккаунтов.</p>';
@@ -446,9 +675,10 @@ document.addEventListener('click', event =>
       friendState = { ...friendState, data: null, error: '' };
       render();
       loadFriend(true);
-    } else if (el.id === 'profile-refresh') {
-      profileState = { loading: false, data: null, error: '' };
-      render();
+    } else if (el.dataset.profileTab) setProfileTab(el.dataset.profileTab);
+    else if (el.id === 'profile-refresh') {
+      profileState = { loading: false, data: profileState.data, error: '' };
+      loadProfile(true);
     }
   })
 );

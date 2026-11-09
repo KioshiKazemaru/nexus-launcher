@@ -71,7 +71,11 @@ function downloadsPage() {
                     ? `<button class="secondary" data-download-action="resume" data-download-id="${esc(id)}">▶ Продолжить</button>`
                     : `<button class="secondary" data-download-action="pause" data-download-id="${esc(id)}">❚❚ Пауза</button>`
             }<button class="secondary" data-download-action="cancel" data-download-id="${esc(id)}">Отменить</button>`
-          : `<button class="secondary" data-client-downloads="${esc(p.provider)}" title="Пауза, отмена и очередь — в клиенте ${esc(names[p.provider] || '')}">Открыть в ${esc(p.provider === 'epic' ? 'Epic' : 'Steam')}</button>`
+          : p.uninstallFailed
+            ? `<button class="secondary" data-uninstall="${esc(p.provider)}" data-game-id="${esc(id)}">Удалить снова</button>`
+            : p.state === 'uninstalling'
+              ? ''
+              : `<button class="secondary" data-client-downloads="${esc(p.provider)}" title="Пауза, отмена и очередь — в клиенте ${esc(names[p.provider] || '')}">Открыть в ${esc(p.provider === 'epic' ? 'Epic' : 'Steam')}</button>`
       }</div>${p.error ? `<p class="download-error">${esc(p.error)}</p>` : ''}</article>`;
     })
     .join('');
@@ -120,6 +124,10 @@ function storagePage() {
 // Install / uninstall / verify through the official client.
 function clientButtons(o) {
   if (!o || o.provider === 'custom' || demo) return '';
+  // Removal stopped half way: the rest of the files go with one more press.
+  const left = state.progress?.[librarySelection];
+  if (!o.installed && left?.uninstallFailed)
+    return `<button class="secondary" id="library-uninstall" data-uninstall="${esc(left.provider || o.provider)}" title="${esc(left.error || '')}">Удалить снова</button>`;
   if (!o.installed) return '';
   const sync =
     o.provider === 'epic' && o.executable && state.settings.epicCloudSaves !== false
@@ -133,7 +141,7 @@ function clientButtons(o) {
     (o.provider === 'epic' && state.settings.nexusDownloads !== false
       ? '<button class="secondary" data-download-action="repair" title="Проверить файлы и докачать повреждённые">Проверить</button><button class="secondary" id="library-move" title="Перенести игру в другую папку или на другой диск">Переместить</button>'
       : `<button class="secondary" data-client-action="verify" title="Проверить файлы в ${names[o.provider]}">Проверить</button>`) +
-    `<button class="secondary" id="library-uninstall" data-uninstall="${esc(o.provider)}" title="Удалить файлы игры с компьютера" ${state.progress?.[librarySelection]?.state === 'uninstalling' ? 'disabled' : ''}>Удалить</button>`
+    `<button class="secondary" id="library-uninstall" data-uninstall="${esc(o.provider)}" title="Удалить файлы игры с компьютера">${state.progress?.[librarySelection]?.state === 'uninstalling' ? 'Удаляется…' : 'Удалить'}</button>`
   );
 }
 // For a manually added game started through a launcher: which process is the game.

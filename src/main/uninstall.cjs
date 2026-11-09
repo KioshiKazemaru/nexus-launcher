@@ -4,8 +4,12 @@
 //          content and shader cache of the app. Steam notices the removed
 //          manifest and shows the game as not installed.
 //   Epic:  the game folder, its .item manifest and its entry in
-//          LauncherInstalled.dat. The Epic launcher, if open, is closed first:
-//          it would otherwise write the game back into its lists.
+//          LauncherInstalled.dat. The Epic launcher, if open, is closed first
+//          (it would otherwise write the game back into its lists) and started
+//          again in the tray afterwards.
+// No questions: "Удалить" removes at once. Steam, if open and no Steam game is
+// running, is restarted hidden so it rereads its library. When removal stops
+// half way (a file in use), the game keeps a "Удалить снова" button.
 // Saves stay: Steam Cloud / Epic cloud saves and saves in AppData/Documents are
 // not touched. Saves inside the game folder (some Epic games) are copied to
 // save-backups and, when possible, uploaded to the Epic cloud before deletion.
@@ -16,9 +20,8 @@
 
 const fsp = require('node:fs/promises');
 const path = require('node:path');
-const { execFile } = require('node:child_process');
+const { execFile, spawn } = require('node:child_process');
 const { promisify } = require('node:util');
-const { dialog } = require('electron');
 const { folderBytes } = require('../core.cjs');
 
 const run = promisify(execFile);
@@ -57,11 +60,31 @@ class Uninstaller {
   constructor(ctx) {
     this.ctx = ctx;
     this.jobs = new Map(); // gameId → { state: 'uninstalling', done, total, provider }
+    // Removals that stopped half way, kept across restarts: gameId → { provider, name, dir, extraDirs, error }.
+    this.failed = new Map(
+      Object.entries(ctx.settings?.uninstallLeftovers || {}).filter(
+        ([, x]) => x && typeof x.dir === 'string' && path.isAbsolute(x.dir)
+      )
+    );
+  }
+  saveFailed() {
+    if (!this.ctx.settings) return;
+    this.ctx.settings.uninstallLeftovers = Object.fromEntries(this.failed);
+    this.ctx.storage?.saveSettings();
   }
   // For the downloads view: { gameId: progress }.
   progress() {
-    return Object.fromEntries(
-      [...this.jobs].map(([id, j]) => [
+    return Object.fromEntries([
+      ...[...this.failed].map(([id, x]) => [
+        id,
+        {
+          state: 'error',
+          provider: x.provider,
+          uninstallFailed: true,
+          error: 'Удаление не завершено: ' + x.error,
+        },
+      ]),
+      ...[...this.jobs].map(([id, j]) => [
         id,
         {
           state: 'uninstalling',
@@ -70,8 +93,8 @@ class Uninstaller {
           total: j.total,
           percent: j.total ? Math.min(99, Math.floor((j.done / j.total) * 100)) : undefined,
         },
-      ])
-    );
+      ]),
+    ]);
   }
   // Every other installed game folder (none of them may be removed with this one).
   otherFolders(gameId) {
@@ -111,10 +134,13 @@ class Uninstaller {
     throw Error('Удалять с диска можно только игры Steam и Epic Games');
   }
   async uninstall(gameId, provider) {
+    // Pressed again while it runs: nothing new to do.
+    if (this.jobs.has(gameId)) return { how: 'running' };
     const game = (this.ctx.library.games || []).find(g => g.id === gameId);
+    const left = this.failed.get(gameId);
     const offer = game?.offers.find(o => o.provider === provider && o.installed);
+    if (!offer && left) return this.retry(gameId, game, left);
     if (!game || !offer) throw Error('Игра не установлена');
-    if (this.jobs.has(gameId)) throw Error('Игра уже удаляется');
     if (this.ctx.epicInstall?.moves?.has(gameId)) throw Error('Игра сейчас переносится');
     if (this.ctx.epicInstall?.jobs.has(gameId))
       throw Error('Сначала остановите загрузку игры на странице «Загрузки»');
@@ -122,31 +148,50 @@ class Uninstaller {
     const plan = this.plan(game, offer);
     const risk = folderRisk(plan.dir, [...this.otherFolders(gameId), ...plan.roots]);
     if (risk) throw Error(`Nexus не удалит ${plan.dir}: ${risk}`);
-    const size = await folderBytes(plan.dir);
-    const store = provider === 'steam' ? 'Steam' : 'Epic Games';
-    const { response } = await dialog.showMessageBox(this.ctx.mainWindow?.() || null, {
-      type: 'warning',
-      buttons: ['Удалить', `Удалить через ${store}`, 'Отмена'],
-      defaultId: 2,
-      cancelId: 2,
-      title: 'Удаление игры',
-      message: `Удалить «${game.name}» с этого компьютера?`,
-      detail: `Будет удалено ${(size / 1024 ** 3).toFixed(1)} ГБ:\n${plan.dir}\n\nСохранения в облаке ${provider === 'steam' ? 'Steam Cloud' : 'Epic'} и в папках «Документы»/AppData останутся; игра останется в вашей библиотеке, её можно установить снова.`,
-    });
-    if (response === 1) return { how: 'client' };
-    if (response !== 0) return { how: 'canceled' };
-    if (provider === 'epic' && !(await this.closeEpicLauncher())) return { how: 'canceled' };
-    if (provider === 'epic') await this.keepSaves(game, offer);
-    this.jobs.set(gameId, { provider, done: 0, total: size });
+    this.jobs.set(gameId, { provider, done: 0, total: 0 });
     this.ctx.hub.publish();
     // In the background: big games take a while; the downloads view shows the progress.
-    this.remove(gameId, game, plan, size).catch(e => {
-      this.ctx.log.warn('uninstall', `${gameId}: ${e.message}`);
-      this.ctx.toast?.(`«${game.name}» удалена не полностью: ${e.message}`);
-    });
+    this.run(gameId, game, offer, plan).catch(e => this.ctx.log.warn('uninstall', `${gameId}: ${e.message}`));
     return { how: 'started' };
   }
-  async remove(gameId, game, plan, size) {
+  async run(gameId, game, offer, plan) {
+    const job = this.jobs.get(gameId);
+    let epicExe = null;
+    try {
+      job.total = await folderBytes(plan.dir);
+      if (offer.provider === 'epic') {
+        epicExe = await this.closeEpicLauncher();
+        await this.keepSaves(game, offer);
+      }
+    } catch (e) {
+      this.jobs.delete(gameId);
+      this.ctx.hub.publish();
+      this.ctx.toast?.(`«${game.name}» не удалена: ${e.message}`);
+      throw e;
+    }
+    await this.remove(gameId, game, plan, job.total, {
+      manifestsGone: () => (offer.provider === 'steam' ? this.refreshSteam() : null),
+      after: async () => {
+        if (epicExe) this.startEpicLauncher(epicExe);
+      },
+    });
+  }
+  // A removal that stopped half way: the rest of the folder, then the extras.
+  async retry(gameId, game, left) {
+    const risk = folderRisk(left.dir, this.otherFolders(gameId));
+    if (risk) throw Error(`Nexus не удалит ${left.dir}: ${risk}`);
+    const plan = { dir: left.dir, files: [], extraDirs: left.extraDirs || [], roots: [] };
+    this.jobs.set(gameId, { provider: left.provider, done: 0, total: 0 });
+    this.ctx.hub.publish();
+    const name = game?.name || left.name || 'Игра';
+    (async () => {
+      const job = this.jobs.get(gameId);
+      job.total = await folderBytes(left.dir).catch(() => 0);
+      await this.remove(gameId, { name }, plan, job.total, {});
+    })().catch(e => this.ctx.log.warn('uninstall', `${gameId} retry: ${e.message}`));
+    return { how: 'started' };
+  }
+  async remove(gameId, game, plan, size, hooks = {}) {
     const job = this.jobs.get(gameId);
     try {
       // The manifests first: the clients stop treating the game as installed.
@@ -164,12 +209,28 @@ class Uninstaller {
             } catch {}
           }
       if (plan.epicApp) await this.removeFromLauncherInstalled(plan.epicApp);
+      // Not awaited: Steam restarts in the tray while the files go.
+      hooks.manifestsGone?.();
       await this.removeFolder(plan.dir, job);
       for (const extra of plan.extraDirs)
         await fsp.rm(extra, { recursive: true, force: true }).catch(() => {});
+      if (this.failed.delete(gameId)) this.saveFailed();
       this.ctx.log.info('uninstall', `${gameId}: removed ${size} bytes`);
       this.ctx.toast?.(`«${game.name}» удалена. Освобождено ${(size / 1024 ** 3).toFixed(1)} ГБ.`);
+    } catch (e) {
+      // The manifests are gone (the clients count the game as removed); the rest waits for "Удалить снова".
+      this.failed.set(gameId, {
+        provider: job?.provider,
+        name: game.name,
+        dir: plan.dir,
+        extraDirs: plan.extraDirs,
+        error: e.message,
+      });
+      this.saveFailed();
+      this.ctx.toast?.(`«${game.name}» удалена не полностью: ${e.message}. Нажмите «Удалить снова».`);
+      throw e;
     } finally {
+      await hooks.after?.().catch(() => {});
       this.jobs.delete(gameId);
       await this.ctx.library.scanLocal().catch(e => this.ctx.log.warn('scan', e.message));
       this.ctx.hub.publish();
@@ -223,9 +284,10 @@ class Uninstaller {
     await fsp.writeFile(tmp, JSON.stringify({ ...json, InstallationList: next }, null, '\t'));
     await fsp.rename(tmp, file);
   }
-  // The Epic launcher keeps its install list in memory: it is closed first.
+  // The Epic launcher keeps its install list in memory: it is closed first, without asking.
+  // Returns the launcher's exe when it was open (to start it again in the tray), else null.
   async closeEpicLauncher() {
-    if (process.platform !== 'win32') return true;
+    if (process.platform !== 'win32') return null;
     const runningNow = async () => {
       try {
         const { stdout } = await run(
@@ -241,24 +303,51 @@ class Uninstaller {
         return false;
       }
     };
-    if (!(await runningNow())) return true;
-    const { response } = await dialog.showMessageBox(this.ctx.mainWindow?.() || null, {
-      type: 'question',
-      buttons: ['Закрыть Epic Launcher и удалить', 'Отмена'],
-      defaultId: 0,
-      cancelId: 1,
-      title: 'Epic Games Launcher открыт',
-      message: 'Чтобы удалить игру, Nexus закроет Epic Games Launcher',
-      detail:
-        'Иначе лаунчер может вернуть удалённую игру в свой список. Загрузки в Epic будут приостановлены.',
-    });
-    if (response !== 0) return false;
+    if (!(await runningNow())) return null;
+    let exe = '';
+    try {
+      const { stdout } = await run(
+        'powershell.exe',
+        [
+          '-NoProfile',
+          '-NonInteractive',
+          '-Command',
+          '(Get-Process EpicGamesLauncher -ErrorAction SilentlyContinue | Select-Object -First 1).Path',
+        ],
+        { windowsHide: true, timeout: 10000 }
+      );
+      exe = stdout.trim();
+    } catch {}
     await run('taskkill.exe', ['/IM', 'EpicGamesLauncher.exe', '/T', '/F'], {
       windowsHide: true,
       timeout: 15000,
     }).catch(() => {});
     for (let i = 0; i < 10 && (await runningNow()); i++) await new Promise(r => setTimeout(r, 500));
-    return !(await runningNow());
+    if (await runningNow()) throw Error('Epic Games Launcher не закрылся');
+    return /epicgameslauncher\.exe$/i.test(exe) && path.isAbsolute(exe) ? exe : null;
+  }
+  startEpicLauncher(exe) {
+    try {
+      spawn(exe, ['-silent'], { cwd: path.dirname(exe), detached: true, stdio: 'ignore', shell: false })
+        .on('error', e => this.ctx.log.warn('uninstall', 'Epic launcher: ' + e.message))
+        .unref();
+    } catch (e) {
+      this.ctx.log.warn('uninstall', 'Epic launcher: ' + e.message);
+    }
+  }
+  // Steam reads its library on start: restarted hidden, unless a Steam game runs.
+  async refreshSteam() {
+    try {
+      const actions = this.ctx.actions;
+      const exe = actions?.steamExe?.();
+      if (!exe || !(await actions.processRunning('steam.exe'))) return;
+      if ((await actions.runningSteamApp?.()) !== '0') return;
+      await this.ctx.steamInstall.stopSteam(exe);
+      this.ctx.steamInstall.startSteam(exe);
+      this.ctx.log.info('uninstall', 'Steam restarted in the tray');
+    } catch (e) {
+      this.ctx.log.warn('uninstall', 'Steam restart: ' + e.message);
+    }
   }
   // Saves inside the game folder would go with it: copied and uploaded first.
   async keepSaves(game, offer) {

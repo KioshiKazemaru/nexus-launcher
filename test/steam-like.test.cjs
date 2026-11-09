@@ -678,3 +678,49 @@ test('friends from the Web API once a minute: the first poll is the state, later
     service.stop();
   }
 });
+
+test('Epic profile tab: only Epic games, hours, most played and games launched through Nexus', () => {
+  const games = [
+    {
+      id: 'a',
+      name: 'A',
+      offers: [{ provider: 'epic', owned: true, playtime: 300, lastPlayed: 1700000000 }],
+    },
+    { id: 'b', name: 'B', offers: [{ provider: 'epic', installed: true, playtime: 600 }] },
+    { id: 'c', name: 'C', offers: [{ provider: 'epic', owned: true }] },
+    { id: 'd', name: 'D', offers: [{ provider: 'steam', owned: true, playtime: 9999 }] },
+    {
+      id: 'e',
+      name: 'E',
+      offers: [
+        { provider: 'steam', owned: true, playtime: 50 },
+        { provider: 'epic', owned: true, playtime: 20, lastPlayed: 1800000000 },
+      ],
+    },
+  ];
+  const s = pr.epicStats(games);
+  assert.equal(s.games, 4);
+  assert.equal(s.installed, 1);
+  assert.equal(s.minutes, 920);
+  assert.equal(s.played, 3);
+  assert.deepEqual(
+    s.top.map(x => x.id),
+    ['b', 'a', 'e']
+  );
+  // Newest launch first, in milliseconds.
+  assert.deepEqual(
+    s.recent.map(x => [x.id, x.lastPlayed]),
+    [
+      ['e', 1800000000000],
+      ['a', 1700000000000],
+    ]
+  );
+  assert.deepEqual(pr.epicStats(null), {
+    games: 0,
+    installed: 0,
+    minutes: 0,
+    played: 0,
+    top: [],
+    recent: [],
+  });
+});

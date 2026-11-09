@@ -707,7 +707,7 @@ function registerIpc() {
       return shell.openExternal(`https://steamcommunity.com/app/${appId}/workshop/`);
     throw Error('Некорректный предмет Мастерской');
   });
-  register('profile', () => ctx.profile.info(), { quiet: true });
+  register('profile', p => ctx.profile.info({ force: p?.force === true }), { quiet: true });
   register(
     'setLaunchOptions',
     withState(p => actions.setLaunchOptions(p || {}))

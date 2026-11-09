@@ -159,7 +159,8 @@ function parseSteamProfileXml(xml) {
   };
 }
 // IPlayerService/GetProfileItemsEquipped → the profile background and avatar frame.
-const COMMUNITY_IMAGES = 'https://cdn.akamai.steamstatic.com/steamcommunity/public/images/';
+// Steam keeps profile items (backgrounds, avatar frames) on its newer CDN; the old path answers 404 for frames.
+const COMMUNITY_IMAGES = 'https://shared.akamai.steamstatic.com/community_assets/images/';
 function parseProfileItems(json) {
   const r = json?.response || {};
   const img = path =>

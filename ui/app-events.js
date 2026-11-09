@@ -256,7 +256,6 @@ document.addEventListener('click', event =>
       return;
     }
     if (el.dataset.uninstall) {
-      el.disabled = true;
       const r = await call('uninstallGame', {
         id: el.dataset.gameId || librarySelection,
         provider: el.dataset.uninstall,
@@ -266,6 +265,7 @@ document.addEventListener('click', event =>
       render();
       const res = r.result;
       if (res.how === 'started') toast('Удаление началось — прогресс на странице «Загрузки».');
+      else if (res.how === 'running') toast('Игра уже удаляется — прогресс на странице «Загрузки».');
       else if (res.how === 'client')
         toast(
           res.result?.how === 'canceled'

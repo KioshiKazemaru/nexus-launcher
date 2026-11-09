@@ -440,3 +440,19 @@ test('friends of a game: Steam lists, each friend once, names from the friends l
   assert.equal(calls.filter(c => c[0].includes('GetFriendsGameplayInfo')).length, 1);
   await assert.rejects(() => svc.gameFriends('abc'), /не игра Steam/);
 });
+
+test('profile background and avatar frame come from the Steam community CDN', () => {
+  const r = f.parseProfileItems({
+    response: {
+      profile_background: { image_large: 'items/100/aaa.jpg' },
+      avatar_frame: { image_small: 'items/200/bbb.png' },
+    },
+  });
+  assert.equal(
+    r.background,
+    'https://shared.akamai.steamstatic.com/community_assets/images/items/100/aaa.jpg'
+  );
+  assert.equal(r.frame, 'https://shared.akamai.steamstatic.com/community_assets/images/items/200/bbb.png');
+  // Anything that is not a plain image path is dropped.
+  assert.equal(f.parseProfileItems({ response: { avatar_frame: { image_small: '../x.png' } } }).frame, '');
+});

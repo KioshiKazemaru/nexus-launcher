@@ -6132,3 +6132,167 @@ body[data-page='friend'] .layout > aside {
   font-size: 11px;
   color: #8b929a;
 }
+
+/* ---- my profile, laid out like my Steam page ---- */
+.sp-xp {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #8f98a0;
+  text-align: right;
+}
+.sp-stats h3 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #8f98a0;
+}
+.sp-stats + .sp-stats {
+  margin-top: 12px;
+}
+.sp-summary.hint {
+  color: #8f98a0;
+  font-style: italic;
+}
+.sp-account {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.sp-account-avatar {
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: #2a3542;
+  color: #dcdedf;
+  font-weight: 700;
+}
+.sp-account-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.sp-account span:last-child {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.sp-account small {
+  font-size: 11px;
+  color: #8f98a0;
+}
+.sp-account strong {
+  font-size: 13px;
+  font-weight: 400;
+  color: #dcdedf;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sp-status.away strong {
+  color: #57cbde;
+  opacity: 0.75;
+}
+
+/* ---- "Профиль" tabs: Steam / Epic Games ---- */
+.profile-tabs {
+  position: relative;
+  display: flex;
+  gap: 2px;
+  margin: 0 0 12px;
+}
+.profile-tabs button {
+  padding: 9px 22px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #8f98a0;
+  background: #ffffff0d;
+  border: 0;
+  border-radius: 2px;
+}
+.profile-tabs button:hover {
+  color: var(--st-bright);
+}
+.profile-tabs button.steam.active {
+  color: var(--st-bright);
+  background: linear-gradient(90deg, #1a9fff, #1474c4);
+}
+.profile-tabs button.epic.active {
+  color: #fff;
+  background: #313131;
+  box-shadow: inset 0 -2px 0 #26bbff;
+}
+
+/* ---- an Epic Games account, in the look of the Epic Games Store ---- */
+.sp.epic-profile {
+  background: radial-gradient(ellipse 80% 260px at 50% 0, #26bbff1f, transparent 70%), #101014;
+  font-family: Inter, 'Segoe UI', Arial, sans-serif;
+}
+.epic-profile .sp-header {
+  background: linear-gradient(135deg, #202024, #18181c);
+  border-radius: 12px;
+}
+.epic-profile .sp-panel {
+  background: #18181c;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.epic-profile .sp-panel-head {
+  background: #202024;
+}
+.epic-profile .sp-right .sp-status,
+.epic-profile .sp-right .sp-stats {
+  background: #18181c;
+  border-radius: 12px;
+}
+.epic-profile .sp-game {
+  background: #202024;
+  border-radius: 8px;
+}
+.epic-profile .sp-game:hover {
+  background: #2a2a30;
+}
+.epic-profile .top-bar i {
+  background: #26bbff;
+}
+.epic-profile .primary {
+  background: #26bbff;
+  color: #101014;
+}
+.epic-profile .primary:hover {
+  background: #61cdff;
+}
+.epic-profile .secondary {
+  background: #ffffff1a;
+  color: #fff;
+  border-radius: 6px;
+}
+.epic-avatar {
+  border-radius: 50%;
+}
+.sp-avatar.epic-avatar b {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  font-size: 64px;
+  font-weight: 800;
+  color: #fff;
+  background: linear-gradient(135deg, #26bbff, #0074e4);
+}
+.epic-mark {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  color: #26bbff;
+}

@@ -410,14 +410,16 @@ test(
       await p.click('.library-card [data-detail]');
       await p.waitForTimeout(300);
       assert.match(await p.locator('.library-game-page').innerText(), /ДОСТИЖЕНИЯ · 1\/2/);
-      // "Удалить" removes the game right in Nexus (the main process asks first).
+      // "Удалить" removes the game right in Nexus, without questions.
       await p.click('[data-uninstall]');
       assert.deepEqual(
         await p.evaluate(() => window.__calls.filter(c => c[0] === 'uninstallGame').map(c => c[1])),
         [{ id: 'cyber', provider: 'steam' }]
       );
       assert.match(await p.locator('#toast').textContent(), /Удаление началось/);
-      assert.equal(await p.locator('[data-uninstall]').isDisabled(), true);
+      // It stays pressable while the game is being removed.
+      assert.equal(await p.locator('[data-uninstall]').isDisabled(), false);
+      assert.match(await p.locator('[data-uninstall]').textContent(), /Удаляется/);
       assert.match(await p.locator('.library-game-page').innerText(), /Удаление/);
       assert.ok(await p.locator('[data-split]').count());
       // A reply without the game list keeps the library intact.

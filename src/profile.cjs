@@ -69,4 +69,41 @@ function parseBadges(json) {
   };
 }
 
-module.exports = { libraryStats, latestAchievements, parseBadges };
+// The Epic Games side of the library for the Epic profile tab.
+function epicStats(games) {
+  const list = (Array.isArray(games) ? games : []).filter(g => g && Array.isArray(g.offers));
+  const rows = list
+    .map(g => {
+      const o = g.offers.filter(x => x.provider === 'epic' && (x.owned || x.installed));
+      if (!o.length) return null;
+      // Some Epic games keep an id as the name of the merged game: the offer has the title.
+      const titled = o.find(x => x.name && !/^[0-9a-f]{20,}$/i.test(x.name))?.name;
+      return {
+        id: g.id,
+        name: /^[0-9a-f]{20,}$/i.test(g.name || '') ? titled || g.name : g.name,
+        installed: o.some(x => x.installed),
+        minutes: Math.max(0, ...o.map(x => Number(x.playtime) || 0)),
+        lastPlayed: Math.max(0, ...o.map(x => Number(x.lastPlayed) || 0)),
+      };
+    })
+    .filter(Boolean);
+  // lastPlayed is in seconds (as Steam's); shown in milliseconds.
+  const ms = t => (t > 1e12 ? t : t * 1000);
+  return {
+    games: rows.length,
+    installed: rows.filter(x => x.installed).length,
+    minutes: rows.reduce((n, x) => n + x.minutes, 0),
+    played: rows.filter(x => x.minutes > 0 || x.lastPlayed > 0).length,
+    top: rows
+      .filter(x => x.minutes > 0)
+      .sort((a, b) => b.minutes - a.minutes)
+      .slice(0, 10)
+      .map(({ id, name, minutes }) => ({ id, name, minutes })),
+    recent: rows
+      .filter(x => x.lastPlayed > 0)
+      .sort((a, b) => b.lastPlayed - a.lastPlayed)
+      .slice(0, 6)
+      .map(({ id, name, minutes, lastPlayed }) => ({ id, name, minutes, lastPlayed: ms(lastPlayed) })),
+  };
+}
+module.exports = { libraryStats, latestAchievements, parseBadges, epicStats };
