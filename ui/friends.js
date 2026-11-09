@@ -1,9 +1,11 @@
 'use strict';
-/* global api, $, esc, avatarTag, avatarUrl, statusLine, PROVIDER_NAMES */
+/* global api, $, esc, avatarTag, avatarUrl, statusLine, timeText, PROVIDER_NAMES */
 // The friends window: my accounts on top ("В игре: …" in green), then
 // friends grouped like Steam. A click opens the chat with the friend.
 
 let data = null,
+  tab = 'friends',
+  activity = null,
   loading = false,
   error = '',
   query = '';
@@ -40,7 +42,44 @@ function group(id, title, list, provider) {
   const open = query || !closedGroups.has(id);
   return `<section class="group"><button class="group-head" data-group="${esc(id)}" aria-expanded="${open}">${open ? '▾' : '▸'} ${esc(title)} <span>(${list.length})</span></button>${open ? list.map(f => row(f, provider)).join('') : ''}</section>`;
 }
+// "Активность": who came online and who started which game, newest first.
+const ACTIVITY_TEXT = { online: 'теперь в сети', game: 'играет в', stop: 'закончил(а) играть в' };
+function activityRow(x) {
+  const when = new Date(x.at);
+  const time =
+    Date.now() - x.at < 86400000
+      ? timeText(x.at)
+      : when.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) + ', ' + timeText(x.at);
+  const game = x.type === 'online' ? '' : ` <b>${esc(x.game || 'игру')}</b>`;
+  return `<div class="activity-row"><button class="friend-open" ${x.provider === 'steam' ? `data-chat="${esc(x.conv)}"` : 'aria-disabled="true"'}>${avatarTag({ name: x.name, avatar: x.avatar, status: x.type === 'game' ? 'ingame' : 'online' })}<span class="friend-text"><strong>${esc(x.name)}</strong><small>${esc(ACTIVITY_TEXT[x.type] || '')}${game}</small></span><time>${esc(time)}</time></button></div>`;
+}
+async function loadActivity() {
+  try {
+    activity = await api.activity();
+  } catch (e) {
+    activity = [];
+    error = e.message;
+  }
+  render();
+}
+function renderActivity() {
+  const list = (activity || []).filter(
+    x =>
+      !query.trim() ||
+      x.name.toLowerCase().includes(query.trim().toLowerCase()) ||
+      (x.game || '').toLowerCase().includes(query.trim().toLowerCase())
+  );
+  $('#list').innerHTML = !activity
+    ? '<p class="empty">Загружаем…</p>'
+    : list.length
+      ? list.map(activityRow).join('')
+      : '<p class="empty">Пока ничего не произошло. Nexus записывает, кто из друзей заходит в сеть и во что играет, пока он запущен; записи хранятся неделю.</p>';
+  $('#note').innerHTML = '';
+}
 function render() {
+  document.querySelectorAll('[data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  if (data?.myStatus) $('#my-status').value = data.myStatus;
+  if (tab === 'activity') return renderActivity();
   const me = data?.me || [];
   $('#me').innerHTML = me.length
     ? me
@@ -109,7 +148,11 @@ document.addEventListener('click', async e => {
   try {
     if (el.dataset.chat) await api.openChat(el.dataset.chat);
     else if (el.dataset.profile) await api.openProfile({ provider: 'steam', id: el.dataset.profile });
-    else if (el.dataset.group) {
+    else if (el.dataset.tab) {
+      tab = el.dataset.tab;
+      if (tab === 'activity') loadActivity();
+      render();
+    } else if (el.dataset.group) {
       const id = el.dataset.group;
       closedGroups.has(id) ? closedGroups.delete(id) : closedGroups.add(id);
       try {
@@ -122,6 +165,15 @@ document.addEventListener('click', async e => {
     render();
   }
 });
+$('#my-status').addEventListener('change', async e => {
+  try {
+    const s = await api.setStatus(e.target.value);
+    if (data) data.myStatus = s;
+  } catch (err) {
+    error = err.message;
+  }
+  render();
+});
 $('#search').addEventListener('input', e => {
   query = e.target.value;
   render();
@@ -130,16 +182,18 @@ $('#search').addEventListener('input', e => {
 api.onSocialEvent(ev => {
   if (!data) return;
   if (ev.type === 'presence')
-    for (const g of data.epic || [])
+    for (const g of data[ev.provider === 'steam' ? 'steam' : 'epic'] || [])
       for (const f of g.friends)
         if (f.id === ev.friendId) Object.assign(f, { status: ev.status, game: ev.game });
+  if (ev.type === 'my-status') data.myStatus = ev.status;
+  if (ev.type === 'activity' && activity) activity = [ev.entry, ...activity];
   if (ev.type === 'unread') {
     data.unread = ev.unread;
     for (const g of [...(data.steam || []), ...(data.epic || [])])
       for (const f of g.friends) f.unread = ev.unread[f.conv] || 0;
   }
   if (ev.type === 'chat-state' && ev.provider === 'epic' && ev.state === 'online') data.epicLive = true;
-  if (['presence', 'unread', 'chat-state'].includes(ev.type)) render();
+  if (['presence', 'unread', 'chat-state', 'my-status', 'activity'].includes(ev.type)) render();
 });
 load();
 setInterval(() => !document.hidden && load(), 60000);

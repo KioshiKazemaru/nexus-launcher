@@ -1,4 +1,4 @@
-// Nexus window, part 1 of 5: State, helpers, prices, the account bar and running games.
+// Nexus window, part 1 of 6: State, helpers, prices, the account bar and running games.
 // The parts are classic scripts loaded in order by index.html and share one
 // global scope (see eslint.config.cjs); app-boot.js starts the window.
 let state,
@@ -338,6 +338,7 @@ function safeImage(value) {
           'cdn2.unrealengine.com',
           'images.igdb.com',
           'cdn2.steamgriddb.com',
+          'images.steamusercontent.com',
         ].includes(u.hostname))
       ? value
       : '';

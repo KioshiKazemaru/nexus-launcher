@@ -1,4 +1,4 @@
-// Nexus window, part 4 of 5: Clicks, changes, forms and the search field.
+// Nexus window, part 5 of 6: Clicks, changes, forms and the search field.
 // The parts are classic scripts loaded in order by index.html and share one
 // global scope (see eslint.config.cjs); app-boot.js starts the window.
 document.addEventListener('click', event =>

@@ -1,4 +1,4 @@
-// Nexus window, part 5 of 5: Hover previews, state updates from the main process, start-up.
+// Nexus window, part 6 of 6: Hover previews, state updates from the main process, start-up.
 // The parts are classic scripts loaded in order by index.html and share one
 // global scope (see eslint.config.cjs); app-boot.js starts the window.
 const previewRequests = new Map();

@@ -1,4 +1,4 @@
-// Nexus window, part 3 of 5: Library, game pages, downloads, storage, install window, settings, details.
+// Nexus window, part 3 of 6: Library, game pages, downloads, storage, install window, settings, details.
 // The parts are classic scripts loaded in order by index.html and share one
 // global scope (see eslint.config.cjs); app-boot.js starts the window.
 // ---- downloads (Steam and Epic Games), like the downloads page of Steam ----
@@ -75,7 +75,7 @@ function downloadsPage() {
       }</div>${p.error ? `<p class="download-error">${esc(p.error)}</p>` : ''}</article>`;
     })
     .join('');
-  return `${notice()}<div class="section-head"><h1>Загрузки</h1><span>${list.length ? `${list.length} ${plural(list.length, 'активная', 'активные', 'активных')}` : ''}</span></div><p class="subheading">Игры Epic Nexus скачивает сам — их можно поставить на паузу и продолжить даже после перезапуска. Загрузки Steam выполняет Steam в фоне; их пауза и отмена — в клиенте.</p>${
+  return `${notice()}<div class="section-head"><h1>Загрузки</h1><span>${list.length ? `${list.length} ${plural(list.length, 'активная', 'активные', 'активных')}` : ''}</span></div><p class="subheading">Игры Epic Nexus скачивает сам — их можно поставить на паузу и продолжить даже после перезапуска. Загрузки Steam выполняет Steam в фоне; их пауза и отмена — в клиенте.</p>${speedGraph()}${
     rows
       ? `<div class="download-list">${rows}</div>`
       : '<div class="empty"><h2>Нет активных загрузок</h2><p>Когда Steam или Epic Games начнут устанавливать или обновлять игру, она появится здесь.</p></div>'
@@ -229,7 +229,7 @@ function libraryGamePage() {
     steamHero = g.steam
       ? `https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/${g.steam}/library_hero.jpg`
       : '';
-  return `<div class="library-game-page" data-price-game="${esc(g.id)}"><div class="library-game-hero">${hero ? `<img src="${esc(steamHero || hero)}" data-fallback="${esc(hero)}" alt="Баннер ${esc(g.name)}" referrerpolicy="no-referrer">` : ''}<div class="library-game-hero-shade"></div><h1>${esc(g.name)}</h1></div><div class="library-game-actions">${isRunning(g.id) ? `<button class="play-main stop" id="library-stop" title="Закрыть игру; сохранения уйдут в облако">■ ЗАКРЫТЬ</button>` : `<button class="play-main" id="library-play" ${demo ? 'disabled' : ''}>${action}</button>`}<div class="library-game-launch"><div><small>СТАТУС</small><strong>${esc(status)}</strong></div><div><small>ПОСЛЕДНИЙ ЗАПУСК</small><strong>${played ? new Date(played).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Пока не запускалась'}</strong></div><div><small>ВЫ ИГРАЛИ</small><strong>${owned.playtime ? hours(owned.playtime) : '—'}</strong></div></div>${progressLine(owned)}<div class="library-game-right">${clientButtons(preferred)}<button class="secondary" id="library-hide" title="${owned.hidden ? 'Показать в библиотеке' : 'Скрыть из библиотеки'}">${owned.hidden ? '👁 Показать' : 'Скрыть'}</button><button class="secondary" id="library-favorite" aria-label="Избранное">${has('favorites', g.id) ? '★' : '☆'}</button><button class="secondary" id="library-wish" aria-label="Желаемое">${has('wishlist', g.id) ? '♥' : '♡'}</button></div></div><div class="library-game-links"><button data-library-back>← Все игры</button><button id="library-store">Страница в магазине</button><button data-page="tracking">Отслеживание скидок</button></div><div class="library-game-columns"><section><h2>ОБ ИГРЕ</h2><p>${esc(g.desc || g.storeOffers?.find(o => o.description)?.description || 'Описание пока не получено от магазина.')}</p><div class="preview-tags">${(g.tags || []).map(t => `<span>${esc(t)}</span>`).join('')}</div>${collectionsBox(owned)}${trackProcessBox(owned)}<h2>ПЛАТФОРМЫ</h2><div class="library-game-providers">${offers.map(o => `<button data-library-provider="${esc(o.provider)}" class="${p === o.provider ? 'active' : ''}"><strong>${names[o.provider]}</strong><span>${o.installed ? 'Установлена' : o.owned ? 'Имеется в аккаунте' : 'На диске'}${o.accountIds?.length > 1 ? ' · на ' + o.accountIds.length + ' аккаунтах' : ''}</span>${o.provider === 'custom' ? '' : `<span class="library-game-provider-price">${salePrice(g.storeOffers?.find(s => s.provider === o.provider))}</span>`}</button>`).join('')}</div></section><aside class="library-game-activity"><h2>АКТИВНОСТЬ</h2><div class="library-activity-box"><strong>${played ? 'Последний запуск' : 'Данных о запусках пока нет'}</strong><p>${played ? new Date(played).toLocaleString('ru-RU') : 'Дата появится после запуска через Nexus или из данных платформы.'}${last && last !== played ? '<br>Через Nexus: ' + new Date(last).toLocaleString('ru-RU') : ''}</p>${playtimeRows ? '<strong>Время в игре</strong>' + playtimeRows : ''}</div>${merged}${achievementsBox(owned)}${dlcBox(owned)}<h2>СКРИНШОТЫ</h2><div class="library-gallery">${(g.storeOffers?.find(o => o.screenshots?.length)?.screenshots || []).map(src => `<img src="${esc(safeImage(src))}" alt="Скриншот ${esc(g.name)}" referrerpolicy="no-referrer" loading="lazy">`).join('') || `<div class="library-activity-box">${artTag(g)}</div>`}</div></aside></div></div>`;
+  return `<div class="library-game-page" data-price-game="${esc(g.id)}"><div class="library-game-hero">${hero ? `<img src="${esc(steamHero || hero)}" data-fallback="${esc(hero)}" alt="Баннер ${esc(g.name)}" referrerpolicy="no-referrer">` : ''}<div class="library-game-hero-shade"></div><h1>${esc(g.name)}</h1></div><div class="library-game-actions">${isRunning(g.id) ? `<button class="play-main stop" id="library-stop" title="Закрыть игру; сохранения уйдут в облако">■ ЗАКРЫТЬ</button>` : `<button class="play-main" id="library-play" ${demo ? 'disabled' : ''}>${action}</button>`}<div class="library-game-launch"><div><small>СТАТУС</small><strong>${esc(status)}</strong></div><div><small>ПОСЛЕДНИЙ ЗАПУСК</small><strong>${played ? new Date(played).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Пока не запускалась'}</strong></div><div><small>ВЫ ИГРАЛИ</small><strong>${owned.playtime ? hours(owned.playtime) : '—'}</strong></div></div>${progressLine(owned)}<div class="library-game-right">${clientButtons(preferred)}<button class="secondary" id="library-hide" title="${owned.hidden ? 'Показать в библиотеке' : 'Скрыть из библиотеки'}">${owned.hidden ? '👁 Показать' : 'Скрыть'}</button><button class="secondary" id="library-favorite" aria-label="Избранное">${has('favorites', g.id) ? '★' : '☆'}</button><button class="secondary" id="library-wish" aria-label="Желаемое">${has('wishlist', g.id) ? '♥' : '♡'}</button></div></div><div class="library-game-links"><button data-library-back>← Все игры</button><button id="library-store">Страница в магазине</button><button data-page="tracking">Отслеживание скидок</button></div><div class="library-game-columns"><section><h2>ОБ ИГРЕ</h2><p>${esc(g.desc || g.storeOffers?.find(o => o.description)?.description || 'Описание пока не получено от магазина.')}</p><div class="preview-tags">${(g.tags || []).map(t => `<span>${esc(t)}</span>`).join('')}</div>${collectionsBox(owned)}${trackProcessBox(owned)}${launchOptionsBox(owned)}<h2>ПЛАТФОРМЫ</h2><div class="library-game-providers">${offers.map(o => `<button data-library-provider="${esc(o.provider)}" class="${p === o.provider ? 'active' : ''}"><strong>${names[o.provider]}</strong><span>${o.installed ? 'Установлена' : o.owned ? 'Имеется в аккаунте' : 'На диске'}${o.accountIds?.length > 1 ? ' · на ' + o.accountIds.length + ' аккаунтах' : ''}</span></button>`).join('')}</div>${newsBox(owned)}</section><aside class="library-game-activity"><h2>АКТИВНОСТЬ</h2><div class="library-activity-box"><strong>${played ? 'Последний запуск' : 'Данных о запусках пока нет'}</strong><p>${played ? new Date(played).toLocaleString('ru-RU') : 'Дата появится после запуска через Nexus или из данных платформы.'}${last && last !== played ? '<br>Через Nexus: ' + new Date(last).toLocaleString('ru-RU') : ''}</p>${playtimeRows ? '<strong>Время в игре</strong>' + playtimeRows : ''}</div>${merged}${achievementsBox(owned)}${dlcBox(owned)}${workshopBox(owned)}<h2>СКРИНШОТЫ</h2><div class="library-gallery">${(g.storeOffers?.find(o => o.screenshots?.length)?.screenshots || []).map(src => `<img src="${esc(safeImage(src))}" alt="Скриншот ${esc(g.name)}" referrerpolicy="no-referrer" loading="lazy">`).join('') || `<div class="library-activity-box">${artTag(g)}</div>`}</div></aside></div></div>`;
 }
 function renderCollections() {
   const el = $('#collection-list');
@@ -481,7 +481,7 @@ ${keyField('igdbSecret', 'IGDB · TWITCH CLIENT SECRET', 'секрет того 
 ${keyField('sgdb', 'STEAMGRIDDB API KEY · вертикальные обложки для Epic и сторонних игр', 'steamgriddb.com → Preferences → API', integrations.sgdb?.enabled, integrations.sgdb?.error)}</section>
 <section class="settings-card"><h3>Облачная библиотека Steam · импорт по Web API key</h3><p>Запасной вариант, если автоматическая синхронизация недоступна. Работает только для подключённого аккаунта.</p><form id="steam-form" class="form-row"><label class="field">STEAMID64<input id="steam-id" inputmode="numeric" maxlength="17" autocomplete="off" placeholder="7656119…" value="${esc(state.accounts.steam?.steamId || '')}"></label><label class="field">ЛИЧНЫЙ WEB API KEY<input id="api-key" type="password" autocomplete="off" placeholder="${integrations.steamWebApi?.enabled ? 'Сохранён' : '32 символа'}"></label><button class="primary" type="submit">Импортировать</button></form></section>
 <section class="settings-card"><div class="settings-row"><div><h3>Библиотеки на диске</h3><p>${esc(state.settings.steamRoot || 'Steam определяется автоматически, Epic — по манифестам и LauncherInstalled.dat.')}</p></div><button class="secondary" id="steam-root">Указать папку Steam</button></div><label class="check"><input type="checkbox" id="auto-start" ${state.settings.autoStart ? 'checked' : ''}> Запускать Nexus при входе в Windows</label></section>
-${launchCard()}${downloadsCard()}${updatesCard()}
+${socialCard()}${launchCard()}${downloadsCard()}${updatesCard()}
 <section class="settings-card"><h3>Nexus</h3><p>Независимый лаунчер для Windows 10/11 x64, не связан с Valve и Epic Games. Покупку подтверждаешь на официальном сайте.</p><button class="secondary" id="demo">Посмотреть демонстрационную библиотеку</button></section>`;
 }
 const requestedPrices = new Map();
@@ -493,6 +493,8 @@ function requestVisiblePrices() {
   for (const el of document.querySelectorAll('[data-price-game]')) {
     const rect = el.getBoundingClientRect();
     if (rect.bottom < 0 || rect.top > innerHeight + 800) continue;
+    // The library shows no prices: only store cards ask for them.
+    if (el.classList.contains('library-card') || el.classList.contains('library-game-page')) continue;
     const id = el.dataset.priceGame,
       g = game(id),
       key = id + ':' + country;
@@ -605,6 +607,9 @@ function render() {
           recent: 'БИБЛИОТЕКА <span>/ НЕДАВНИЕ</span>',
           downloads: 'БИБЛИОТЕКА <span>/ ЗАГРУЗКИ</span>',
           storage: 'БИБЛИОТЕКА <span>/ ХРАНИЛИЩЕ</span>',
+          news: 'БИБЛИОТЕКА <span>/ НОВОСТИ</span>',
+          activity: 'СООБЩЕСТВО <span>/ АКТИВНОСТЬ ДРУЗЕЙ</span>',
+          profile: 'СООБЩЕСТВО <span>/ ПРОФИЛЬ</span>',
           tracking: 'МАГАЗИН <span>/ СКИДКИ</span>',
           accounts: 'NEXUS <span>/ НАСТРОЙКИ</span>',
         }[page];
@@ -622,13 +627,19 @@ function render() {
         ? downloadsPage()
         : page === 'storage'
           ? storagePage()
-          : page === 'accounts'
-            ? accounts() + epicImportPanel()
-            : page === 'tracking'
-              ? tracking()
-              : librarySelection && page === 'library'
-                ? libraryGamePage()
-                : library();
+          : page === 'news'
+            ? newsPage()
+            : page === 'activity'
+              ? activityPage()
+              : page === 'profile'
+                ? profilePage()
+                : page === 'accounts'
+                  ? accounts() + epicImportPanel()
+                  : page === 'tracking'
+                    ? tracking()
+                    : librarySelection && page === 'library'
+                      ? libraryGamePage()
+                      : library();
   $('#footer-status').textContent =
     state.warnings[0] || 'Steam в приоритете · покупка в официальном магазине';
   renderDownloads();
@@ -756,6 +767,7 @@ function goHistory(step) {
 }
 // Bottom bar like the Steam client: "ЗАГРУЗКИ" with the running downloads.
 function renderDownloads() {
+  recordSpeed();
   const el = $('#footer-downloads'),
     bar = $('#footer-downloads-bar');
   if (!el) return;
@@ -775,6 +787,9 @@ function renderDownloads() {
     const tmp = document.createElement('div');
     tmp.innerHTML = html;
     $('.download-list').replaceWith(tmp.querySelector('.download-list'));
+    const graph = tmp.querySelector('.speed-graph');
+    if (graph && $('.speed-graph')) $('.speed-graph').replaceWith(graph);
+    else if (graph) $('.download-list').before(graph);
   }
 }
 async function setPage(p) {

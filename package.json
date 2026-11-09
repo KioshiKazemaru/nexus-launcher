@@ -1,7 +1,7 @@
 {
   "name": "nexus-launcher",
   "productName": "Nexus Launcher",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "private": true,
   "description": "Unified Steam and Epic library for Windows",
   "main": "src/main.cjs",
@@ -12,7 +12,7 @@
     "test": "node --require ./test/helpers/register-electron.cjs --test test/*.test.cjs test/services/*.test.cjs",
     "test:live": "node --test test/live/*.live.cjs",
     "lint": "eslint src test ui",
-    "format": "prettier --write \"src/**/*.cjs\" \"test/**/*.cjs\" \"ui/app-*.js\" ui/bigpicture.js ui/friends.js ui/chat.js ui/social-common.js ui/style.css ui/social.css",
+    "format": "prettier --write \"src/**/*.cjs\" \"test/**/*.cjs\" \"ui/app-*.js\" ui/bigpicture.js ui/friends.js ui/chat.js ui/social-common.js ui/overlay.js ui/hud.js ui/style.css ui/social.css ui/overlay.css",
     "dist": "electron-builder --win nsis --x64 --publish never",
     "release": "electron-builder --win nsis --x64 --publish always",
     "pack:win": "electron-builder --win dir --x64 --publish never",

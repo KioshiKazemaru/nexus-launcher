@@ -55,6 +55,18 @@ const defaults = () => ({
   epicSaveSync: {},
   nexusPlaytime: {},
   clientInstallDirs: {}, // where the user installed Epic Games Launcher / Steam last time
+  // Status and notifications (main/presence.cjs), tray, per-game launch options, overlay.
+  myStatus: 'online',
+  showPlaying: true,
+  notifyFriendOnline: false,
+  notifyFriendGame: true,
+  notifyAchievements: true,
+  closeToTray: true,
+  startHidden: false,
+  launchOptions: {},
+  overlay: true,
+  overlayHotkey: 'Shift+Tab',
+  overlayFps: false,
 });
 
 class JsonFile {

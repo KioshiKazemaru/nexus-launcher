@@ -3,6 +3,8 @@
 <body class="friends-window">
 <header class="titlebar"><span class="brand-mark">N</span> ДРУЗЬЯ</header>
 <div id="me" class="me"></div>
+<div class="status-row"><label>Мой статус <select id="my-status" aria-label="Мой статус"><option value="online">В сети</option><option value="away">Нет на месте</option><option value="invisible">Невидимка</option><option value="off">Не подключаться</option></select></label></div>
+<div class="friends-tabs" role="tablist"><button class="active" data-tab="friends" role="tab">Друзья</button><button data-tab="activity" role="tab">Активность</button></div>
 <div class="friends-tools"><label class="search"><input id="search" type="search" placeholder="Поиск друзей" aria-label="Поиск друзей"></label><button id="refresh" class="icon" title="Обновить список" aria-label="Обновить список друзей">↻</button></div>
 <div id="list" class="friends-list" role="list"></div>
 <footer id="note" class="note"></footer>

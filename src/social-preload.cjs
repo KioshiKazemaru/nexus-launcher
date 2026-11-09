@@ -14,6 +14,8 @@ const channels = [
   'chatSend',
   'chatViewing',
   'focusMain',
+  'setStatus',
+  'activity',
 ];
 
 contextBridge.exposeInMainWorld('nexus', {

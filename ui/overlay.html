@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.steamstatic.com https://steamcdn-a.akamaihd.net https://*.epicgames.com; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"><title>Оверлей · Nexus</title><link rel="stylesheet" href="overlay.css"></head>
+<body class="overlay">
+<header class="ov-top">
+  <div class="ov-game"><span class="ov-mark">N</span><div><strong id="ov-name">Игра</strong><small id="ov-session"></small></div></div>
+  <div class="ov-clock" id="ov-clock"></div>
+  <div class="ov-actions"><button id="ov-close-game" class="ov-danger">■ Закрыть игру</button><button id="ov-back" class="ov-primary">Вернуться в игру</button></div>
+</header>
+<main class="ov-grid">
+  <section class="ov-panel ov-friends"><h2>ДРУЗЬЯ</h2><div id="ov-friends" class="ov-list"><p class="ov-hint">Загружаем…</p></div></section>
+  <section class="ov-panel ov-achievements"><h2 id="ov-ach-title">ДОСТИЖЕНИЯ</h2><div id="ov-achievements" class="ov-list"><p class="ov-hint">Загружаем…</p></div></section>
+  <section class="ov-panel ov-side">
+    <h2>НАСТРОЙКИ</h2>
+    <label class="ov-check"><input type="checkbox" id="ov-fps"> Счётчик FPS в углу экрана</label>
+    <p class="ov-hint" id="ov-fps-note"></p>
+    <h2>СОБЫТИЯ</h2>
+    <div id="ov-notices" class="ov-list"><p class="ov-hint">Новые достижения и активность друзей появятся здесь.</p></div>
+    <p class="ov-hint ov-keys" id="ov-keys"></p>
+  </section>
+</main>
+<script src="social-common.js"></script><script src="overlay.js"></script></body></html>

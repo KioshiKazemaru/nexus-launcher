@@ -86,6 +86,16 @@ const channels = [
   'setKey',
   'notifyGiveaways',
   'networkChanged',
+  'setStatus',
+  'activity',
+  'gameNews',
+  'newsFeed',
+  'openLink',
+  'workshop',
+  'openWorkshop',
+  'profile',
+  'setLaunchOptions',
+  'presenceSetting',
 ];
 
 const listen = channel => callback => ipcRenderer.on(channel, (_e, value) => callback(value));

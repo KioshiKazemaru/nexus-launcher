@@ -208,7 +208,7 @@ class EpicXmpp extends EventEmitter {
         send(c.xmpp.bind('bind1', `V2:launcher:WIN::${crypto.randomUUID().replace(/-/g, '').toUpperCase()}`));
       else if (s.name === 'iq' && s.id === 'bind1') {
         if (s.type !== 'result') return this.failed(Error('привязка сессии чата не удалась'));
-        send(c.xmpp.presence('Nexus'));
+        send(this.presenceStanza());
         this.retry = 0;
         this.setState('online');
         clearInterval(this.pingTimer);
@@ -231,6 +231,19 @@ class EpicXmpp extends EventEmitter {
     const friendId = c.bareId(s.from);
     if (!c.EPIC_ID.test(friendId) || friendId === this.accountId) return;
     this.emit('presence', { friendId, ...c.epicPresence(s) });
+  }
+  // Status for the friends: { status: 'online'|'away'|'invisible', game }.
+  presenceStanza() {
+    const p = this.presence || {};
+    return c.xmpp.presence(p.game ? `${p.game} · Nexus` : 'Nexus', {
+      show: p.status === 'away' ? 'away' : '',
+      playing: !!p.game,
+      invisible: p.status === 'invisible',
+    });
+  }
+  setPresence(p) {
+    this.presence = p;
+    if (this.state === 'online' && this.ws?.readyState === 1) this.ws.send(this.presenceStanza());
   }
   send(friendId, text) {
     if (this.state !== 'online' || this.ws?.readyState !== 1)
@@ -352,7 +365,10 @@ class ChatService {
         SteamUserImpl: this.SteamUserImpl,
       });
       x.on('message', m => this.received('steam', account.id, m.friendId, m.text, m.at, m.from));
-      x.on('state', st => this.emit({ type: 'chat-state', provider: 'steam', accountId: account.id, ...st }));
+      x.on('state', st => {
+        if (st.state === 'online' && x.client) this.ctx.presence?.attach(account, x.client);
+        this.emit({ type: 'chat-state', provider: 'steam', accountId: account.id, ...st });
+      });
       this.steamCm.set(account.id, x);
     }
     return x;
@@ -379,7 +395,9 @@ class ChatService {
       });
       x.on('message', m => this.received('epic', account.id, m.friendId, m.text, m.at));
       x.on('presence', p => {
+        const old = this.presence.get(p.friendId);
         this.presence.set(p.friendId, { status: p.status, game: p.game });
+        this.ctx.presence?.epicFriend(account, p.friendId, old, { status: p.status, game: p.game });
         this.emit({
           type: 'presence',
           provider: 'epic',
@@ -388,7 +406,11 @@ class ChatService {
           game: p.game,
         });
       });
-      x.on('state', s => this.emit({ type: 'chat-state', provider: 'epic', accountId: account.id, ...s }));
+      x.on('state', s => {
+        if (s.state === 'online') this.ctx.presence?.epicOnline(account);
+        this.emit({ type: 'chat-state', provider: 'epic', accountId: account.id, ...s });
+      });
+      x.presence = this.ctx.presence?.epicPresence();
       x.on('send-error', () =>
         this.emit({
           type: 'chat-state',

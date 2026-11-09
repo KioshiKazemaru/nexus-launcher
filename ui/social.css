@@ -468,3 +468,56 @@ button {
   color: var(--text);
   font-weight: 500;
 }
+
+/* Status and the "Друзья / Активность" tabs of the friends window. */
+.status-row {
+  padding: 4px 12px 8px;
+  color: var(--muted);
+}
+.status-row select {
+  margin-left: 6px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 3px 6px;
+}
+.friends-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--line);
+  padding: 0 8px;
+}
+.friends-tabs button {
+  flex: 1;
+  padding: 7px 0;
+  color: var(--muted);
+  border-bottom: 2px solid transparent;
+}
+.friends-tabs button.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+.activity-row .friend-open {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 12px;
+  text-align: left;
+}
+.activity-row .friend-open:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+.activity-row .friend-text {
+  flex: 1;
+  min-width: 0;
+}
+.activity-row small b {
+  color: var(--ingame-text);
+  font-weight: 600;
+}
+.activity-row time {
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}

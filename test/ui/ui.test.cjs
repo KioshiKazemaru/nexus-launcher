@@ -393,7 +393,12 @@ test(
         1,
         'other cards were not re-rendered'
       );
-      assert.match(await p.locator('.library-card[data-price-game="steam:1299"]').textContent(), /123/);
+      // Prices are shown in the store only, never on library cards.
+      assert.doesNotMatch(
+        await p.locator('.library-card[data-price-game="steam:1299"]').textContent(),
+        /123|₽/
+      );
+      assert.equal(await p.locator('.library-card-price').count(), 0);
       assert.equal(await p.locator('.card-progress i[style*="70%"]').count(), 1);
       // The suggestions panel stays open across updates.
       await p.click('.merge-suggestions summary');

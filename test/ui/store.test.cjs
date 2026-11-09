@@ -324,6 +324,97 @@ function mockStore(options = {}) {
                   errors: [],
                   checkedAt: Date.now(),
                 };
+              // Like the Steam client: activity, news, Workshop, profile, settings.
+              if (k === 'activity')
+                return [
+                  {
+                    at: Date.now() - 60000,
+                    type: 'game',
+                    provider: 'steam',
+                    friendId: '7656119800000000' + '1',
+                    name: 'Alpha',
+                    avatar: '',
+                    game: 'Hades',
+                    appId: 1145360,
+                    conv: 'steam|1|2',
+                  },
+                  {
+                    at: Date.now() - 2 * 86400000,
+                    type: 'online',
+                    provider: 'epic',
+                    friendId: 'b'.repeat(32),
+                    name: 'EpicPal',
+                    avatar: '',
+                    game: '',
+                    appId: 0,
+                    conv: 'epic|x|y',
+                  },
+                ];
+              if (k === 'newsFeed' || k === 'gameNews') {
+                const list = [
+                  {
+                    id: '1',
+                    appId: 1145360,
+                    title: 'Патч 1.1',
+                    url: 'https://store.steampowered.com/news/1',
+                    date: Date.now() - 86400000,
+                    source: 'Supergiant',
+                    patch: true,
+                    text: 'Исправления',
+                    image: '',
+                    game: 'Hades',
+                    gameId: 'steam:1145360',
+                  },
+                ];
+                return k === 'gameNews' ? { available: true, items: list } : list;
+              }
+              if (k === 'workshop')
+                return {
+                  available: true,
+                  appId: '1145360',
+                  total: 1,
+                  size: 2048,
+                  folder: 'E:\\SteamLibrary\\steamapps\\workshop\\content\\1145360',
+                  items: [{ id: '42', title: 'Мод', preview: '', size: 2048, updated: Date.now() }],
+                };
+              if (k === 'profile')
+                return {
+                  accounts: [
+                    {
+                      provider: 'steam',
+                      name: 'SteamPlayer',
+                      avatar: '',
+                      id: '76561198000000009',
+                      level: 12,
+                      badges: 3,
+                      xp: 1500,
+                      xpNeeded: 100,
+                    },
+                  ],
+                  stats: {
+                    games: 2,
+                    installed: 0,
+                    played: 2,
+                    neverPlayed: 0,
+                    minutes: 4200,
+                    playedThisMonth: 1,
+                    byProvider: {
+                      steam: { games: 1, minutes: 2700 },
+                      epic: { games: 1, minutes: 1500 },
+                      custom: { games: 0, minutes: 0 },
+                    },
+                    top: [
+                      { id: 'steam:1145360', name: 'Hades', minutes: 2700 },
+                      { id: 'epic:Salt', name: 'Slay the Spire', minutes: 1500 },
+                    ],
+                  },
+                  achievements: [],
+                  status: 'online',
+                };
+              if (k === 'setLaunchOptions')
+                return { ...state, settings: { ...state.settings, launchOptions: { [p.id]: p.options } } };
+              if (k === 'presenceSetting')
+                return { ...state, settings: { ...state.settings, [p.name]: p.value } };
               if (k === 'recommendations')
                 return {
                   items: [
@@ -945,6 +1036,76 @@ test(
         await p.evaluate(() => window.__calls.filter(c => c[0] === 'bigPicture').map(c => c[1])),
         [true, false]
       );
+      assert.deepEqual(errors, []);
+    } finally {
+      await browser.close();
+    }
+  }
+);
+
+test(
+  'like the Steam client: activity, news, profile, launch options, status settings; no prices in the library',
+  { skip: !chromium && 'playwright is not installed' },
+  async () => {
+    const browser = await chromium.launch();
+    try {
+      const p = await browser.newPage({ viewport: { width: 1440, height: 940 } });
+      const errors = [];
+      p.on('pageerror', e => errors.push(e.message));
+      await p.addInitScript(mockStore, { library: true });
+      await p.goto(page);
+      await p.waitForSelector('#showcase-block');
+      // Friends' activity grouped by day, with the library game linked.
+      await p.evaluate(() => setPage('activity'));
+      await p.waitForSelector('.activity-item');
+      const activity = await p.locator('#content').innerText();
+      assert.match(activity, /Сегодня/i);
+      assert.match(activity, /Alpha начал\(а\) играть в Hades/);
+      assert.match(activity, /EpicPal теперь в сети/);
+      assert.equal(await p.locator('.activity-item.game [data-detail="steam:1145360"]').count(), 1);
+      // News of the library's games.
+      await p.evaluate(() => setPage('news'));
+      await p.waitForSelector('.news-item');
+      assert.match(await p.locator('.news-item').first().innerText(), /ОБНОВЛЕНИЕ[\s\S]*Патч 1\.1/);
+      await p.click('.news-item [data-open-link]');
+      // Profile: level, statistics, most played.
+      await p.evaluate(() => setPage('profile'));
+      await p.waitForSelector('.stat-tile');
+      const profile = await p.locator('#content').innerText();
+      assert.match(profile, /12\s*уровень/);
+      assert.match(profile, /70\s*часов в играх/);
+      assert.deepEqual(await p.locator('.top-name').allTextContents(), ['Hades', 'Slay the Spire']);
+      // Library: no prices on cards; the game page has launch options, news and Workshop.
+      await p.evaluate(() => setPage('library'));
+      await p.waitForSelector('.library-card');
+      assert.equal(await p.locator('.library-card-price').count(), 0);
+      assert.doesNotMatch(await p.locator('.library-grid').innerText(), /\$|₽/);
+      await p.locator('.library-grid [data-detail="steam:1145360"]').first().click();
+      await p.waitForSelector('#launch-options-form');
+      assert.doesNotMatch(await p.locator('.library-game-providers').innerText(), /\$/);
+      await p.fill('#launch-options', '-novid');
+      await p.click('#launch-options-form button[type="submit"]');
+      await p.waitForSelector('.workshop-item');
+      assert.match(await p.locator('.workshop').innerText(), /1 предмет/);
+      await p.click('.workshop-item');
+      assert.ok(await p.locator('.news-list .news-item').count());
+      // Settings: status, tray and overlay switches.
+      await p.evaluate(() => setPage('accounts'));
+      await p.waitForSelector('.social-card');
+      await p.selectOption('#overlay-hotkey', 'Shift+F1');
+      await p.locator('[data-presence-setting="notifyFriendOnline"]').check();
+      const calls = await p.evaluate(() =>
+        window.__calls
+          .filter(c => ['setLaunchOptions', 'presenceSetting', 'openLink', 'openWorkshop'].includes(c[0]))
+          .map(c => [c[0], c[1]])
+      );
+      assert.deepEqual(calls, [
+        ['openLink', 'https://store.steampowered.com/news/1'],
+        ['setLaunchOptions', { id: 'steam:1145360', options: '-novid' }],
+        ['openWorkshop', { id: '42' }],
+        ['presenceSetting', { name: 'overlayHotkey', value: 'Shift+F1' }],
+        ['presenceSetting', { name: 'notifyFriendOnline', value: true }],
+      ]);
       assert.deepEqual(errors, []);
     } finally {
       await browser.close();

@@ -9,6 +9,10 @@
 //   main/actions.cjs       launch, client actions, collections, backup, diagnostics
 //   main/windows.cjs       official store windows, hidden page fetch
 //   main/updater.cjs       automatic updates
+//   main/presence.cjs      my status, friends' status, activity feed, achievement notices
+//   main/tray.cjs          tray icon (closing the window keeps Nexus running)
+//   main/overlay.cjs       in-game overlay (Shift+Tab) and the FPS corner
+//   main/news.cjs, workshop.cjs, profile.cjs   game news, Steam Workshop, profile page
 
 const {
   app,
@@ -47,6 +51,13 @@ const { EpicInstaller } = require('./main/epic-install.cjs');
 const { SteamInstaller } = require('./main/steam-install.cjs');
 const { DiskInfo } = require('./main/disk.cjs');
 const { FriendsService } = require('./main/friends.cjs');
+const { PresenceService } = require('./main/presence.cjs');
+const { NexusTray } = require('./main/tray.cjs');
+const { Overlay, HOTKEYS } = require('./main/overlay.cjs');
+const { NewsService } = require('./main/news.cjs');
+const { WorkshopService } = require('./main/workshop.cjs');
+const { ProfileService } = require('./main/profile.cjs');
+const EventEmitter = require('node:events');
 const { ArtworkCache } = require('./artwork.cjs');
 const { ownedOffers } = require('./ownership.cjs');
 const { findLibraryCover } = require('./steam-library.cjs');
@@ -61,7 +72,7 @@ if (process.platform === 'win32') app.setAppUserModelId('nexus.launcher');
 
 const uiUrl = pathToFileURL(path.join(__dirname, '../ui/index.html')).href;
 const icon = path.join(__dirname, '../ui/assets/nexus.ico');
-const ctx = { vault: {} };
+const ctx = { vault: {}, gameEvents: new EventEmitter() };
 // Tests wait for background work through this handle (never set in normal runs).
 if (process.env.NEXUS_TEST === '1') {
   globalThis.__nexusTest = ctx;
@@ -203,12 +214,13 @@ function snapshot(full) {
 
 // ---- IPC ---------------------------------------------------------------------
 
-function register(name, fn, { quiet = false, social = false, mainWindow = true } = {}) {
+function register(name, fn, { quiet = false, social = false, mainWindow = true, overlay = false } = {}) {
   ipcMain.handle(name, async (event, ...args) => {
     const fromMain =
       mainWindow && main && event.sender === main.webContents && event.senderFrame?.url === uiUrl;
     const fromSocial = social && !!ctx.social?.senderKind(event);
-    if (!fromMain && !fromSocial) {
+    const fromOverlay = overlay && !!ctx.overlay?.isSender(event);
+    if (!fromMain && !fromSocial && !fromOverlay) {
       ctx.log.warn('ipc', `untrusted sender for ${name}`);
       throw Error('Untrusted IPC');
     }
@@ -380,7 +392,7 @@ function registerIpc() {
   }));
   register('play', async p => ({ result: await actions.play(p), state: ctx.hub.reply() }));
   register('clientAction', async p => ({ result: await actions.clientAction(p), state: ctx.hub.reply() }));
-  register('achievements', id => library.achievements(id));
+  register('achievements', id => library.achievements(id), { overlay: true });
   register(
     'setTrackProcess',
     withState(p => actions.setTrackProcess(p))
@@ -470,7 +482,11 @@ function registerIpc() {
   register(
     'autoStart',
     save(enabled => {
-      app.setLoginItemSettings({ openAtLogin: bool(enabled), path: process.execPath });
+      app.setLoginItemSettings({
+        openAtLogin: bool(enabled),
+        path: process.execPath,
+        args: settings.startHidden ? ['--hidden'] : [],
+      });
       settings.autoStart = enabled;
     })
   );
@@ -496,10 +512,14 @@ function registerIpc() {
     return actions.openClient(provider, uri, 'открыть загрузки', 'opened');
   });
   // "Закрыть" on a running game.
-  register('closeGame', async id => {
-    if (typeof id !== 'string' || id.length > 300) throw Error('Некорректная игра');
-    return { result: await ctx.running.close(id), state: ctx.hub.reply() };
-  });
+  register(
+    'closeGame',
+    async id => {
+      if (typeof id !== 'string' || id.length > 300) throw Error('Некорректная игра');
+      return { result: await ctx.running.close(id), state: ctx.hub.reply() };
+    },
+    { overlay: true }
+  );
   // Downloads without the launchers' windows (Epic: Nexus itself; Steam: Steam in the tray).
   register('downloadControl', async p => {
     const { id, action } = p || {};
@@ -601,7 +621,11 @@ function registerIpc() {
     return { result, state: ctx.hub.reply() };
   });
   // Friends of the connected Steam and Epic accounts (with Steam status).
-  register('friends', p => ctx.friends.list({ force: p?.force === true }), { quiet: true, social: true });
+  register('friends', p => ctx.friends.list({ force: p?.force === true }), {
+    quiet: true,
+    social: true,
+    overlay: true,
+  });
   // "Друзья и чат" as their own windows; chat with Steam and Epic friends.
   register('openFriendsWindow', () => ctx.social.openFriends());
   register('openChat', conv => ctx.social.openChat(String(conv || '')), { social: true });
@@ -646,6 +670,76 @@ function registerIpc() {
     },
     { social: true }
   );
+  // ---- like the Steam client: status, activity, news, workshop, profile, overlay ----
+  register('setStatus', s => ctx.presence.setStatus(s), { social: true });
+  register('activity', () => ctx.presence.feed(), { quiet: true, social: true });
+  register('gameNews', v => ctx.news.game(gameId(v)), { quiet: true });
+  register('newsFeed', () => ctx.news.feed(), { quiet: true });
+  register('openLink', url => {
+    const u = new URL(String(url || ''));
+    const ok =
+      u.protocol === 'https:' &&
+      /(^|\.)(steampowered\.com|steamcommunity\.com|steamstatic\.com|epicgames\.com)$/.test(u.hostname);
+    if (!ok) throw Error('Ссылка недоступна');
+    return shell.openExternal(u.href);
+  });
+  register('workshop', v => ctx.workshop.items(gameId(v)), { quiet: true });
+  register('openWorkshop', p => {
+    const id = String(p?.id || ''),
+      appId = String(p?.appId || '');
+    if (p?.folder) {
+      const folder = path.resolve(String(p.folder));
+      if (!/[\\/]steamapps[\\/]workshop[\\/]content[\\/]\d+$/i.test(folder)) throw Error('Папка недоступна');
+      return shell.openPath(folder);
+    }
+    if (/^\d{1,20}$/.test(id))
+      return shell.openExternal(`https://steamcommunity.com/sharedfiles/filedetails/?id=${id}`);
+    if (/^\d{1,10}$/.test(appId))
+      return shell.openExternal(`https://steamcommunity.com/app/${appId}/workshop/`);
+    throw Error('Некорректный предмет Мастерской');
+  });
+  register('profile', () => ctx.profile.info(), { quiet: true });
+  register(
+    'setLaunchOptions',
+    withState(p => actions.setLaunchOptions(p || {}))
+  );
+  // Notifications, tray and overlay switches.
+  const PRESENCE_SETTINGS = [
+    'showPlaying',
+    'notifyFriendOnline',
+    'notifyFriendGame',
+    'notifyAchievements',
+    'closeToTray',
+    'startHidden',
+    'overlay',
+  ];
+  register(
+    'presenceSetting',
+    save(({ name, value }) => {
+      if (name === 'overlayHotkey') {
+        if (!HOTKEYS.includes(value)) throw Error('Неизвестное сочетание клавиш');
+        settings.overlayHotkey = value;
+      } else {
+        if (!PRESENCE_SETTINGS.includes(name)) throw Error('Неизвестная настройка');
+        settings[name] = bool(value);
+      }
+      if (name === 'showPlaying') ctx.presence.applyAll();
+      if (name === 'startHidden' && settings.autoStart)
+        app.setLoginItemSettings({
+          openAtLogin: true,
+          path: process.execPath,
+          args: value ? ['--hidden'] : [],
+        });
+      ctx.overlay.reconfigure();
+    })
+  );
+  register('overlayInfo', () => ctx.overlay.info(), { overlay: true, mainWindow: false });
+  register('overlayHide', () => ctx.overlay.hide(), { overlay: true, mainWindow: false });
+  register('overlayFps', on => ctx.overlay.setFps(on === true), { overlay: true, mainWindow: false });
+  register('overlayChat', conv => ctx.overlay.openChat(String(conv || '')), {
+    overlay: true,
+    mainWindow: false,
+  });
   register('epicSyncSaves', async id => {
     const g = library.games.find(x => x.id === id);
     const o = g?.offers.find(x => x.provider === 'epic' && x.installed);
@@ -788,6 +882,12 @@ async function start() {
   ctx.friends = new FriendsService(ctx);
   ctx.social = new SocialWindows(ctx, { icon });
   ctx.chat = new ChatService(ctx);
+  ctx.presence = new PresenceService(ctx);
+  ctx.news = new NewsService(ctx);
+  ctx.workshop = new WorkshopService(ctx);
+  ctx.profile = new ProfileService(ctx);
+  ctx.overlay = new Overlay(ctx);
+  ctx.tray = new NexusTray(ctx, { icon });
   ctx.artwork = new ArtworkCache(ctx.storage.file('covers'), ctx.publicFetch);
   ctx.artwork.prune().catch(e => ctx.log.warn('art', e.message));
   registerArtProtocol();
@@ -806,6 +906,7 @@ async function start() {
     titleBarOverlay: { color: '#171d25', symbolColor: '#aeb6c0', height: 34 },
     title: 'Nexus · Steam + Epic',
     icon,
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -817,9 +918,21 @@ async function start() {
   main.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   main.webContents.on('will-navigate', e => e.preventDefault());
   main.webContents.on('render-process-gone', (_e, d) => ctx.log.error('ui', `renderer gone: ${d.reason}`));
+  // Like Steam: the close button keeps Nexus running in the tray.
+  main.on('close', e => {
+    if (quitting || ctx.settings.closeToTray === false || !ctx.tray?.tray) return;
+    e.preventDefault();
+    main.hide();
+    ctx.tray.hidden();
+  });
   main.on('closed', () => {
     main = null;
     app.quit();
+  });
+  // Started with Windows and "запускать свёрнутым": only the tray icon.
+  const startHidden = process.argv.includes('--hidden') && ctx.settings.startHidden === true;
+  main.once('ready-to-show', () => {
+    if (!startHidden) main.show();
   });
   registerIpc();
   await main.loadURL(uiUrl);
@@ -828,6 +941,9 @@ async function start() {
   watchNetwork();
   ctx.running.start();
   ctx.chat.start();
+  ctx.tray.create();
+  ctx.presence.start();
+  ctx.overlay.start();
   ctx.epicInstall.init();
   ctx.accounts.refreshAll().catch(e => ctx.log.warn('accounts', e.message));
   whenOnline('prices', () => ctx.store.initialPrices())();
@@ -896,6 +1012,9 @@ app.on('before-quit', event => {
       try {
         ctx.store?.recFile.flushSync();
         ctx.chat?.stop();
+        ctx.presence?.stop();
+        ctx.overlay?.stop();
+        ctx.tray?.destroy();
         ctx.steamInstall?.stop();
         ctx.social?.closeAll();
       } catch {}

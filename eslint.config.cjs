@@ -49,6 +49,7 @@ const WINDOW_PARTS = [
   'app-base.js',
   'app-store.js',
   'app-library.js',
+  'app-social.js',
   'app-events.js',
   'app-boot.js',
   'bigpicture.js',
@@ -79,7 +80,7 @@ module.exports = [
     },
   },
   {
-    files: ['ui/friends.js', 'ui/chat.js', 'ui/social-common.js'],
+    files: ['ui/friends.js', 'ui/chat.js', 'ui/social-common.js', 'ui/overlay.js', 'ui/hud.js'],
     languageOptions: { ecmaVersion: 2024, sourceType: 'script', globals: browser },
     rules: {
       'no-unused-vars': ['error', { args: 'none', caughtErrors: 'none' }],

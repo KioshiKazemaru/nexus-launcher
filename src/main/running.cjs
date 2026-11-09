@@ -76,6 +76,7 @@ class RunningGames {
     this.running = {}; // gameId → { name, provider, pids, since }
     this.timer = null;
     this.closing = new Set();
+    this.listProcesses = listProcesses; // replaced in tests
   }
   start() {
     if (this.timer || process.platform !== 'win32') return;
@@ -96,13 +97,30 @@ class RunningGames {
   }
   async refresh() {
     const games = this.ctx.library.games || [];
-    const next = matchRunning(await listProcesses(), installTargets(games));
+    const next = matchRunning(await this.listProcesses(), installTargets(games));
     for (const [id, r] of Object.entries(next)) r.since = this.running[id]?.since || Date.now();
     const changed =
       JSON.stringify(Object.keys(next).sort()) !== JSON.stringify(Object.keys(this.running).sort());
+    const before = this.running;
     this.running = next;
+    // Every start counts, whoever started the game (Nexus, Steam, Epic, a shortcut).
+    for (const [id, r] of Object.entries(next))
+      if (!before[id]) {
+        this.remember(id, r.since);
+        this.ctx.gameEvents?.emit('start', { id, name: r.name, provider: r.provider, since: r.since });
+      }
+    for (const [id, r] of Object.entries(before))
+      if (!next[id])
+        this.ctx.gameEvents?.emit('stop', { id, name: r.name, provider: r.provider, since: r.since });
     if (changed) this.ctx.hub.publish();
     return next;
+  }
+  // "Недавние": the game moves to the top of the list.
+  remember(id, time) {
+    const s = this.ctx.settings;
+    if (!s) return;
+    s.recent = [{ id, time }, ...(s.recent || []).filter(x => x.id !== id)].slice(0, 20);
+    this.ctx.storage?.saveSettings();
   }
   // For the window: { gameId: { name, provider, since } }.
   snapshot() {

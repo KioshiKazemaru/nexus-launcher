@@ -10,6 +10,7 @@
 // back to the Epic launcher (play through com.epicgames.launcher://).
 
 const fs = require('node:fs');
+const launchOptions = require('../launch-options.cjs');
 const fsp = require('node:fs/promises');
 const path = require('node:path');
 const { spawn, execFile } = require('node:child_process');
@@ -140,6 +141,8 @@ class EpicPlayService {
       launchCommand: offer.launchCommand,
       extraArgs: info.extraArgs,
     });
+    // The user's "Параметры запуска" go after Epic's own arguments.
+    args.push(...launchOptions.splitArgs(launchOptions.optionsFor(this.ctx.settings, game?.id)));
     const started = Date.now();
     await new Promise((resolve, reject) => {
       const child = spawn(exe, args, {

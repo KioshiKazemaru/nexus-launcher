@@ -106,6 +106,8 @@ class EpicInstaller {
         installSize: j.installSize || undefined,
         percent: j.total ? Math.min(99, Math.floor(((j.done || 0) / j.total) * 100)) : undefined,
         speed: speed || undefined,
+        // Writing to disk (uncompressed), for the graph of the downloads page.
+        diskSpeed: j.state === 'downloading' ? Math.round(this.speed(j, 'written')) || undefined : undefined,
         eta: speed > 0 ? Math.round(left / speed) : undefined,
         error: j.error || undefined,
         // Place in the queue (1 = next).
@@ -130,15 +132,15 @@ class EpicInstaller {
       };
     return out;
   }
-  speed(j) {
+  speed(j, field = 'bytes') {
     const s = j.samples || [];
     if (s.length < 2) return 0;
     const [a, b] = [s[0], s[s.length - 1]];
-    return b.t > a.t ? ((b.bytes - a.bytes) / (b.t - a.t)) * 1000 : 0;
+    return b.t > a.t ? Math.max(0, (((b[field] || 0) - (a[field] || 0)) / (b.t - a.t)) * 1000) : 0;
   }
   sample(j) {
     const now = Date.now();
-    (j.samples ||= []).push({ t: now, bytes: j.done });
+    (j.samples ||= []).push({ t: now, bytes: j.done, written: j.written || 0 });
     while (j.samples.length > 2 && now - j.samples[0].t > 10000) j.samples.shift();
   }
   updatesMap() {
@@ -1082,6 +1084,7 @@ class EpicInstaller {
           for (const t of c.targets) {
             const h = await pool.get(d.safeTarget(job.installDir, t.file) + (temp ? TMP : ''));
             await h.write(data, t.chunkOffset, t.size, t.fileOffset);
+            job.written = (job.written || 0) + t.size;
           }
           done.add(c.key);
           job.done += c.chunk.fileSize || 0;

@@ -150,17 +150,20 @@ const xmpp = {
     `<auth xmlns="urn:ietf:params:xml:ns:xmpp-sasl" mechanism="PLAIN">${Buffer.from(`\0${accountId}\0${token}`).toString('base64')}</auth>`,
   bind: (id, resource) =>
     `<iq type="set" id="${id}" xmlns="jabber:client"><bind xmlns="urn:ietf:params:xml:ns:xmpp-bind"><resource>${xmlEscape(resource)}</resource></bind></iq>`,
-  presence: (status = 'Nexus') =>
-    `<presence xmlns="jabber:client"><status>${xmlEscape(
-      JSON.stringify({
-        Status: status,
-        bIsPlaying: false,
-        bIsJoinable: false,
-        bHasVoiceSupport: false,
-        SessionId: '',
-        Properties: {},
-      })
-    )}</status></presence>`,
+  // show: '' (online) | 'away'; invisible: the friends see the account offline.
+  presence: (status = 'Nexus', { show = '', playing = false, invisible = false } = {}) =>
+    invisible
+      ? '<presence xmlns="jabber:client" type="unavailable"/>'
+      : `<presence xmlns="jabber:client">${show ? `<show>${xmlEscape(show)}</show>` : ''}<status>${xmlEscape(
+          JSON.stringify({
+            Status: status,
+            bIsPlaying: !!playing,
+            bIsJoinable: false,
+            bHasVoiceSupport: false,
+            SessionId: '',
+            Properties: {},
+          })
+        )}</status></presence>`,
   message: (friendId, text, id) =>
     `<message xmlns="jabber:client" type="chat" id="${id}" to="${friendId}@${EPIC_DOMAIN}"><body>${xmlEscape(cleanText(text))}</body></message>`,
   ping: id => `<iq xmlns="jabber:client" type="get" id="${id}"><ping xmlns="urn:xmpp:ping"/></iq>`,

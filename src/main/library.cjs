@@ -1075,7 +1075,8 @@ class LibraryService {
 
   // ---- achievements -----------------------------------------------------
 
-  async achievements(gameId) {
+  // force: skip the 10-minute cache (new achievements while the game runs).
+  async achievements(gameId, { force = false } = {}) {
     const g = this.games.find(x => x.id === gameId);
     const offer = g?.offers.find(o => o.provider === 'steam');
     if (!offer) {
@@ -1088,7 +1089,7 @@ class LibraryService {
     if (!account) return { available: false, reason: 'Войдите в аккаунт Steam, чтобы увидеть достижения.' };
     const key = `${account.id}:${offer.appId}`;
     const cached = this.achievementCache.get(key);
-    if (cached && Date.now() - cached.at < 10 * 60 * 1000) return cached.value;
+    if (!force && cached && Date.now() - cached.at < 10 * 60 * 1000) return cached.value;
     const s = this.ctx.accounts.session(account.key);
     let api = null,
       xml = null;

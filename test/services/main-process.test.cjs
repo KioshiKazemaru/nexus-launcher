@@ -213,6 +213,44 @@ test.before(async () => {
   await idle();
 });
 
+test('start completes: tray icon, no start error; close keeps Nexus in the tray', async () => {
+  assert.deepEqual(
+    T.dialogs.errors.filter(e => /не запустился/.test(e)),
+    []
+  );
+  assert.equal(T.trays.length, 1);
+  assert.equal(T.trays[0].tooltip, 'Nexus');
+  let prevented = false;
+  mainWindow.emit('close', { preventDefault: () => (prevented = true) });
+  assert.equal(prevented, true, 'the × button hides the window into the tray');
+  assert.equal(mainWindow.isVisible(), false);
+});
+
+test('launch options, status and overlay settings are saved; bad values are refused', async () => {
+  const state = await call('state');
+  const id = state.games[0]?.id;
+  assert.ok(id);
+  let next = await call('setLaunchOptions', { id, options: '  -novid\n-high ' });
+  assert.equal(next.settings.launchOptions[id], '-novid -high');
+  next = await call('setLaunchOptions', { id, options: '' });
+  assert.equal(next.settings.launchOptions[id], undefined);
+  await assert.rejects(call('setLaunchOptions', { id: 'nope', options: '-x' }), /не найдена/);
+  next = await call('presenceSetting', { name: 'overlayHotkey', value: 'Shift+F1' });
+  assert.equal(next.settings.overlayHotkey, 'Shift+F1');
+  await assert.rejects(
+    call('presenceSetting', { name: 'overlayHotkey', value: 'Ctrl+Alt+Del' }),
+    /Неизвестное/
+  );
+  await assert.rejects(
+    call('presenceSetting', { name: 'autoUpdate', value: false }),
+    /Неизвестная настройка/
+  );
+  assert.equal(await call('setStatus', 'away'), 'away');
+  await assert.rejects(call('setStatus', 'busy'), /Неизвестный статус/);
+  await assert.rejects(call('openLink', 'https://evil.test/'), /недоступна/);
+  await call('setStatus', 'online');
+});
+
 test('IPC from any other page is refused', async () => {
   await assert.rejects(
     T.handlers.get('state')({ sender: {}, senderFrame: { url: 'https://evil.test' } }),

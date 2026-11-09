@@ -14,6 +14,12 @@ const opened = [];
 let routes = [];
 let online = true;
 const dialogs = { save: null, open: null, errors: [] };
+const trays = [];
+const shortcuts = new Map();
+const display = {
+  bounds: { x: 0, y: 0, width: 1920, height: 1080 },
+  workArea: { x: 0, y: 0, width: 1920, height: 1040 },
+};
 
 const response = (u, status, body, type = 'application/json') => ({
   ok: status >= 200 && status < 300,
@@ -73,6 +79,9 @@ class WebContents extends EventEmitter {
     this.scriptResult = null;
   }
   setWindowOpenHandler() {}
+  isLoading() {
+    return false;
+  }
   setAudioMuted() {}
   getURL() {
     return this.url;
@@ -93,7 +102,36 @@ class BrowserWindow extends EventEmitter {
     windows.push(this);
   }
   removeMenu() {}
-  show() {}
+  show() {
+    this.visible = true;
+  }
+  showInactive() {
+    this.visible = true;
+  }
+  hide() {
+    this.visible = false;
+  }
+  isVisible() {
+    return !!this.visible;
+  }
+  isFocused() {
+    return false;
+  }
+  setAlwaysOnTop(on, level) {
+    this.onTop = on ? level || true : false;
+  }
+  setBounds(b) {
+    this.bounds = b;
+  }
+  getBounds() {
+    return this.bounds || { x: 0, y: 0, width: 1440, height: 940 };
+  }
+  setIgnoreMouseEvents(v) {
+    this.clickThrough = v;
+  }
+  setFullScreen(v) {
+    this.fullScreen = v;
+  }
   focus() {}
   isMinimized() {
     return false;
@@ -138,7 +176,37 @@ const app = Object.assign(new EventEmitter(), {
 module.exports = {
   app,
   BrowserWindow,
-  Menu: { setApplicationMenu() {} },
+  Menu: { setApplicationMenu() {}, buildFromTemplate: template => ({ template }) },
+  // The tray icon and the overlay's hotkey and screen (main/tray.cjs, main/overlay.cjs).
+  Tray: class extends EventEmitter {
+    constructor(icon) {
+      super();
+      this.icon = icon;
+      trays.push(this);
+    }
+    setToolTip(t) {
+      this.tooltip = t;
+    }
+    setContextMenu(m) {
+      this.menu = m;
+    }
+    displayBalloon(b) {
+      this.balloon = b;
+    }
+    destroy() {
+      this.destroyed = true;
+    }
+  },
+  globalShortcut: {
+    register: (key, fn) => (shortcuts.set(key, fn), true),
+    unregister: key => shortcuts.delete(key),
+  },
+  screen: {
+    getCursorScreenPoint: () => ({ x: 0, y: 0 }),
+    getDisplayNearestPoint: () => display,
+    getPrimaryDisplay: () => display,
+    getDisplayMatching: () => display,
+  },
   ipcMain: { handle: (name, fn) => handlers.set(name, fn) },
   dialog: {
     showErrorBox: (title, text) => dialogs.errors.push(title + ': ' + text),
@@ -174,6 +242,8 @@ module.exports = {
   ipcRenderer: {},
   __test: {
     dir,
+    trays,
+    shortcuts,
     handlers,
     windows,
     requests,

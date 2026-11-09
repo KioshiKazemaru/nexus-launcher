@@ -20,6 +20,7 @@ const { createBackup, restoreBackup, backupCustomGames, MAX_BYTES } = require('.
 const { redact } = require('./log.cjs');
 const { EpicPlayService } = require('./epic-play.cjs');
 const { ClientInstaller } = require('./clients.cjs');
+const launchOptions = require('../launch-options.cjs');
 
 class ActionsService {
   constructor(ctx) {
@@ -45,7 +46,8 @@ class ActionsService {
     if (this.ctx.running?.isRunning(id))
       throw Error('Игра уже запущена — её можно закрыть кнопкой «Закрыть»');
     let how = 'launcher';
-    if (o.provider === 'custom') await this.runCustom(o);
+    const extra = launchOptions.optionsFor(this.ctx.settings, id);
+    if (o.provider === 'custom') await this.runCustom(o, extra);
     else if (
       !o.installed &&
       this.ctx.settings.nexusDownloads !== false &&
@@ -67,7 +69,14 @@ class ActionsService {
       return { how };
     } else if (o.provider === 'epic' && o.installed && this.epic.canStart(o)) how = await this.playEpic(o, g);
     else if (o.provider === 'steam' && o.installed && this.ctx.settings.steamSilent !== false)
-      how = await this.playSteam(o);
+      how = await this.playSteam(o, extra);
+    else if (o.provider === 'steam' && o.installed && extra)
+      how = await this.openClient(
+        'steam',
+        launchOptions.steamRunUri(o.appId, extra),
+        'запустить игру',
+        'launcher'
+      );
     else
       how = await this.openClient(
         o.provider,
@@ -127,11 +136,16 @@ class ActionsService {
   // window does not: when Steam is closed, Nexus starts it hidden in the tray
   // ("-silent") together with the game, and closes it again after the game
   // if the user wants that.
-  async playSteam(o) {
+  async playSteam(o, extra = '') {
     const exe = process.platform === 'win32' ? this.steamExe() : null;
     if (!exe || (await this.processRunning('steam.exe')))
-      return this.openClient('steam', platforms.get('steam').launchUri(o), 'запустить игру', 'steam');
-    const child = spawn(exe, ['-silent', '-applaunch', String(o.appId)], {
+      return this.openClient(
+        'steam',
+        extra ? launchOptions.steamRunUri(o.appId, extra) : platforms.get('steam').launchUri(o),
+        'запустить игру',
+        'steam'
+      );
+    const child = spawn(exe, ['-silent', '-applaunch', String(o.appId), ...launchOptions.splitArgs(extra)], {
       cwd: path.dirname(exe),
       detached: true,
       stdio: 'ignore',
@@ -175,13 +189,13 @@ class ActionsService {
   // Nexus starts the .exe itself, so it can measure how long the process runs.
   // Games that start another process and exit at once are counted only until
   // the first process exits.
-  async runCustom(o) {
+  async runCustom(o, extra = '') {
     const custom = this.ctx.settings.custom.find(x => x.id === o.appId);
     if (!custom || !fs.existsSync(custom.exe)) throw Error('Файл игры не найден');
     if (this.running.has(custom.id)) throw Error('Игра уже запущена');
     const started = Date.now();
     await new Promise((resolve, reject) => {
-      const child = spawn(custom.exe, [], {
+      const child = spawn(custom.exe, launchOptions.splitArgs(extra), {
         cwd: path.dirname(custom.exe),
         detached: true,
         stdio: 'ignore',
@@ -232,6 +246,15 @@ class ActionsService {
     } catch {
       return false;
     }
+  }
+  // "Параметры запуска" of a game (any platform); empty removes them.
+  setLaunchOptions({ id, options }) {
+    this.game(id);
+    const text = launchOptions.cleanOptions(options);
+    if (text) this.ctx.settings.launchOptions[id] = text;
+    else delete this.ctx.settings.launchOptions[id];
+    this.ctx.storage.saveSettings();
+    return text;
   }
   setTrackProcess({ id, process: image }) {
     const g = this.game(id);

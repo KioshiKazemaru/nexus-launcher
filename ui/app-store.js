@@ -1,4 +1,4 @@
-// Nexus window, part 2 of 5: The store front: showcase, lists, recommendations.
+// Nexus window, part 2 of 6: The store front: showcase, lists, recommendations.
 // The parts are classic scripts loaded in order by index.html and share one
 // global scope (see eslint.config.cjs); app-boot.js starts the window.
 // ---- store front, modelled on the Steam store ------------------------------
@@ -598,6 +598,14 @@ function lastPlayedAt(g) {
   const nexus = state.settings.recent?.find(r => r.id === g.id)?.time || 0;
   return Math.max(nexus, (g.lastPlayed || 0) * 1000);
 }
+// Games that were started, newest first (any launcher; see lastPlayedAt).
+function recentGames(list) {
+  return list
+    .map(g => [g, lastPlayedAt(g)])
+    .filter(([, t]) => t > 0)
+    .sort((a, b) => b[1] - a[1])
+    .map(([g]) => g);
+}
 function hours(minutes) {
   return (Number(minutes) / 60).toLocaleString('ru-RU', { maximumFractionDigits: 1 }) + ' ч.';
 }
@@ -625,7 +633,7 @@ function libraryCard(g) {
       g.offers.filter(o => (libraryMode() === 'owned' ? o.owned : o.installed)).map(o => o.provider)
     ),
   ];
-  return `<article class="library-card" data-price-game="${esc(g.id)}" data-library-preview="${esc(g.id)}"><button data-detail="${esc(g.id)}" class="portrait-open">${portrait(g)}<span class="portrait-title">${esc(g.name)}</span><span class="portrait-platforms">${platforms.map(p => `<span class="pill ${p === 'steam' ? 'blue' : ''}">${names[p]}</span>`).join('')}</span>${g.offers.some(o => o.installed) ? '<span class="installed-mark">✓</span>' : ''}${g.hidden ? '<span class="hidden-mark">скрыта</span>' : ''}${g.progress && Number.isFinite(g.progress.percent) ? `<span class="card-progress"><i style="width:${g.progress.percent}%"></i></span>` : ''}</button><div class="library-card-price">${salePrice(g.storeOffers?.find(o => o.provider === 'steam') || g.storeOffers?.[0])}</div></article>`;
+  return `<article class="library-card" data-price-game="${esc(g.id)}" data-library-preview="${esc(g.id)}"><button data-detail="${esc(g.id)}" class="portrait-open">${portrait(g)}<span class="portrait-title">${esc(g.name)}</span><span class="portrait-platforms">${platforms.map(p => `<span class="pill ${p === 'steam' ? 'blue' : ''}">${names[p]}</span>`).join('')}</span>${g.offers.some(o => o.installed) ? '<span class="installed-mark">✓</span>' : ''}${g.hidden ? '<span class="hidden-mark">скрыта</span>' : ''}${g.progress && Number.isFinite(g.progress.percent) ? `<span class="card-progress"><i style="width:${g.progress.percent}%"></i></span>` : ''}</button></article>`;
 }
 function accountLibraryLine(a) {
   const x = a.library || {},
@@ -701,7 +709,7 @@ function epicImportPanel() {
 function library() {
   let list = filteredLibrary();
   if (page === 'favorites') list = list.filter(g => has('favorites', g.id));
-  if (page === 'recent') list = state.settings.recent.map(r => list.find(g => g.id === r.id)).filter(Boolean);
+  if (page === 'recent') list = recentGames(list).slice(0, 60);
   if (page === 'wishlist') {
     const wished = state.catalog.filter(g => has('wishlist', g.id)).map(g => game(g.id) || g);
     return `${notice()}<div class="section-head"><h1>Желаемое</h1><span>${wished.length} игр</span></div><div class="grid">${wished
@@ -711,14 +719,12 @@ function library() {
         ''
       )}</div>${!wished.length ? '<div class="empty"><h2>Сохраняйте игры из магазина</h2><p>Нажмите сердечко на карточке, чтобы добавить игру в желаемое.</p></div>' : ''}`;
   }
-  const recent = state.settings.recent
-      .map(r => list.find(g => g.id === r.id))
-      .filter(Boolean)
-      .slice(0, 8),
+  const recent = recentGames(list).slice(0, 8),
     quick = list.slice(0, 5);
   return `${notice()}<div class="library-heading"><h1>${page === 'favorites' ? 'Избранное' : page === 'recent' ? 'Недавние игры' : collectionName() || 'Библиотека'}</h1><div class="library-view" role="group" aria-label="Состав библиотеки"><button data-library-view="installed" class="${libraryMode() === 'installed' ? 'active' : ''}">↓ Скачанные</button><button data-library-view="owned" class="${libraryMode() === 'owned' ? 'active' : ''}">▦ Имеющиеся</button></div><button class="ghost" id="sync-libraries">↻ Обновить аккаунты</button></div>${libraryTools()}<div id="library-status">${libraryStatus()}</div>
  ${quick.length && page === 'library' ? `<section class="library-quick"><div class="shelf-title"><h2>Быстрый доступ</h2><span>Steam + Epic Games</span></div><div class="quick-rail">${quick.map(g => `<button data-detail="${esc(g.id)}"><div>${artTag(g)}</div><strong>${esc(g.name)}</strong><small>${g.offers.some(o => o.installed) ? 'Готова к запуску' : 'В аккаунте · можно установить'}</small></button>`).join('')}</div></section>` : ''}
- ${recent.length && page === 'library' ? `<div class="shelf-title"><h2>Недавние игры</h2><span>Запускались через Nexus</span></div><div class="recent-shelf">${recent.map(libraryCard).join('')}</div>` : ''}
+ ${recent.length && page === 'library' ? `<div class="shelf-title"><h2>Недавние игры</h2><span>Steam, Epic Games и Nexus</span></div><div class="recent-shelf">${recent.map(libraryCard).join('')}</div>` : ''}
+ ${page === 'library' && !collectionFilter ? newsShelf() : ''}
  <div class="shelf-title"><h2>${libraryMode() === 'installed' ? 'Скачанные игры' : 'Игры на аккаунтах'} <span>(${list.length})</span></h2><div class="library-platforms">${[
    ['all', 'Все'],
    ['steam', 'Steam'],

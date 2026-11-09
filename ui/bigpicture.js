@@ -30,10 +30,7 @@ const bigPicture = (() => {
   function games() {
     const list = (activeGames() || []).filter(g => !g.hidden);
     if (tab === 'installed') return list.filter(g => g.offers.some(o => o.installed));
-    if (tab === 'recent') {
-      const order = new Map((state.settings.recent || []).map((r, i) => [r.id, i]));
-      return list.filter(g => order.has(g.id)).sort((a, b) => order.get(a.id) - order.get(b.id));
-    }
+    if (tab === 'recent') return recentGames(list).slice(0, 60);
     if (tab === 'downloads') return list.filter(g => state.progress?.[g.id]);
     return [...list].sort((a, b) => a.name.localeCompare(b.name, 'ru'));
   }

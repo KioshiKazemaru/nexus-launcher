@@ -36,7 +36,7 @@ class FriendsService {
       friends: f.sortFriends(
         g.friends.map(x => {
           const conv = convKey(provider, g.account.id, x.id);
-          const live = provider === 'epic' ? chat?.epicStatus(x.id) : null;
+          const live = provider === 'epic' ? chat?.epicStatus(x.id) : this.ctx.presence?.steamStatus(x.id);
           return { ...x, ...(live || {}), conv, unread: unread[conv] || 0 };
         })
       ),
@@ -65,6 +65,7 @@ class FriendsService {
         }))
       ),
       unread: this.ctx.chat?.unreadMap() || {},
+      myStatus: this.ctx.presence?.status() || 'online',
       chatState: this.ctx.chat?.chatState() || {},
     };
   }
