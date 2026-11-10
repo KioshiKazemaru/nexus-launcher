@@ -521,3 +521,8 @@ button {
   font-size: 11px;
   white-space: nowrap;
 }
+
+/* macOS: the window buttons are on the left of the title bar. */
+.mac-window .titlebar {
+  padding: 0 10px 0 82px;
+}

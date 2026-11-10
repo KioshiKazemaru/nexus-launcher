@@ -14,6 +14,8 @@ const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const { app, dialog, shell } = require('electron');
 
+const system = require('../os.cjs');
+
 const run = promisify(execFile);
 
 const CLIENTS = {
@@ -91,9 +93,29 @@ class ClientInstaller {
   }
   // Installed = the link handler is registered AND its program exists.
   async installed(provider) {
-    if (!CLIENTS[provider] || process.platform !== 'win32') return true;
+    if (!CLIENTS[provider]) return true;
+    if (system.platform() !== 'win32') return this.handlerRegistered(provider);
+    // Windows scenarios of the tests run on other systems: there is no registry to ask.
+    if (process.platform !== 'win32') return true;
     const exe = await this.handlerExe(provider);
     return !!exe && fs.existsSync(exe);
+  }
+  // macOS and Linux: is any program registered for the client's links (steam://…)?
+  // When that cannot be told, the link is tried anyway.
+  async handlerRegistered(provider) {
+    const scheme = CLIENTS[provider].protocol;
+    try {
+      if (app.getApplicationNameForProtocol?.(`${scheme}://`)) return true;
+    } catch {}
+    if (system.platform() !== 'linux') return false;
+    try {
+      const { stdout } = await run('xdg-mime', ['query', 'default', `x-scheme-handler/${scheme}`], {
+        timeout: 5000,
+      });
+      return !!stdout.trim();
+    } catch {
+      return true;
+    }
   }
   // Where to install: the user chooses. The previous location of the client
   // (also of a deleted one) is suggested when its drive is still there.
@@ -155,6 +177,27 @@ class ClientInstaller {
   }
   async offerInstall(provider, uri, action) {
     const c = CLIENTS[provider];
+    // macOS and Linux: the client is installed from its site or the system's store.
+    if (system.platform() !== 'win32') {
+      const { response } = await dialog.showMessageBox(this.ctx.mainWindow?.() || null, {
+        type: 'question',
+        buttons: ['Открыть сайт', 'Всё равно открыть', 'Отмена'],
+        defaultId: 0,
+        cancelId: 2,
+        title: `${c.name} не найден`,
+        message: `Чтобы ${action}, нужен ${c.name}`,
+        detail:
+          system.platform() === 'linux' && provider === 'steam'
+            ? 'Установите Steam из репозитория дистрибутива, Flatpak или с сайта Steam, войдите в аккаунт и повторите.'
+            : `Установите ${c.name} с официального сайта, войдите в аккаунт и повторите.`,
+      });
+      if (response === 0) await shell.openExternal(c.site);
+      else if (response === 1) {
+        await shell.openExternal(uri);
+        return 'opened';
+      }
+      return 'canceled';
+    }
     if (this.busy.has(provider)) {
       this.ctx.toast?.(`${c.name} уже устанавливается. Игра откроется, когда установка закончится.`);
       return 'install-started';

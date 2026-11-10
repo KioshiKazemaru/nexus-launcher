@@ -122,7 +122,7 @@ function tracking() {
     watches.length
       ? watches.map(watchCard).join('')
       : '<div class="empty"><h2>Выбери игру в магазине</h2><p>В карточке выбери Steam или Epic и нажми «Следить за ценой». Можно отслеживать оба предложения отдельно.</p></div>'
-  }<p class="footnote">Уведомления появляются в Windows и сохраняются здесь. После закрытия Nexus проверки прекращаются. Регион каждого отслеживания фиксируется при добавлении; недоступная цена не считается скидкой.</p>`;
+  }<p class="footnote">Уведомления появляются в системе и сохраняются здесь. После закрытия Nexus проверки прекращаются. Регион каждого отслеживания фиксируется при добавлении; недоступная цена не считается скидкой.</p>`;
 }
 // One watched price: the current price, the last check, the alert, the history and the target.
 function watchCard(w) {
@@ -168,8 +168,7 @@ async function run(fn) {
 const isState = x =>
   !!x && typeof x === 'object' && 'accounts' in x && 'settings' in x && 'libraryState' in x;
 async function call(name, payload) {
-  if (!api)
-    throw Error('Это браузерный просмотр. Вход, сканирование и запуск доступны в Windows-приложении.');
+  if (!api) throw Error('Это браузерный просмотр. Вход, сканирование и запуск доступны в приложении Nexus.');
   const result = await api[name](payload);
   if (isState(result)) return absorbState(result);
   if (result && isState(result.state)) return { ...result, state: absorbState(result.state) };
@@ -485,7 +484,7 @@ async function searchCatalog(append = false) {
   };
   render();
   try {
-    if (!api) throw Error('Живой поиск доступен в Windows-приложении.');
+    if (!api) throw Error('Живой поиск доступен в приложении Nexus.');
     const result = await call('searchCatalog', { query: current, country, start });
     if (sequence !== searchSequence || query.trim() !== current || page !== 'store') return;
     const merged = new Map(previous.map(g => [g.id, g]));

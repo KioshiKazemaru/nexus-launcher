@@ -1,6 +1,7 @@
 'use strict';
 // The library: scanning and syncing, imports, merging, hiding, collections, games
 // added by hand, per-game settings, achievements, news and the Steam Workshop.
+const system = require('../../os.cjs');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
@@ -70,16 +71,18 @@ function registerLibraryIpc(register, ctx) {
   register(
     'add',
     withState(async () => {
+      // .exe on Windows, an application (.app) on macOS, any program on Linux.
+      const rule = system.customGame();
       const { canceled, filePaths } = await dialog.showOpenDialog(ctx.mainWindow(), {
         title: 'Выберите исполняемый файл игры',
-        properties: ['openFile'],
-        filters: [{ name: 'Приложение Windows', extensions: ['exe'] }],
+        properties: rule.properties,
+        filters: rule.filters,
       });
       if (canceled) return;
-      const exe = filePaths[0];
-      if (path.extname(exe).toLowerCase() !== '.exe') throw Error('Выберите .exe');
+      const exe = filePaths[0].replace(/(?!^)[\\/]+$/, '');
+      if (!rule.accepts(exe)) throw Error(rule.hint);
       if (!settings.custom.some(x => x.exe.toLowerCase() === exe.toLowerCase()))
-        settings.custom.push({ id: crypto.randomUUID(), name: path.basename(exe, '.exe'), exe });
+        settings.custom.push({ id: crypto.randomUUID(), name: rule.title(exe) || path.basename(exe), exe });
       storage.saveSettings();
       await library.scanLocal();
     })

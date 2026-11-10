@@ -3,7 +3,7 @@
 // (downloads, chat, status); its menu starts recent games, sets the status
 // and opens the pages.
 
-const { Tray, Menu, app } = require('electron');
+const { Tray, Menu, app, nativeImage } = require('electron');
 const { STATUS_LABELS } = require('../presence.cjs');
 
 class NexusTray {
@@ -15,7 +15,14 @@ class NexusTray {
   }
   create() {
     if (this.tray) return;
-    this.tray = new Tray(this.icon);
+    // macOS and Linux panels want a small picture (the .ico of Windows holds every size).
+    let image = this.icon;
+    if (process.platform !== 'win32') {
+      const size = process.platform === 'darwin' ? 18 : 24;
+      const small = nativeImage.createFromPath(this.icon).resize({ width: size, height: size });
+      if (!small.isEmpty()) image = small;
+    }
+    this.tray = new Tray(image);
     this.tray.setToolTip('Nexus');
     this.tray.on('click', () => this.ctx.focusMain());
     this.update();

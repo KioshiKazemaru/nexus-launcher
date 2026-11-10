@@ -148,7 +148,7 @@ function clientButtons(o) {
 function trackProcessBox(g) {
   const o = g.offers.find(x => x.provider === 'custom');
   if (!o || demo) return '';
-  return `<h2>ВРЕМЯ В ИГРЕ</h2><form id="track-process-form" class="inline-form"><input id="track-process" maxlength="104" placeholder="game.exe" value="${esc(o.trackProcess || '')}"><button class="secondary" type="submit">Сохранить</button></form><p class="hint">Если .exe — это лаунчер, укажите имя процесса самой игры (из диспетчера задач). Пусто — время считается до закрытия запущенного файла.</p>`;
+  return `<h2>ВРЕМЯ В ИГРЕ</h2><form id="track-process-form" class="inline-form"><input id="track-process" maxlength="104" placeholder="${state.platform === 'win32' ? 'game.exe' : state.platform === 'darwin' ? 'Game' : 'game.x86_64'}" value="${esc(o.trackProcess || '')}"><button class="secondary" type="submit">Сохранить</button></form><p class="hint">Если запускаемый файл — это лаунчер, укажите имя процесса самой игры (${state.platform === 'win32' ? 'из диспетчера задач' : state.platform === 'darwin' ? 'из «Мониторинга системы»' : 'из системного монитора'}). Пусто — время считается до закрытия запущенного файла.</p>`;
 }
 function collectionsBox(g) {
   const list = state.settings.collections || [];
@@ -639,7 +639,7 @@ function renderInstallDialog() {
             )
             .join('')}`
         : ''
-    }${o.thirdParty ? '<p class="notice warning">Эта игра работает через лаунчер издателя (EA, Ubisoft и т. п.): для игры понадобится он.</p>' : ''}${enough ? '' : '<p class="watch-error">На этом диске может не хватить места.</p>'}<div class="install-buttons"><button class="primary" data-install-start ${x.busy ? 'disabled' : ''}>↓ Установить</button><button class="secondary" data-install-client>Через Epic Games Launcher</button><button class="secondary" data-install-cancel>Отмена</button></div><p class="hint install-import">Игра уже есть на диске (после переустановки Windows или с другого ПК)? <button class="link" data-install-import>Указать её папку…</button></p>`;
+    }${o.thirdParty ? '<p class="notice warning">Эта игра работает через лаунчер издателя (EA, Ubisoft и т. п.): для игры понадобится он.</p>' : ''}${enough ? '' : '<p class="watch-error">На этом диске может не хватить места.</p>'}<div class="install-buttons"><button class="primary" data-install-start ${x.busy ? 'disabled' : ''}>↓ Установить</button><button class="secondary" data-install-client>Через Epic Games Launcher</button><button class="secondary" data-install-cancel>Отмена</button></div><p class="hint install-import">Игра уже есть на диске (после переустановки системы или с другого ПК)? <button class="link" data-install-import>Указать её папку…</button></p>`;
   }
   dlg.innerHTML = `<button class="close" data-install-cancel aria-label="Закрыть">×</button><h2>Установка «${esc(g.name)}»</h2><p class="hint">Nexus скачает игру с серверов Epic сам — без Epic Games Launcher. Пауза и очередь — на странице «Загрузки».</p>${body}`;
   if (!dlg.open) dlg.showModal();
@@ -681,9 +681,22 @@ function dlcBox(g) {
 // "Запуск игр": Epic without its launcher, cloud saves, Steam hidden in the tray.
 function launchCard() {
   const s = state.settings;
+  // What this system cannot do (see src/os.cjs) is not offered: macOS and Linux
+  // start Epic games through Epic Games Launcher or Heroic / Legendary.
+  const f = state.features || { epicDirect: true, epicDownloads: true, steamDownloads: true };
+  const available = {
+    epicDirectLaunch: f.epicDirect,
+    epicCloudSaves: f.epicDirect,
+    nexusDownloads: f.epicDownloads,
+  };
   const check = (name, label, hint) =>
-    `<label class="check"><input type="checkbox" data-launch-setting="${name}" ${s[name] !== false ? 'checked' : ''} ${demo ? 'disabled' : ''}> ${label}</label>${hint ? `<p class="hint">${hint}</p>` : ''}`;
-  return `<section class="settings-card launch-card"><h3>Запуск игр</h3><p>Nexus запускает и устанавливает игры сам, не открывая окна сторонних лаунчеров.</p>${check(
+    available[name] === false
+      ? ''
+      : `<label class="check"><input type="checkbox" data-launch-setting="${name}" ${s[name] !== false ? 'checked' : ''} ${demo ? 'disabled' : ''}> ${label}</label>${hint ? `<p class="hint">${hint}</p>` : ''}`;
+  const other = f.epicDirect
+    ? ''
+    : `<p class="hint">${state.platform === 'linux' ? 'Epic Games Launcher для Linux не существует: игры Epic устанавливаются и запускаются через Heroic Games Launcher или Legendary, Nexus находит их сам.' : 'На macOS игры Epic устанавливает и запускает Epic Games Launcher.'} Игры Steam устанавливает сам Steam.</p>`;
+  return `<section class="settings-card launch-card"><h3>Запуск игр</h3><p>Nexus запускает игры сам, не открывая окна сторонних лаунчеров, где это возможно.</p>${other}${check(
     'epicDirectLaunch',
     'Запускать игры Epic без Epic Games Launcher',
     'Игра входит в ваш аккаунт Epic сама, как в Legendary и Heroic. Игры EA и Ubisoft, а также любые сбои Nexus передаёт Epic Launcher.'
@@ -747,7 +760,7 @@ ${integrationsCard()}
 ${steamApiCard()}
 ${diskCard()}
 ${socialCard()}${launchCard()}${downloadsCard()}${updatesCard()}
-<section class="settings-card"><h3>Nexus</h3><p>Независимый лаунчер для Windows 10/11 x64, не связан с Valve и Epic Games. Покупку подтверждаешь на официальном сайте.</p><button class="secondary" id="demo">Посмотреть демонстрационную библиотеку</button></section>`;
+<section class="settings-card"><h3>Nexus</h3><p>Независимый лаунчер для Windows, macOS и Linux, не связан с Valve и Epic Games. Покупку подтверждаешь на официальном сайте.</p><button class="secondary" id="demo">Посмотреть демонстрационную библиотеку</button></section>`;
 }
 function accountHead(symbol, title, provider) {
   return `<div class="account-head"><span class="account-symbol">${symbol}</span><div><h2>${title}</h2><p>${esc(accountStatusText(state.accounts[provider]))}</p></div></div>${accountRows(provider)}`;
@@ -763,7 +776,7 @@ function epicAccountCard(connected) {
     ? '<button class="secondary" data-login-add="epic">＋ Добавить аккаунт Epic</button>'
     : '<button class="primary" data-login="epic">Войти в Epic Games</button>';
   const codeForm = `<form id="epic-code-form" class="form-row compact"><label class="field">КОД ИЗ БРАУЗЕРА<input id="epic-code" autocomplete="off" placeholder="authorizationCode или весь JSON со страницы"></label><button class="secondary" type="submit">Подключить</button></form><div class="hint">Если вход Google/Apple не открывается во встроенном окне: нажмите «Войти через браузер», войдите, скопируйте значение <code>authorizationCode</code> со страницы и вставьте сюда. Код действует несколько минут.</div>`;
-  return `<section class="account-card">${accountHead('E', 'Epic Games', 'epic')}<p>Вход через официальную страницу Epic. После входа Nexus получает токен библиотеки (как Legendary и Heroic); пароль не сохраняется.</p><label class="check"><input type="checkbox" data-remember="epic" ${state.settings.remember.epic ? 'checked' : ''}> Запомнить вход (токен обновления шифруется Windows)</label><div class="account-actions">${login}<button class="ghost" data-browser="epic">Войти через браузер ↗</button></div>${codeForm}</section>`;
+  return `<section class="account-card">${accountHead('E', 'Epic Games', 'epic')}<p>Вход через официальную страницу Epic. После входа Nexus получает токен библиотеки (как Legendary и Heroic); пароль не сохраняется.</p><label class="check"><input type="checkbox" data-remember="epic" ${state.settings.remember.epic ? 'checked' : ''}> Запомнить вход (токен обновления шифруется системой)</label><div class="account-actions">${login}<button class="ghost" data-browser="epic">Войти через браузер ↗</button></div>${codeForm}</section>`;
 }
 // Wishlists and giveaways, then Steam collections.
 function importCards(steamConnected, epicConnected) {
@@ -776,7 +789,7 @@ function backupCard() {
 // Optional keys of outside services (IsThereAnyDeal, IGDB, SteamGridDB).
 function integrationsCard() {
   const i = state.integrations || {};
-  return `<section class="settings-card"><h3>Внешние сервисы · необязательно</h3><p>Бесплатные личные ключи включают дополнительные функции. Ключи шифруются Windows и не попадают в интерфейс.</p>${i.encryption === false ? '<div class="notice warning">Защищённое хранилище недоступно, ключи сохранить нельзя.</div>' : ''}
+  return `<section class="settings-card"><h3>Внешние сервисы · необязательно</h3><p>Бесплатные личные ключи включают дополнительные функции. Ключи шифруются системой и не попадают в интерфейс.</p>${i.encryption === false ? '<div class="notice warning">Защищённое хранилище недоступно, ключи сохранить нельзя.</div>' : ''}
 ${keyField('itad', 'ISTHEREANYDEAL API KEY · цены в других магазинах, исторический минимум, склейка игр', 'isthereanydeal.com → Apps → API key', i.itad?.enabled, i.itad?.error)}
 ${keyField('igdbId', 'IGDB · TWITCH CLIENT ID · описания, жанры, обложки, склейка игр', 'dev.twitch.tv → Applications', i.igdb?.enabled, i.igdb?.error)}
 ${keyField('igdbSecret', 'IGDB · TWITCH CLIENT SECRET', 'секрет того же приложения Twitch', i.igdb?.enabled, '')}
@@ -787,7 +800,7 @@ function steamApiCard() {
   return `<section class="settings-card"><h3>Облачная библиотека Steam · импорт по Web API key</h3><p>Запасной вариант, если автоматическая синхронизация недоступна. Работает только для подключённого аккаунта.</p><form id="steam-form" class="form-row"><label class="field">STEAMID64<input id="steam-id" inputmode="numeric" maxlength="17" autocomplete="off" placeholder="7656119…" value="${esc(state.accounts.steam?.steamId || '')}"></label><label class="field">ЛИЧНЫЙ WEB API KEY<input id="api-key" type="password" autocomplete="off" placeholder="${saved ? 'Сохранён' : '32 символа'}"></label><button class="primary" type="submit">Импортировать</button></form></section>`;
 }
 function diskCard() {
-  return `<section class="settings-card"><div class="settings-row"><div><h3>Библиотеки на диске</h3><p>${esc(state.settings.steamRoot || 'Steam определяется автоматически, Epic — по манифестам и LauncherInstalled.dat.')}</p></div><button class="secondary" id="steam-root">Указать папку Steam</button></div><label class="check"><input type="checkbox" id="auto-start" ${state.settings.autoStart ? 'checked' : ''}> Запускать Nexus при входе в Windows</label></section>`;
+  return `<section class="settings-card"><div class="settings-row"><div><h3>Библиотеки на диске</h3><p>${esc(state.settings.steamRoot || (state.platform === 'linux' ? 'Steam определяется автоматически (также Flatpak и Snap), игры Epic — по спискам Heroic и Legendary.' : 'Steam определяется автоматически, Epic — по манифестам и LauncherInstalled.dat.'))}</p></div><button class="secondary" id="steam-root">Указать папку Steam</button></div><label class="check"><input type="checkbox" id="auto-start" ${state.settings.autoStart ? 'checked' : ''}> Запускать Nexus при входе в систему</label></section>`;
 }
 const requestedPrices = new Map();
 let priceWorkers = 0;
@@ -893,7 +906,17 @@ function render() {
   rememberView();
   renderFriends();
   document.body.dataset.page = page;
-  document.body.classList.toggle('native-window', state.native === true && state.platform === 'win32');
+  // The window's own buttons lie over the top strip: on the right (Windows, Linux) or the left (macOS).
+  document.body.classList.toggle('native-window', state.native === true && state.platform !== 'darwin');
+  document.body.classList.toggle('mac-window', state.native === true && state.platform === 'darwin');
+  const version = $('#app-version');
+  if (version)
+    version.textContent = [
+      state.version,
+      { win32: 'WINDOWS', darwin: 'MACOS', linux: 'LINUX' }[state.platform],
+    ]
+      .filter(Boolean)
+      .join(' · ');
   renderProfiles();
   renderLibraryTree();
   $('#lib-count').textContent = libraryGames().length;

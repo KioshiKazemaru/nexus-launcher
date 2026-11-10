@@ -25,6 +25,9 @@ const ACCOUNT = 'a'.repeat(32);
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'nexus-install-'));
 const rnd = n => crypto.randomBytes(n);
 
+// These cases use Windows paths (C:\…, \\server\share): Node resolves them only on Windows.
+const WINDOWS_PATHS = { skip: process.platform !== 'win32' && 'Windows paths: runs on Windows only' };
+
 test('assets: only Epic CDNs, signed manifest URLs, chunk folders', () => {
   assert.equal(
     d.assetsUrl({ namespace: 'ns', itemId: 'item1', appId: 'Fennec' }),
@@ -369,38 +372,42 @@ test('Epic: an update downloads only changed files and removes old ones; repair 
   });
 });
 
-test('Epic: no install into Program Files; the launcher can still be chosen; cancel removes files', () => {
-  const dir = tmp();
-  return withProgramData(dir, async () => {
-    const srv = fakeEpic();
-    srv.publish({ 'Game.exe': rnd(10) }, 1);
-    const { ctx } = epicCtx(dir, ownedGame());
-    const e = new EpicInstaller(ctx, { fetcher: srv.fetch });
-    assert.match(await e.folderProblem('C:\\Program Files\\Epic Games', 1), /Program Files/);
-    assert.match(await e.folderProblem('\\\\server\\share', 1), /Сетевые/);
-    const original = electron.dialog.showMessageBox;
-    electron.dialog.showMessageBox = async () => ({ response: 2 });
-    try {
-      assert.deepEqual(await e.install('epic:fennec'), { how: 'client' });
-    } finally {
-      electron.dialog.showMessageBox = original;
-    }
-    assert.equal(e.jobs.size, 0);
-    // Cancel of a paused install deletes the downloaded files.
-    await e.install('epic:fennec');
-    const job = e.jobs.get('epic:fennec');
-    job.pause = true;
-    await job.running;
-    electron.dialog.showMessageBox = async () => ({ response: 0 });
-    try {
-      assert.equal(await e.cancel('epic:fennec'), true);
-    } finally {
-      electron.dialog.showMessageBox = original;
-    }
-    assert.equal(fs.existsSync(path.join(dir, 'Games', 'Fennec')), false);
-    assert.deepEqual(ctx.settings.epicJobs, {});
-  });
-});
+test(
+  'Epic: no install into Program Files; the launcher can still be chosen; cancel removes files',
+  WINDOWS_PATHS,
+  () => {
+    const dir = tmp();
+    return withProgramData(dir, async () => {
+      const srv = fakeEpic();
+      srv.publish({ 'Game.exe': rnd(10) }, 1);
+      const { ctx } = epicCtx(dir, ownedGame());
+      const e = new EpicInstaller(ctx, { fetcher: srv.fetch });
+      assert.match(await e.folderProblem('C:\\Program Files\\Epic Games', 1), /Program Files/);
+      assert.match(await e.folderProblem('\\\\server\\share', 1), /Сетевые/);
+      const original = electron.dialog.showMessageBox;
+      electron.dialog.showMessageBox = async () => ({ response: 2 });
+      try {
+        assert.deepEqual(await e.install('epic:fennec'), { how: 'client' });
+      } finally {
+        electron.dialog.showMessageBox = original;
+      }
+      assert.equal(e.jobs.size, 0);
+      // Cancel of a paused install deletes the downloaded files.
+      await e.install('epic:fennec');
+      const job = e.jobs.get('epic:fennec');
+      job.pause = true;
+      await job.running;
+      electron.dialog.showMessageBox = async () => ({ response: 0 });
+      try {
+        assert.equal(await e.cancel('epic:fennec'), true);
+      } finally {
+        electron.dialog.showMessageBox = original;
+      }
+      assert.equal(fs.existsSync(path.join(dir, 'Games', 'Fennec')), false);
+      assert.deepEqual(ctx.settings.epicJobs, {});
+    });
+  }
+);
 
 // ---- Steam ---------------------------------------------------------------------------
 test('Steam: the appmanifest Steam picks up, libraries and app info', async () => {
@@ -653,7 +660,7 @@ test('optional parts of a game: components with sizes, files of the chosen tags'
   assert.equal(d.tagLabel('VO_ru'), 'Русский язык (озвучка)');
 });
 
-test('Epic install window: options, start with DLC into the game folder, DLC records', () => {
+test('Epic install window: options, start with DLC into the game folder, DLC records', WINDOWS_PATHS, () => {
   const dir = tmp();
   return withProgramData(dir, async () => {
     const srv = fakeEpic();

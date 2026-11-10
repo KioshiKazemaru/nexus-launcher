@@ -25,7 +25,45 @@ const {
   protocol,
   net,
 } = require('electron');
-Menu.setApplicationMenu(null);
+// Windows and Linux: no menu bar. macOS always has one, and its «Правка» items
+// are what make ⌘C / ⌘V / ⌘Q work in the window.
+Menu.setApplicationMenu(
+  process.platform === 'darwin'
+    ? Menu.buildFromTemplate([
+        {
+          label: 'Nexus',
+          submenu: [
+            { role: 'about', label: 'О программе Nexus' },
+            { type: 'separator' },
+            { role: 'hide', label: 'Скрыть Nexus' },
+            { role: 'hideOthers', label: 'Скрыть остальные' },
+            { role: 'unhide', label: 'Показать все' },
+            { type: 'separator' },
+            { role: 'quit', label: 'Выйти из Nexus' },
+          ],
+        },
+        {
+          label: 'Правка',
+          submenu: [
+            { role: 'undo', label: 'Отменить' },
+            { role: 'redo', label: 'Повторить' },
+            { type: 'separator' },
+            { role: 'cut', label: 'Вырезать' },
+            { role: 'copy', label: 'Копировать' },
+            { role: 'paste', label: 'Вставить' },
+            { role: 'selectAll', label: 'Выбрать всё' },
+          ],
+        },
+        {
+          label: 'Окно',
+          submenu: [
+            { role: 'minimize', label: 'Свернуть' },
+            { role: 'togglefullscreen', label: 'Полноэкранный режим' },
+          ],
+        },
+      ])
+    : null
+);
 const fs = require('node:fs');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
@@ -60,6 +98,7 @@ const EventEmitter = require('node:events');
 const { ArtworkCache } = require('./artwork.cjs');
 const { ownedOffers } = require('./ownership.cjs');
 const { findLibraryCover } = require('./steam-library.cjs');
+const system = require('./os.cjs');
 
 // A second copy only hands focus to the first one; it never starts services.
 const primary = app.requestSingleInstanceLock();
@@ -70,7 +109,10 @@ protocol.registerSchemesAsPrivileged([
 if (process.platform === 'win32') app.setAppUserModelId('nexus.launcher');
 
 const uiUrl = pathToFileURL(path.join(__dirname, '../ui/index.html')).href;
-const icon = path.join(__dirname, '../ui/assets/nexus.ico');
+const icon = path.join(
+  __dirname,
+  '../ui/assets/' + (process.platform === 'win32' ? 'nexus.ico' : 'nexus.png')
+);
 const ctx = { vault: {}, gameEvents: new EventEmitter() };
 // Tests wait for background work through this handle (never set in normal runs).
 if (process.env.NEXUS_TEST === '1') {
@@ -98,6 +140,8 @@ process.on('unhandledRejection', e =>
 );
 
 app.on('second-instance', () => ctx.focusMain?.());
+// macOS: a click on the Dock icon shows the window hidden by its close button.
+app.on('activate', () => ctx.focusMain?.());
 app.on('window-all-closed', () => {}); // The main window decides when to quit.
 
 ctx.focusMain = () => {
@@ -147,6 +191,7 @@ const sections = new Sections();
 //   progress  download progress per game id (always sent, tiny)
 function snapshot(full) {
   const { settings, library, store, accounts, integrations } = ctx;
+  const features = system.features();
   const country = settings.storeCountry;
   let visible = null;
   const vis = () => (visible ||= library.visible());
@@ -190,6 +235,9 @@ function snapshot(full) {
     libraryAccounts: library.statusList(),
     settings: {
       ...settings,
+      // Windows-only abilities read as switched off elsewhere.
+      ...(features.epicDownloads ? {} : { nexusDownloads: false }),
+      ...(features.epicDirect ? {} : { epicDirectLaunch: false, epicCloudSaves: false }),
       custom: undefined,
       savedGames: undefined,
       seenGiveaways: undefined,
@@ -205,6 +253,8 @@ function snapshot(full) {
     warnings: library.local.errors,
     storageWarning: ctx.storage.warning,
     platform: process.platform,
+    // What Nexus does itself on this system (src/os.cjs); the window hides the rest.
+    features,
     accounts: accounts.summary(),
     accountList: accounts.list(),
     integrations: integrations.status(),
@@ -309,11 +359,6 @@ function withQuitTimeout(promise) {
 }
 
 async function start() {
-  if (process.platform !== 'win32' && !process.argv.includes('--dev-linux')) {
-    dialog.showErrorBox('Nexus для Windows', 'Эта сборка предназначена для Windows 10/11 x64.');
-    app.quit();
-    return;
-  }
   ctx.log.info('app', `start ${app.getVersion()} electron ${process.versions.electron}`);
   ctx.storage = new Storage(app.getPath('userData'), safeStorage);
   ctx.settings = ctx.storage.loadSettings();
@@ -498,7 +543,7 @@ app.whenReady().then(() => {
     try {
       dialog.showErrorBox(
         'Nexus не запустился',
-        `${String(e?.message || e).slice(0, 300)}\n\nПодробности — в журнале: %APPDATA%\\Nexus Launcher\\logs`
+        `${String(e?.message || e).slice(0, 300)}\n\nПодробности — в журнале: ${path.join(app.getPath('userData'), 'logs')}`
       );
     } catch {}
     quitting = true;

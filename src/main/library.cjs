@@ -33,6 +33,7 @@ const collections = require('../collections.cjs');
 const achievements = require('../achievements.cjs');
 const platforms = require('../platforms/index.cjs');
 const family = require('../family.cjs');
+const system = require('../os.cjs');
 const { parseSteamLinkDetails } = require('../friends.cjs');
 
 // The family library changes rarely: asked again after 6 hours or on ↻.
@@ -101,12 +102,27 @@ class LibraryService {
 
   async discoverSteam() {
     // Tests set NEXUS_NO_SYSTEM_SCAN: only the chosen folder, never the PC's real Steam.
-    if (process.platform !== 'win32' || process.env.NEXUS_NO_SYSTEM_SCAN)
-      return [this.ctx.settings.steamRoot].filter(Boolean);
-    const roots = [
-      this.ctx.settings.steamRoot,
-      path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Steam'),
-    ];
+    if (process.env.NEXUS_NO_SYSTEM_SCAN) return [this.ctx.settings.steamRoot].filter(Boolean);
+    if (process.platform !== 'win32') {
+      // macOS and Linux (also Flatpak and Snap): the usual Steam folders that exist.
+      // ~/.steam/steam is a link to the real folder: each folder is taken once.
+      const roots = [],
+        seen = new Set();
+      for (const root of [this.ctx.settings.steamRoot, ...system.steamRoots()].filter(Boolean)) {
+        let real;
+        try {
+          real = await fsp.realpath(root);
+          if (!(await fsp.stat(path.join(real, 'steamapps'))).isDirectory()) continue;
+        } catch {
+          continue;
+        }
+        if (seen.has(real)) continue;
+        seen.add(real);
+        roots.push(real);
+      }
+      return roots;
+    }
+    const roots = [this.ctx.settings.steamRoot, ...system.steamRoots()];
     try {
       const { stdout } = await promisify(execFile)(
         'reg.exe',
@@ -272,11 +288,10 @@ class LibraryService {
   // Steam and Epic write their install folders while they download: watching
   // them starts the progress display also for downloads started in the clients.
   watchClientFolders() {
-    if (process.platform !== 'win32') return;
+    const epicDir = platforms.get('epic').manifestDir();
     const dirs = [
       ...(this.local.steamRoots || []).map(r => path.join(r, 'steamapps')),
-      path.join(platforms.get('epic').manifestDir(), 'Pending'),
-      platforms.get('epic').manifestDir(),
+      ...(epicDir ? [path.join(epicDir, 'Pending'), epicDir] : []),
     ];
     this.folderWatchers ||= new Map();
     for (const dir of dirs) {

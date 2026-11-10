@@ -8,6 +8,9 @@ const A = '76561198000000001',
   B = '76561198000000002',
   C = '76561198000000003';
 
+// These cases use Windows paths (C:\…, \\server\share): Node resolves them only on Windows.
+const WINDOWS_PATHS = { skip: process.platform !== 'win32' && 'Windows paths: runs on Windows only' };
+
 test('Steam friends: only accepted friends, status like Steam (in game wins)', () => {
   assert.deepEqual(
     f.parseSteamFriendIds({
@@ -94,55 +97,59 @@ test('Epic friends: ids and names only (no status for other programs)', () => {
   assert.throws(() => f.parseEpicFriendIds({}), /Epic/);
 });
 
-test('a game runs when a process runs from its install folder (Steam, Epic, a manual .exe)', () => {
-  const games = [
-    {
-      id: 'steam:1',
-      name: 'Hades',
-      offers: [
-        { provider: 'steam', installed: true, installDir: String.raw`D:\Steam\steamapps\common\Hades` },
+test(
+  'a game runs when a process runs from its install folder (Steam, Epic, a manual .exe)',
+  WINDOWS_PATHS,
+  () => {
+    const games = [
+      {
+        id: 'steam:1',
+        name: 'Hades',
+        offers: [
+          { provider: 'steam', installed: true, installDir: String.raw`D:\Steam\steamapps\common\Hades` },
+        ],
+      },
+      {
+        id: 'epic:c',
+        name: 'Control',
+        offers: [{ provider: 'epic', installed: true, installLocation: String.raw`E:\Epic Games\Control` }],
+      },
+      {
+        id: 'custom:x',
+        name: 'Own',
+        offers: [
+          {
+            provider: 'custom',
+            installed: true,
+            exe: String.raw`C:\Games\Own\launcher.exe`,
+            trackProcess: 'own.exe',
+          },
+        ],
+      },
+      {
+        id: 'steam:2',
+        name: 'Not installed',
+        offers: [{ provider: 'steam', installed: false, installDir: 'D:\\X' }],
+      },
+    ];
+    const targets = installTargets(games);
+    assert.equal(targets.length, 3);
+    const running = matchRunning(
+      [
+        { pid: 10, path: String.raw`D:\Steam\steamapps\common\Hades\x64\Hades.exe` },
+        { pid: 11, path: String.raw`D:\Steam\steamapps\common\Hades\UnityCrashHandler64.exe` },
+        { pid: 20, path: String.raw`e:\epic games\control\Control_DX12.exe` }, // case does not matter
+        { pid: 30, path: String.raw`C:\Somewhere\own.exe` }, // the "game process" of a launcher
+        { pid: 40, path: String.raw`D:\Steam\steam.exe` }, // Steam itself is not a game
+        { pid: 50, path: String.raw`D:\Steam\steamapps\common\HadesII\Hades2.exe` }, // same prefix, other folder
       ],
-    },
-    {
-      id: 'epic:c',
-      name: 'Control',
-      offers: [{ provider: 'epic', installed: true, installLocation: String.raw`E:\Epic Games\Control` }],
-    },
-    {
-      id: 'custom:x',
-      name: 'Own',
-      offers: [
-        {
-          provider: 'custom',
-          installed: true,
-          exe: String.raw`C:\Games\Own\launcher.exe`,
-          trackProcess: 'own.exe',
-        },
-      ],
-    },
-    {
-      id: 'steam:2',
-      name: 'Not installed',
-      offers: [{ provider: 'steam', installed: false, installDir: 'D:\\X' }],
-    },
-  ];
-  const targets = installTargets(games);
-  assert.equal(targets.length, 3);
-  const running = matchRunning(
-    [
-      { pid: 10, path: String.raw`D:\Steam\steamapps\common\Hades\x64\Hades.exe` },
-      { pid: 11, path: String.raw`D:\Steam\steamapps\common\Hades\UnityCrashHandler64.exe` },
-      { pid: 20, path: String.raw`e:\epic games\control\Control_DX12.exe` }, // case does not matter
-      { pid: 30, path: String.raw`C:\Somewhere\own.exe` }, // the "game process" of a launcher
-      { pid: 40, path: String.raw`D:\Steam\steam.exe` }, // Steam itself is not a game
-      { pid: 50, path: String.raw`D:\Steam\steamapps\common\HadesII\Hades2.exe` }, // same prefix, other folder
-    ],
-    targets
-  );
-  assert.deepEqual(Object.keys(running).sort(), ['custom:x', 'epic:c', 'steam:1']);
-  assert.deepEqual(running['steam:1'].pids, [10, 11]);
-  assert.equal(running['epic:c'].provider, 'epic');
-});
+      targets
+    );
+    assert.deepEqual(Object.keys(running).sort(), ['custom:x', 'epic:c', 'steam:1']);
+    assert.deepEqual(running['steam:1'].pids, [10, 11]);
+    assert.equal(running['epic:c'].provider, 'epic');
+  }
+);
 
 test('"Закрыть" closes like the window close button; force only after the user agrees', async () => {
   const electron = require('electron');

@@ -164,6 +164,8 @@ class SteamInstaller {
     const offer = g?.offers.find(o => o.provider === 'steam');
     if (!offer) throw Error('Игра Steam не найдена');
     if (offer.installed) throw Error('Игра уже установлена');
+    // macOS and Linux: Steam installs the game itself (steam://install).
+    if (!require('../os.cjs').features().steamDownloads) return { how: 'client' };
     const exe = this.ctx.actions.steamExe();
     if (!exe) return { how: 'client' }; // no Steam yet: the client installer takes over
     const appId = String(offer.appId);

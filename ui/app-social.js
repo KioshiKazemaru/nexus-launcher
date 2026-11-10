@@ -1013,12 +1013,12 @@ function trayCard() {
   return `<section class="settings-card"><h3>Трей и запуск</h3>${presenceCheck(
     'closeToTray',
     'Закрывать в трей: кнопка × оставляет Nexus работать в фоне (загрузки, чат, статус)'
-  )}${presenceCheck('startHidden', 'При запуске вместе с Windows сразу сворачивать в трей', false)}<p class="hint">Выйти из Nexus — в меню значка в трее.</p></section>`;
+  )}${presenceCheck('startHidden', 'При запуске вместе с системой сразу сворачивать в трей', false)}<p class="hint">Выйти из Nexus — в меню значка в трее.</p></section>`;
 }
 function overlayCard() {
   const hotkey = state.settings.overlayHotkey || 'Shift+Tab';
   const keys = OVERLAY_KEYS.map(k => `<option ${hotkey === k ? 'selected' : ''}>${k}</option>`).join('');
-  return `<section class="settings-card overlay-card"><h3>Оверлей в игре</h3><p>Поверх игры: друзья и чат, достижения, время сессии, счётчик FPS. Работает в играх в окне и в «полноэкранном окне»; поверх эксклюзивного полноэкранного режима окна Windows не показываются.</p>${presenceCheck('overlay', 'Включить оверлей')}<label class="field">Сочетание клавиш <select id="overlay-hotkey" ${demo ? 'disabled' : ''}>${keys}</select><small>Работает, только пока запущена игра.</small></label><p class="hint">Счётчик FPS включается в самом оверлее. Для него нужен PresentMon: он уже есть в AMD Software и в Intel PresentMon.</p></section>`;
+  return `<section class="settings-card overlay-card"><h3>Оверлей в игре</h3><p>Поверх игры: друзья и чат, достижения, время сессии, счётчик FPS. Работает в играх в окне и в «полноэкранном окне»; поверх эксклюзивного полноэкранного режима другие окна не показываются.</p>${presenceCheck('overlay', 'Включить оверлей')}<label class="field">Сочетание клавиш <select id="overlay-hotkey" ${demo ? 'disabled' : ''}>${keys}</select><small>Работает, только пока запущена игра.</small></label><p class="hint">${state.features?.fps === false ? 'Счётчик FPS работает только в Windows.' : 'Счётчик FPS включается в самом оверлее. Для него нужен PresentMon: он уже есть в AMD Software и в Intel PresentMon.'}</p></section>`;
 }
 
 // ---- events of this part -------------------------------------------------------------

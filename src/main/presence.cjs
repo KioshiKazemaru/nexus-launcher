@@ -15,7 +15,10 @@ const p = require('../presence.cjs');
 const { convKey } = require('../chat.cjs');
 const { JsonFile } = require('./storage.cjs');
 
-const icon = path.join(__dirname, '../../ui/assets/nexus.ico');
+const icon = path.join(
+  __dirname,
+  '../../ui/assets/' + (process.platform === 'win32' ? 'nexus.ico' : 'nexus.png')
+);
 const SETTLE_MS = 4000; // after logon Steam sends every friend's status: that is not news
 const ACHIEVEMENT_POLL_MS = 90000;
 const POLL_MS = 60000; // friends' statuses from the Web API while the Steam client is open

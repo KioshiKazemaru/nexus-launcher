@@ -3,6 +3,9 @@
 /* exported esc, avatarUrl, statusLine, avatarTag, timeText, dayText, PROVIDER_NAMES, api, $ */
 
 const api = window.nexus;
+// macOS: the window buttons are on the left (see social.css).
+if (/Mac/i.test(navigator.platform || navigator.userAgent))
+  document.documentElement.classList.add('mac-window');
 const $ = selector => document.querySelector(selector);
 const esc = value =>
   String(value ?? '').replace(

@@ -17,7 +17,10 @@ const steamLib = require('../steam-library.cjs');
 const c = require('../chat.cjs');
 const { JsonFile } = require('./storage.cjs');
 
-const icon = path.join(__dirname, '../../ui/assets/nexus.ico');
+const icon = path.join(
+  __dirname,
+  '../../ui/assets/' + (process.platform === 'win32' ? 'nexus.ico' : 'nexus.png')
+);
 const POLL_OPEN_MS = 4000;
 const POLL_IDLE_MS = 20000;
 const TOKEN_MS = 5 * 60000;

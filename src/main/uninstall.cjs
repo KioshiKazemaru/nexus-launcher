@@ -24,8 +24,10 @@ const { execFile, spawn } = require('node:child_process');
 const { promisify } = require('node:util');
 const { folderBytes } = require('../core.cjs');
 
+const system = require('../os.cjs');
+const platforms = require('../platforms/index.cjs');
+
 const run = promisify(execFile);
-const programData = () => process.env.ProgramData || 'C:\\ProgramData';
 
 const inside = (child, parent) => {
   const c = path.resolve(child).toLowerCase(),
@@ -39,15 +41,8 @@ function folderRisk(dir, otherDirs = [], env = process.env) {
   if (!dir || !path.isAbsolute(dir)) return 'папка игры неизвестна';
   const d = path.resolve(dir);
   if (same(d, path.parse(d).root)) return 'это корень диска';
-  const protectedDirs = [
-    env.SystemRoot || 'C:\\Windows',
-    env.ProgramFiles || 'C:\\Program Files',
-    env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)',
-    env.ProgramData || 'C:\\ProgramData',
-    env.USERPROFILE,
-    env.APPDATA,
-    env.LOCALAPPDATA,
-  ].filter(Boolean);
+  // System and user folders of this OS (see ../os.cjs).
+  const protectedDirs = system.protectedDirs({ env });
   if (protectedDirs.some(p => same(d, p) || inside(p, d))) return 'это системная или пользовательская папка';
   for (const other of otherDirs) {
     if (!other) continue;
@@ -121,6 +116,9 @@ class Uninstaller {
     }
     if (offer.provider === 'epic') {
       const dir = offer.installLocation;
+      // Heroic / Legendary keep their own list of installs: Nexus does not edit it.
+      if (offer.via === 'legendary')
+        throw Error('Эта игра установлена через Heroic или Legendary — удалите её там');
       if (!dir || !offer.manifestFile) throw Error('Nexus не нашёл папку игры Epic');
       return {
         dir,
@@ -270,7 +268,8 @@ class Uninstaller {
     await fsp.rm(dir, { recursive: true, force: true });
   }
   async removeFromLauncherInstalled(appName) {
-    const file = path.join(programData(), 'Epic', 'UnrealEngineLauncher', 'LauncherInstalled.dat');
+    const file = platforms.get('epic').installedDat();
+    if (!file) return;
     let json;
     try {
       json = JSON.parse(await fsp.readFile(file, 'utf8'));

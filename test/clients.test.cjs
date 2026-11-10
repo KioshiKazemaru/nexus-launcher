@@ -15,6 +15,9 @@ function installer(extra = {}) {
   return { c: new ClientInstaller(ctx), toasts };
 }
 
+// These cases use Windows paths (C:\…, \\server\share): Node resolves them only on Windows.
+const WINDOWS_PATHS = { skip: process.platform !== 'win32' && 'Windows paths: runs on Windows only' };
+
 test('the link handler command points to the client program (stale links are detected by the missing file)', () => {
   assert.equal(
     commandExecutable('"D:\\Epic Games\\Launcher\\Portal\\Binaries\\Win64\\EpicGamesLauncher.exe" %1'),
@@ -145,7 +148,7 @@ test(
   }
 );
 
-test('the chosen folder is passed to the official installers', () => {
+test('the chosen folder is passed to the official installers', WINDOWS_PATHS, () => {
   assert.equal(
     CLIENTS.epic.install(String.raw`C:\Temp\Epic.msi`, String.raw`D:\Epic Games`).args,
     String.raw`/i "C:\Temp\Epic.msi" INSTALLDIR="D:\Epic Games" /passive /norestart`
@@ -164,7 +167,7 @@ test('the chosen folder is passed to the official installers', () => {
   assert.equal(CLIENTS.steam.rootOf(String.raw`D:\Steam\steam.exe`), String.raw`D:\Steam`);
 });
 
-test('folders that cannot be used are explained', async () => {
+test('folders that cannot be used are explained', WINDOWS_PATHS, async () => {
   const { c } = installer();
   assert.match(await c.folderProblem(CLIENTS.epic, String.raw`D:\"bad"`), /кавычек/);
   assert.match(await c.folderProblem(CLIENTS.epic, String.raw`\\server\share`), /Сетевые папки/);

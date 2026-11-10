@@ -12,8 +12,10 @@ const { spawn, execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 
 const QUICK_EXIT = 90 * 1000;
-const PROCESS_NAME = /^[\w .()+-]{1,100}\.exe$/i;
-const { app, dialog } = require('electron');
+const { app, dialog, shell } = require('electron');
+const system = require('../os.cjs');
+const processes = require('./processes.cjs');
+const { parseVdf } = require('../core.cjs');
 const platforms = require('../platforms/index.cjs');
 const collections = require('../collections.cjs');
 const { createBackup, restoreBackup, backupCustomGames, MAX_BYTES } = require('../backup.cjs');
@@ -48,10 +50,12 @@ class ActionsService {
     let how = 'launcher';
     const extra = launchOptions.optionsFor(this.ctx.settings, id);
     if (o.provider === 'custom') await this.runCustom(o, extra);
+    else if (o.provider === 'epic' && !system.features().epicLauncher) how = await this.playEpicLinux(o);
     else if (
       !o.installed &&
       this.ctx.settings.nexusDownloads !== false &&
-      (o.provider === 'epic' || o.provider === 'steam')
+      // Nexus downloads Epic games (Windows builds) only on Windows.
+      ((o.provider === 'epic' && system.features().epicDownloads) || o.provider === 'steam')
     ) {
       const r = await (o.provider === 'epic' ? this.ctx.epicInstall : this.ctx.steamInstall).install(id);
       how =
@@ -125,20 +129,53 @@ class ActionsService {
 
   // ---- Steam without its window --------------------------------------------------
 
-  steamExe() {
-    for (const root of this.ctx.library.local.steamRoots || []) {
-      const exe = path.join(root, 'steam.exe');
-      if (fs.existsSync(exe)) return exe;
+  // Linux has no Epic Games Launcher: an installed game is started by Legendary
+  // (when the game is in its own list) or opened in Heroic Games Launcher.
+  async playEpicLinux(o) {
+    if (!o.installed)
+      throw Error(
+        'Epic Games Launcher для Linux не существует. Установите игру в Heroic Games Launcher — она появится в Nexus.'
+      );
+    if (!/^[\w.-]{1,100}$/.test(String(o.appId))) throw Error('Некорректная игра Epic');
+    const heroic = /heroic/i.test(o.legendaryFile || '');
+    if (!heroic) {
+      const started = await new Promise(resolve => {
+        const child = spawn('legendary', ['launch', String(o.appId)], {
+          detached: true,
+          stdio: 'ignore',
+          shell: false,
+        });
+        child.once('error', () => resolve(false));
+        child.once('spawn', () => {
+          child.unref();
+          resolve(true);
+        });
+      });
+      if (started) return 'legendary';
     }
+    try {
+      await shell.openExternal(`heroic://launch/legendary/${encodeURIComponent(o.appId)}`);
+      return 'heroic';
+    } catch {
+      throw Error('Не удалось открыть Heroic Games Launcher. Запустите игру из Heroic.');
+    }
+  }
+
+  steamExe() {
+    for (const root of this.ctx.library.local.steamRoots || [])
+      for (const exe of system.steamExecutables(root)) if (fs.existsSync(exe)) return exe;
     return null;
+  }
+  steamRunning() {
+    return processes.anyRunning(system.steamProcessNames());
   }
   // Steam has to run for its games (DRM, Steam Cloud, achievements), but its
   // window does not: when Steam is closed, Nexus starts it hidden in the tray
   // ("-silent") together with the game, and closes it again after the game
   // if the user wants that.
   async playSteam(o, extra = '') {
-    const exe = process.platform === 'win32' ? this.steamExe() : null;
-    if (!exe || (await this.processRunning('steam.exe')))
+    const exe = this.steamExe();
+    if (!exe || (await this.steamRunning()))
       return this.openClient(
         'steam',
         extra ? launchOptions.steamRunUri(o.appId, extra) : platforms.get('steam').launchUri(o),
@@ -158,8 +195,22 @@ class ActionsService {
       this.closeSteamAfter(exe, String(o.appId)).catch(e => this.ctx.log.warn('steam', e.message));
     return 'steam-silent';
   }
-  // Steam keeps the running game in HKCU\Software\Valve\Steam\RunningAppID.
+  // Steam keeps the running game in HKCU\Software\Valve\Steam\RunningAppID
+  // (the registry on Windows, its own registry.vdf on macOS and Linux).
   async runningSteamApp() {
+    if (process.platform !== 'win32') {
+      const find = (obj, key) =>
+        obj && typeof obj === 'object' ? obj[Object.keys(obj).find(k => k.toLowerCase() === key)] : undefined;
+      for (const file of system.steamRegistryFiles()) {
+        try {
+          let node = parseVdf(await fsp.readFile(file, 'utf8'));
+          for (const key of ['registry', 'hkcu', 'software', 'valve', 'steam']) node = find(node, key);
+          const id = find(node, 'runningappid');
+          if (/^\d+$/.test(String(id))) return String(id);
+        } catch {}
+      }
+      return '0';
+    }
     try {
       const { stdout } = await promisify(execFile)(
         'reg.exe',
@@ -194,14 +245,26 @@ class ActionsService {
     if (!custom || !fs.existsSync(custom.exe)) throw Error('Файл игры не найден');
     if (this.running.has(custom.id)) throw Error('Игра уже запущена');
     const started = Date.now();
+    const args = launchOptions.splitArgs(extra);
+    // A macOS application (.app) is opened by the system; -W waits until it quits.
+    const bundle = process.platform === 'darwin' && /\.app$/i.test(custom.exe);
+    const [file, fileArgs] = bundle
+      ? ['open', ['-W', '-n', custom.exe, ...(args.length ? ['--args', ...args] : [])]]
+      : [custom.exe, args];
     await new Promise((resolve, reject) => {
-      const child = spawn(custom.exe, launchOptions.splitArgs(extra), {
+      const child = spawn(file, fileArgs, {
         cwd: path.dirname(custom.exe),
         detached: true,
         stdio: 'ignore',
         shell: false,
       });
-      child.once('error', reject);
+      child.once('error', e =>
+        reject(
+          e.code === 'EACCES'
+            ? Error(`Файл игры не является исполняемым. Разрешите запуск: chmod +x "${custom.exe}"`)
+            : e
+        )
+      );
       child.once('spawn', () => {
         this.running.set(custom.id, started);
         child.once('exit', () =>
@@ -216,7 +279,7 @@ class ActionsService {
   // "game process" set for the entry, Nexus keeps counting while that process runs.
   async childExited(custom, started) {
     const quick = Date.now() - started < QUICK_EXIT;
-    if (custom.trackProcess && process.platform === 'win32') {
+    if (custom.trackProcess) {
       await this.sleep(5000);
       const deadline = started + 24 * 3600 * 1000;
       while (Date.now() < deadline && (await this.processRunning(custom.trackProcess)))
@@ -232,20 +295,10 @@ class ActionsService {
   sleep(ms) {
     return new Promise(r => setTimeout(r, ms).unref?.());
   }
-  async processRunning(image) {
-    try {
-      const { stdout } = await promisify(execFile)(
-        'tasklist',
-        ['/FI', `IMAGENAME eq ${image}`, '/FO', 'CSV', '/NH'],
-        {
-          windowsHide: true,
-          timeout: 8000,
-        }
-      );
-      return stdout.toLowerCase().includes(`"${image.toLowerCase()}"`);
-    } catch {
-      return false;
-    }
+  // 'steam.exe' means the Steam client under its name on this system.
+  processRunning(image) {
+    if (/^steam\.exe$/i.test(image)) return this.steamRunning();
+    return processes.processRunning(image);
   }
   // "Параметры запуска" of a game (any platform); empty removes them.
   setLaunchOptions({ id, options }) {
@@ -262,7 +315,9 @@ class ActionsService {
     const custom = o && this.ctx.settings.custom.find(x => x.id === o.appId);
     if (!custom) throw Error('Процесс можно указать только для игры, добавленной вручную');
     const value = typeof image === 'string' ? image.trim() : '';
-    if (value && !PROCESS_NAME.test(value)) throw Error('Укажите имя файла процесса, например game.exe');
+    const rule = system.customGame();
+    if (value && !rule.processName.test(value))
+      throw Error('Укажите имя файла процесса, например ' + rule.processExample);
     if (value) custom.trackProcess = value;
     else delete custom.trackProcess;
     this.ctx.storage.saveSettings();

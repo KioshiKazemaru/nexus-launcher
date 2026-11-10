@@ -1,8 +1,51 @@
 'use strict';
-const path = require('node:path');
+const fsp = require('node:fs/promises');
 const { scanEpic, scanEpicPending, launchUri, storeUrl } = require('../core.cjs');
+const system = require('../os.cjs');
 
-const programData = () => process.env.ProgramData || 'C:\\ProgramData';
+// Games installed by Legendary or Heroic Games Launcher (their installed.json):
+// the only Epic installs on Linux, and possible next to the Epic launcher on macOS.
+// → offers marked `via: 'legendary'`: they are started and removed through Heroic / Legendary.
+async function scanLegendary(files) {
+  const offers = [],
+    seen = new Set();
+  for (const file of files) {
+    let json;
+    try {
+      json = JSON.parse(await fsp.readFile(file, 'utf8'));
+    } catch {
+      continue;
+    }
+    if (!json || typeof json !== 'object') continue;
+    for (const [key, v] of Object.entries(json)) {
+      const appId = typeof v?.app_name === 'string' ? v.app_name : key;
+      const dir = v?.install_path;
+      if (!v || v.is_dlc || seen.has(appId) || typeof dir !== 'string' || !/^[\w.-]{1,100}$/.test(appId))
+        continue;
+      try {
+        if (!(await fsp.stat(dir)).isDirectory()) continue;
+      } catch {
+        continue;
+      }
+      seen.add(appId);
+      offers.push({
+        provider: 'epic',
+        appId,
+        name: typeof v.title === 'string' && v.title ? v.title.slice(0, 200) : appId,
+        installed: true,
+        source: 'local',
+        licenseUnknown: true,
+        via: 'legendary',
+        // Heroic keeps its own copy of Legendary: its games are opened in Heroic.
+        legendaryFile: file,
+        installLocation: dir,
+        installSize: Number(v.install_size) || 0,
+        version: typeof v.version === 'string' ? v.version : '',
+      });
+    }
+  }
+  return offers;
+}
 
 // The Epic launcher accepts install/uninstall/verify actions only with the full
 // namespace:itemId:appName id; otherwise its library is opened.
@@ -17,21 +60,26 @@ function clientUri(action, offer) {
 module.exports = {
   id: 'epic',
   name: 'Epic Games',
-  manifestDir: () => path.join(programData(), 'Epic', 'EpicGamesLauncher', 'Data', 'Manifests'),
+  // '' where there is no Epic Games Launcher (Linux).
+  manifestDir: () => system.epicFiles()?.manifests || '',
+  installedDat: () => system.epicFiles()?.installedDat || '',
+  scanLegendary,
   // Installed games plus the installations the Epic launcher is running now.
   scanInstalled: async ({ nexusEpicDir } = {}) => {
-    const manifests = path.join(programData(), 'Epic', 'EpicGamesLauncher', 'Data', 'Manifests');
-    const result = await scanEpic(
-      manifests,
-      path.join(programData(), 'Epic', 'UnrealEngineLauncher', 'LauncherInstalled.dat')
-    );
+    const files = system.epicFiles();
+    const manifests = files?.manifests || '';
+    const result = files ? await scanEpic(manifests, files.installedDat) : { offers: [], errors: [] };
+    // Tests set NEXUS_NO_SYSTEM_SCAN: never the PC's real Heroic / Legendary.
+    if (!process.env.NEXUS_NO_SYSTEM_SCAN)
+      for (const o of await scanLegendary(system.legendaryInstalledFiles()))
+        if (!result.offers.some(x => x.appId === o.appId)) result.offers.push(o);
     // Games installed by Nexus when the Epic folder was not writable (main/epic-install.cjs).
     if (nexusEpicDir) {
       const own = await scanEpic(nexusEpicDir, null);
       for (const o of own.offers) if (!result.offers.some(x => x.appId === o.appId)) result.offers.push(o);
     }
     const installed = new Set(result.offers.map(o => o.appId));
-    const pending = await scanEpicPending(manifests, installed);
+    const pending = manifests ? await scanEpicPending(manifests, installed) : [];
     for (const p of pending) {
       const same = result.offers.find(o => o.appId === p.appId);
       if (same) same.progress = p.progress;

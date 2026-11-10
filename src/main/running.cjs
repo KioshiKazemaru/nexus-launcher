@@ -9,29 +9,11 @@
 // games started by Nexus, epic-play.cjs uploads the saves when the game ends.
 
 const path = require('node:path');
-const { execFile } = require('node:child_process');
-const { promisify } = require('node:util');
 const { dialog } = require('electron');
+const { listProcesses, endProcess } = require('./processes.cjs');
 
-const run = promisify(execFile);
 const POLL_MS = 15000;
 const CLOSE_WAIT_MS = 25000;
-
-// Processes with their program path: [{ pid, path }].
-async function listProcesses() {
-  if (process.platform !== 'win32') return [];
-  const script =
-    'Get-Process | Where-Object { $_.Path } | ForEach-Object { [pscustomobject]@{ pid = $_.Id; path = $_.Path } } | ConvertTo-Json -Compress';
-  const { stdout } = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
-    windowsHide: true,
-    timeout: 20000,
-    maxBuffer: 16 * 1024 * 1024,
-  });
-  const list = JSON.parse(stdout || '[]');
-  return (Array.isArray(list) ? list : [list]).filter(
-    p => Number.isInteger(p?.pid) && typeof p.path === 'string'
-  );
-}
 
 // Where each installed library game lives: [{ gameId, name, provider, dir, exe }].
 function installTargets(games) {
@@ -41,6 +23,9 @@ function installTargets(games) {
       if (!o.installed) continue;
       const dir = o.provider === 'steam' ? o.installDir : o.provider === 'epic' ? o.installLocation : null;
       if (dir) out.push({ gameId: g.id, name: g.name, provider: o.provider, dir: path.resolve(dir) });
+      // A macOS application is a folder: its program runs from inside it.
+      else if (o.provider === 'custom' && o.exe && /\.app$/i.test(o.exe))
+        out.push({ gameId: g.id, name: g.name, provider: 'custom', dir: path.resolve(o.exe) });
       else if (o.provider === 'custom' && o.exe)
         out.push({
           gameId: g.id,
@@ -65,7 +50,7 @@ function matchRunning(processes, targets) {
     );
     if (!t) continue;
     running[t.gameId] ||= { name: t.name, provider: t.provider, pids: [] };
-    running[t.gameId].pids.push(p.pid);
+    if (!running[t.gameId].pids.includes(p.pid)) running[t.gameId].pids.push(p.pid);
   }
   return running;
 }
@@ -79,7 +64,7 @@ class RunningGames {
     this.listProcesses = listProcesses; // replaced in tests
   }
   start() {
-    if (this.timer || process.platform !== 'win32') return;
+    if (this.timer) return;
     const tick = () =>
       this.refresh()
         .catch(e => this.ctx.log.debug?.('running', e.message))
@@ -139,11 +124,7 @@ class RunningGames {
     return pids.filter(pid => now.some(p => p.pid === pid));
   }
   async kill(pids, force) {
-    for (const pid of pids)
-      await run('taskkill.exe', ['/PID', String(pid), '/T', ...(force ? ['/F'] : [])], {
-        windowsHide: true,
-        timeout: 15000,
-      }).catch(() => {});
+    for (const pid of pids) await endProcess(pid, force);
   }
   // Closes the game; returns 'closed', 'kept' (user did not force) or 'not-running'.
   async close(gameId) {

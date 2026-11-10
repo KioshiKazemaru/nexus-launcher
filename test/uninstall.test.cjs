@@ -47,22 +47,29 @@ async function finished(u) {
   assert.equal(u.jobs.size, 0, 'removal did not finish');
 }
 
-test('folder guard: drive roots, system/user folders and folders with other games are refused', () => {
-  const env = { SystemRoot: 'C:\\Windows', USERPROFILE: 'C:\\Users\\U', ProgramFiles: 'C:\\Program Files' };
-  assert.match(folderRisk('', [], env), /неизвестна/);
-  assert.match(folderRisk('relative\\dir', [], env), /неизвестна/);
-  assert.match(folderRisk('D:\\', [], env), /корень/);
-  assert.match(folderRisk('C:\\Windows', [], env), /системная/);
-  assert.match(folderRisk('C:\\Users', [], env), /системная/); // holds the profile
-  assert.match(folderRisk('C:\\Program Files', [], env), /системная/);
-  assert.match(folderRisk('D:\\Games', ['D:\\Games\\Other'], env), /другая игра/);
-  assert.match(folderRisk('D:\\Games\\A', ['d:\\games\\a'], env), /другая игра/);
-  assert.equal(
-    folderRisk('C:\\Program Files\\Epic Games\\Control', ['C:\\Program Files\\Epic Games\\Other'], env),
-    ''
-  );
-  assert.equal(folderRisk('D:\\Games\\A', ['D:\\Games\\AB'], env), '');
-});
+// These cases use Windows paths (C:\…, \\server\share): Node resolves them only on Windows.
+const WINDOWS_PATHS = { skip: process.platform !== 'win32' && 'Windows paths: runs on Windows only' };
+
+test(
+  'folder guard: drive roots, system/user folders and folders with other games are refused',
+  WINDOWS_PATHS,
+  () => {
+    const env = { SystemRoot: 'C:\\Windows', USERPROFILE: 'C:\\Users\\U', ProgramFiles: 'C:\\Program Files' };
+    assert.match(folderRisk('', [], env), /неизвестна/);
+    assert.match(folderRisk('relative\\dir', [], env), /неизвестна/);
+    assert.match(folderRisk('D:\\', [], env), /корень/);
+    assert.match(folderRisk('C:\\Windows', [], env), /системная/);
+    assert.match(folderRisk('C:\\Users', [], env), /системная/); // holds the profile
+    assert.match(folderRisk('C:\\Program Files', [], env), /системная/);
+    assert.match(folderRisk('D:\\Games', ['D:\\Games\\Other'], env), /другая игра/);
+    assert.match(folderRisk('D:\\Games\\A', ['d:\\games\\a'], env), /другая игра/);
+    assert.equal(
+      folderRisk('C:\\Program Files\\Epic Games\\Control', ['C:\\Program Files\\Epic Games\\Other'], env),
+      ''
+    );
+    assert.equal(folderRisk('D:\\Games\\A', ['D:\\Games\\AB'], env), '');
+  }
+);
 
 test('Steam: deletes the game folder, its manifest, workshop and shader cache; other games stay', async () => {
   const lib = tmp();

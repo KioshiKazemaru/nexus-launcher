@@ -9,12 +9,13 @@
 // it is replaced by a cloud save. If anything here fails, the caller falls
 // back to the Epic launcher (play through com.epicgames.launcher://).
 
+const system = require('../os.cjs');
+const processes = require('./processes.cjs');
 const fs = require('node:fs');
 const launchOptions = require('../launch-options.cjs');
 const fsp = require('node:fs/promises');
 const path = require('node:path');
-const { spawn, execFile } = require('node:child_process');
-const { promisify } = require('node:util');
+const { spawn } = require('node:child_process');
 const { app, dialog } = require('electron');
 const api = require('../epic-games-api.cjs');
 const saves = require('../epic-saves.cjs');
@@ -34,8 +35,9 @@ class EpicPlayService {
   settings() {
     return this.ctx.settings;
   }
+  // Epic games are started directly only on Windows (see ../os.cjs).
   enabled() {
-    return this.settings().epicDirectLaunch !== false;
+    return system.features().epicDirect && this.settings().epicDirectLaunch !== false;
   }
   // The connected Epic account that owns the game (or the first connected one).
   account(offer) {
@@ -202,21 +204,8 @@ class EpicPlayService {
   sleep(ms) {
     return new Promise(r => setTimeout(r, ms).unref?.());
   }
-  async processRunning(image) {
-    if (process.platform !== 'win32') return false;
-    try {
-      const { stdout } = await promisify(execFile)(
-        'tasklist',
-        ['/FI', `IMAGENAME eq ${image}`, '/FO', 'CSV', '/NH'],
-        {
-          windowsHide: true,
-          timeout: 8000,
-        }
-      );
-      return stdout.toLowerCase().includes(`"${image.toLowerCase()}"`);
-    } catch {
-      return false;
-    }
+  processRunning(image) {
+    return processes.processRunning(image);
   }
 
   // ---- cloud saves ----------------------------------------------------------------

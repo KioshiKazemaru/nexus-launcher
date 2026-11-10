@@ -1,7 +1,7 @@
 'use strict';
 // Like the Steam client: friends and chat windows, profiles and comments, my status,
 // the activity feed, notification and tray switches, and the in-game overlay.
-const { app } = require('electron');
+const { setAutoStart } = require('../autostart.cjs');
 const { HOTKEYS } = require('../overlay.cjs');
 const { libraryList } = require('../../profile.cjs');
 const { bool, wrappers } = require('./helpers.cjs');
@@ -96,12 +96,7 @@ function registerSocialIpc(register, ctx) {
         settings[name] = bool(value);
       }
       if (name === 'showPlaying') ctx.presence.applyAll();
-      if (name === 'startHidden' && settings.autoStart)
-        app.setLoginItemSettings({
-          openAtLogin: true,
-          path: process.execPath,
-          args: value ? ['--hidden'] : [],
-        });
+      if (name === 'startHidden' && settings.autoStart) setAutoStart(true, bool(value));
       ctx.overlay.reconfigure();
     })
   );

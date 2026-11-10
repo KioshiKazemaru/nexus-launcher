@@ -3,6 +3,8 @@
 // cookies, Epic tokens and API keys stay in the encrypted vault of this PC.
 // Account slots and web partitions belong to this PC and are not restored.
 
+const { customGame } = require('./os.cjs');
+
 const FORMAT = 'nexus-backup';
 const LIST_FIELDS = ['favorites', 'wishlist', 'hidden', 'seenGiveaways', 'splits'];
 const MAX_BYTES = 32 * 1024 * 1024;
@@ -110,17 +112,19 @@ function backupCustomGames(settings, data) {
   const known = new Set((settings.custom || []).map(c => c.exe.toLowerCase()));
   const ids = new Set((settings.custom || []).map(c => c.id));
   const out = [];
+  // What a game file is on this system: C:\…\game.exe, /Applications/Game.app, /home/…/game.
+  const rule = customGame();
   for (const c of list.slice(0, 500)) {
-    if (!(isStr(c?.id, 100) && isStr(c?.name, 200) && isStr(c?.exe, 1000) && /\.exe$/i.test(c.exe))) continue;
-    // Only absolute local paths (C:\…); network shares and relative paths are refused.
-    if (!/^[A-Za-z]:[\\/]/.test(c.exe) || known.has(c.exe.toLowerCase()) || ids.has(c.id)) continue;
+    if (!(isStr(c?.id, 100) && isStr(c?.name, 200) && isStr(c?.exe, 1000) && rule.accepts(c.exe))) continue;
+    // Only absolute local paths; network shares, relative paths and files of another system are refused.
+    if (!rule.absolute(c.exe) || known.has(c.exe.toLowerCase()) || ids.has(c.id)) continue;
     known.add(c.exe.toLowerCase());
     ids.add(c.id);
     out.push({
       id: c.id,
       name: c.name,
       exe: c.exe,
-      ...(/^[\w .()+-]{1,100}\.exe$/i.test(c.trackProcess || '') ? { trackProcess: c.trackProcess } : {}),
+      ...(rule.processName.test(c.trackProcess || '') ? { trackProcess: c.trackProcess } : {}),
     });
   }
   return out;

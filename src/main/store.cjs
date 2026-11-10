@@ -45,7 +45,10 @@ async function eachLimited(list, limit, job) {
 
 const COUNTRIES = Object.keys(regionCurrency);
 const providerNames = { steam: 'Steam', epic: 'Epic Games' };
-const icon = path.join(__dirname, '../../ui/assets/nexus.ico');
+const icon = path.join(
+  __dirname,
+  '../../ui/assets/' + (process.platform === 'win32' ? 'nexus.ico' : 'nexus.png')
+);
 
 class StoreService {
   constructor(ctx) {

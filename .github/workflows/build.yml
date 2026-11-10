@@ -1,0 +1,54 @@
+# Lint, tests and test installers on Windows, macOS and Linux.
+# Started by hand or by a push to main; nothing is published.
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            dist: npm run dist
+            files: dist/*.exe
+          - os: macos-latest
+            dist: npm run dist:mac
+            files: |
+              dist/*.dmg
+              dist/*.zip
+          - os: ubuntu-latest
+            dist: npm run dist:linux
+            files: |
+              dist/*.AppImage
+              dist/*.deb
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+      - run: npm run lint
+      - run: npm test
+      # Unsigned test builds: macOS and Windows warn about an unknown developer.
+      - run: ${{ matrix.dist }}
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nexus-${{ matrix.os }}
+          path: ${{ matrix.files }}
+          if-no-files-found: error

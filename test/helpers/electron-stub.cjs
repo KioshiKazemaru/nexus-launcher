@@ -178,6 +178,8 @@ module.exports = {
   app,
   BrowserWindow,
   Menu: { setApplicationMenu() {}, buildFromTemplate: template => ({ template }) },
+  // No pictures in tests: the tray falls back to the icon's path.
+  nativeImage: { createFromPath: () => ({ resize: () => ({ isEmpty: () => true }) }) },
   // The tray icon and the overlay's hotkey and screen (main/tray.cjs, main/overlay.cjs).
   Tray: class extends EventEmitter {
     constructor(icon) {

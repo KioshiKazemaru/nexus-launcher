@@ -7032,3 +7032,13 @@ body[data-page='friend'] .layout > aside {
 .profile-empty p {
   max-width: 560px;
 }
+
+/* macOS: the window buttons (red, yellow, green) are on the left of the top strip. */
+.mac-window .app-strip {
+  padding-left: 82px;
+  -webkit-app-region: drag;
+}
+.mac-window .app-strip button,
+.mac-window .app-strip input {
+  -webkit-app-region: no-drag;
+}

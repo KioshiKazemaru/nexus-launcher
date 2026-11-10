@@ -1,11 +1,15 @@
 {
   "name": "nexus-launcher",
   "productName": "Nexus Launcher",
-  "version": "0.12.15",
+  "version": "0.13.0",
   "private": true,
-  "description": "Unified Steam and Epic library for Windows",
+  "description": "Unified Steam and Epic library for Windows, macOS and Linux",
   "main": "src/main.cjs",
-  "author": "Nexus",
+  "desktopName": "nexus-launcher.desktop",
+  "author": {
+    "name": "Nexus",
+    "email": "KioshiKazemaru@users.noreply.github.com"
+  },
   "license": "UNLICENSED",
   "scripts": {
     "start": "electron .",
@@ -16,6 +20,9 @@
     "dist": "electron-builder --win nsis --x64 --publish never",
     "release": "electron-builder --win nsis --x64 --publish always",
     "pack:win": "electron-builder --win dir --x64 --publish never",
+    "dist:mac": "electron-builder --mac dmg zip --x64 --arm64 --publish never",
+    "dist:linux": "electron-builder --linux AppImage deb --x64 --publish never",
+    "pack:linux": "electron-builder --linux dir --x64 --publish never",
     "test:ui": "node --test test/ui/*.test.cjs"
   },
   "dependencies": {
@@ -33,7 +40,6 @@
   "build": {
     "appId": "nexus.launcher",
     "productName": "Nexus Launcher",
-    "artifactName": "Nexus-Setup-${version}.${ext}",
     "directories": {
       "output": "dist"
     },
@@ -59,7 +65,8 @@
           "sha256"
         ],
         "rfc3161TimeStampServer": "http://timestamp.digicert.com"
-      }
+      },
+      "artifactName": "Nexus-Setup-${version}.${ext}"
     },
     "nsis": {
       "oneClick": false,
@@ -75,6 +82,57 @@
         "repo": "nexus-launcher",
         "releaseType": "release"
       }
-    ]
-  }
+    ],
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.games",
+      "icon": "ui/assets/nexus.png",
+      "artifactName": "Nexus-${version}-mac-${arch}.${ext}",
+      "darkModeSupport": true
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "Game",
+      "icon": "ui/assets/nexus.png",
+      "executableName": "nexus-launcher",
+      "synopsis": "Steam + Epic Games library",
+      "artifactName": "Nexus-${version}-linux-${arch}.${ext}",
+      "desktop": {
+        "entry": {
+          "Name": "Nexus Launcher",
+          "Comment": "Steam + Epic Games"
+        }
+      },
+      "syncDesktopName": true
+    }
+  },
+  "homepage": "https://github.com/KioshiKazemaru/nexus-launcher"
 }

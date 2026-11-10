@@ -1,5 +1,6 @@
 'use strict';
 // The window state, Nexus itself (updates, start with Windows, backup, logs) and links.
+const { setAutoStart } = require('../autostart.cjs');
 const path = require('node:path');
 const { app, shell } = require('electron');
 const { bool, wrappers } = require('./helpers.cjs');
@@ -29,11 +30,7 @@ function registerAppIpc(register, ctx, { onlineAgain }) {
   register(
     'autoStart',
     save(enabled => {
-      app.setLoginItemSettings({
-        openAtLogin: bool(enabled),
-        path: process.execPath,
-        args: settings.startHidden ? ['--hidden'] : [],
-      });
+      setAutoStart(bool(enabled), settings.startHidden === true);
       settings.autoStart = enabled;
     })
   );
