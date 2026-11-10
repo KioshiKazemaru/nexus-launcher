@@ -376,6 +376,11 @@ function myProfileMain(d, sp) {
     )
   );
 }
+// «12 игр · из семьи: 30» (Steam Families games are counted apart from the account's own).
+function platformCount(x) {
+  const own = `${x.games} ${plural(x.games, 'игра', 'игры', 'игр')}`;
+  return x.family ? `${own} · из семьи: ${x.family}` : own;
+}
 function myProfileSide(d, sp, steam, id, presence) {
   const s = d.stats;
   const by = s.byProvider;
@@ -384,10 +389,10 @@ function myProfileSide(d, sp, steam, id, presence) {
     ['epic', 'Epic Games'],
     ['custom', 'Добавленные вручную'],
   ]
-    .filter(([p]) => by[p]?.games)
+    .filter(([p]) => by[p]?.games || by[p]?.family)
     .map(
       ([p, n]) =>
-        `<div class="sp-stat">${p === 'custom' ? `<span>${n}</span>` : `<button class="sp-stat-link" data-sp-go="owned" data-sp-source="${p}">${n}</button>`}<b>${by[p].games} · ${spHours(by[p].minutes)} ч</b></div>`
+        `<div class="sp-stat">${p === 'custom' ? `<span>${n}</span>` : `<button class="sp-stat-link" data-sp-go="owned" data-sp-source="${p}">${n}</button>`}<b>${platformCount(by[p])} · ${spHours(by[p].minutes)} ч</b></div>`
     )
     .join('');
   const epicCards = d.accounts
@@ -399,6 +404,7 @@ function myProfileSide(d, sp, steam, id, presence) {
     .join('');
   const stats = [
     spStat('Игр в библиотеке', s.games.toLocaleString('ru-RU'), 'data-sp-go="owned"'),
+    s.family ? spStat('Из семейной библиотеки', s.family.toLocaleString('ru-RU'), 'data-sp-go="family"') : '',
     spStat('Установлено', s.installed, 'data-sp-go="installed"'),
     spStat('Часов в играх', spHours(s.minutes)),
     spStat('Запускались', s.played, 'data-sp-go="played"'),
@@ -526,6 +532,7 @@ function profilePage() {
   if (!d)
     return `${notice()}<div class="empty"><h2>${esc(profileState.error || 'Загружаем профиль…')}</h2></div>`;
   if (d.steamProfile || d.epic?.length) return profileTabsPage(d);
+  if (!d.accounts.length) return profileEmptyPage(d);
   const s = d.stats;
   const h = m => (m / 60).toLocaleString('ru-RU', { maximumFractionDigits: 0 });
   const accounts = d.accounts.length
@@ -543,6 +550,7 @@ function profilePage() {
     `<div class="stat-tile"><strong>${value}</strong><small>${label}</small></div>`;
   const tiles = [
     tile(s.games.toLocaleString('ru-RU'), 'игр в библиотеке'),
+    ...(s.family ? [tile(s.family.toLocaleString('ru-RU'), 'из семейной библиотеки')] : []),
     tile(s.installed, 'установлено'),
     tile(h(s.minutes), 'часов в играх'),
     tile(s.played, 'запускались'),
@@ -555,17 +563,23 @@ function profilePage() {
     ['epic', 'Epic Games'],
     ['custom', 'Добавленные вручную'],
   ]
-    .filter(([p]) => by[p].games)
-    .map(
-      ([p, n]) =>
-        `<div><b>${n}</b><span>${by[p].games} ${plural(by[p].games, 'игра', 'игры', 'игр')} · ${h(by[p].minutes)} ч</span></div>`
-    )
+    .filter(([p]) => by[p].games || by[p].family)
+    .map(([p, n]) => `<div><b>${n}</b><span>${platformCount(by[p])} · ${h(by[p].minutes)} ч</span></div>`)
     .join('');
   const achievements = spAchievements(
     d.achievements,
     'Достижения появятся здесь после того, как вы откроете страницы игр Steam (Nexus загружает их по запросу).'
   );
   return `${notice()}<div class="section-head"><h1>Профиль</h1><button class="secondary" id="profile-refresh">↻ Обновить</button></div><div class="profile-accounts">${accounts}</div><div class="stat-tiles">${tiles}</div><div class="profile-columns"><section><h2>БОЛЬШЕ ВСЕГО ВРЕМЕНИ</h2><div class="top-games">${top}</div></section><section><h2>ПО ПЛАТФОРМАМ</h2><div class="platform-split">${platforms}</div><h2>ПОСЛЕДНИЕ ДОСТИЖЕНИЯ</h2>${achievements}</section></div>`;
+}
+// No account connected: no numbers. Games found on the PC are not the user's
+// library until an account confirms them (they may come from Steam Families).
+function profileEmptyPage(d) {
+  const found = d.stats?.foundOnPc || 0;
+  const pc = found
+    ? `<p>На компьютере найдено ${found} ${plural(found, 'игра', 'игры', 'игр')}. Они показаны в «Скачанных» с пометкой «Найдено на ПК» и не входят в статистику: без аккаунта Nexus не знает, ваши ли это игры или игры из Семейной библиотеки Steam.</p>`
+    : '';
+  return `${notice()}<div class="section-head"><h1>Профиль</h1></div><div class="empty profile-empty"><h2>Подключите аккаунт Steam или Epic Games</h2><p>Профиль покажет ваши игры, часы и достижения после входа в аккаунт.</p>${pc}<button class="primary" data-page="accounts">Подключить аккаунт</button></div>`;
 }
 function profileAccountCard(a) {
   const steam = a.provider === 'steam';
@@ -638,8 +652,12 @@ function myProfileView(d) {
   if (!st) loadProfileGames(v.kind, v.source);
   const where = { steam: ' · Steam', epic: ' · Epic Games' }[v.source] || '';
   const title =
-    ({ owned: 'Игры в библиотеке', installed: 'Установлено', played: 'Запускались' }[v.kind] || 'Игры') +
-    where;
+    ({
+      owned: 'Игры в библиотеке',
+      family: 'Семейная библиотека',
+      installed: 'Установлено',
+      played: 'Запускались',
+    }[v.kind] || 'Игры') + where;
   const head = n =>
     `<div class="sp-panel-head"><button class="sp-back" ${back}>← Профиль</button><span>${title}${n === undefined ? '' : ' · ' + n.toLocaleString('ru-RU')}</span><input class="sp-filter" type="search" placeholder="Поиск" aria-label="Поиск по играм" autocomplete="off"></div>`;
   if (!st?.list)

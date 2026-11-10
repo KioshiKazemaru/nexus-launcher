@@ -402,7 +402,7 @@ test('profile: library statistics, latest achievements, Steam badges', () => {
     s.top.map(g => g.id),
     ['a', 'b']
   );
-  assert.deepEqual(s.byProvider.steam, { games: 2, minutes: 600 });
+  assert.deepEqual(s.byProvider.steam, { games: 2, family: 0, minutes: 600 });
   const ach = pr.latestAchievements(
     [
       [

@@ -32,7 +32,11 @@ const { remapGameIds } = require('../game-ids.cjs');
 const collections = require('../collections.cjs');
 const achievements = require('../achievements.cjs');
 const platforms = require('../platforms/index.cjs');
+const family = require('../family.cjs');
+const { parseSteamLinkDetails } = require('../friends.cjs');
 
+// The family library changes rarely: asked again after 6 hours or on ↻.
+const FAMILY_MS = 6 * 3600 * 1000;
 const ART_RETRY = 24 * 3600 * 1000;
 const withTimeout = (promise, ms, message) => {
   let timer;
@@ -72,9 +76,14 @@ class LibraryService {
     const raw = ctx.storage.loadOwned();
     // v1 cache was keyed by provider; v2 by provider:accountId.
     this.ownedCache = {};
+    // Steam account id → { groupId, apps: { appId: { owners, name } }, names, checkedAt }.
+    this.familyCache = {};
+    this.familyState = {}; // Steam account id → { status, message } of the last family check
     for (const [k, v] of Object.entries(raw)) {
       if ((k === 'steam' || k === 'epic') && v?.accountId) this.ownedCache[`${k}:${v.accountId}`] = v;
       else if (/^(steam|epic):/.test(k)) this.ownedCache[k] = v;
+      else if (/^family:7656119\d{10}$/.test(k) && v && typeof v.apps === 'object')
+        this.familyCache[k.slice(7)] = v;
     }
   }
   cacheKey(key) {
@@ -82,7 +91,10 @@ class LibraryService {
     return s?.id ? `${key.split(':')[0]}:${s.id}` : null;
   }
   saveOwned() {
-    this.ctx.storage.saveOwned(this.ownedCache);
+    const families = Object.fromEntries(
+      Object.entries(this.familyCache).map(([id, v]) => [`family:${id}`, v])
+    );
+    this.ctx.storage.saveOwned({ ...this.ownedCache, ...families });
   }
 
   // ---- local scan -------------------------------------------------------
@@ -374,12 +386,19 @@ class LibraryService {
     this.progressTimer.unref?.();
   }
   // Last played / playtime of the signed-in Steam accounts from localconfig.vdf.
+  // Only userdata/<accountId> of a connected account is read (accountId = SteamID64 −
+  // 76561197960265728): other folders belong to other people using this PC, and
+  // without a connected account nothing is read at all.
   async readSteamLocalMeta() {
     const meta = {};
     const ids = this.ctx.accounts
       .connected('steam')
       .map(a => steamLib.toAccountId32(a.id))
       .filter(Boolean);
+    if (!ids.length) {
+      this.localMeta = meta;
+      return;
+    }
     for (const root of this.local.steamRoots) {
       for (const id of ids) {
         try {
@@ -461,6 +480,7 @@ class LibraryService {
       g.playtime = Math.max(0, ...g.offers.map(o => Number(o.playtime) || 0));
       g.lastPlayed = Math.max(0, ...g.offers.map(o => Number(o.lastPlayed) || 0));
     }
+    this.classifyLibrary(games);
     const hidden = new Set(settings.hidden);
     for (const g of games) {
       g.hidden = hidden.has(g.id) || (g.aliases || []).some(a => hidden.has(a));
@@ -476,6 +496,94 @@ class LibraryService {
     this.hydrateSteamAssets();
     this.ctx.integrations.enqueue(games);
     return games;
+  }
+  // own / family / unconfirmed / local for every offer (see ../family.cjs).
+  classifyLibrary(games) {
+    const active = this.profiles().steam.map(a => a.id);
+    const shared = new Map();
+    const names = new Map();
+    for (const id of active) {
+      const f = this.familyCache[id];
+      if (!f) continue;
+      for (const [appId, v] of Object.entries(f.apps || {})) {
+        const old = shared.get(appId);
+        shared.set(appId, { owners: [...new Set([...(old?.owners || []), ...(v.owners || [])])] });
+      }
+      for (const [sid, name] of Object.entries(f.names || {})) if (name) names.set(sid, name);
+    }
+    for (const [sid, x] of this.ctx.friends?.knownFriends?.() || []) if (x?.name) names.set(sid, x.name);
+    return family.classifyLibrary(games, { active: new Set(active), family: shared, names });
+  }
+  // Family of a connected Steam account: the shared apps and their owners' nicknames.
+  // A failure is logged and keeps the saved list; with none, installed games
+  // missing from the account list stay "unconfirmed".
+  async syncFamily(key, force = false) {
+    const monitor = this.ctx.accounts.monitor;
+    const profile = monitor.states[key];
+    if (!key.startsWith('steam:') || profile?.status !== 'connected' || !profile.id) return;
+    const accountId = profile.id;
+    const checkKey = `family:${key}`;
+    if (this.checks[checkKey]?.accountId === accountId) return this.checks[checkKey].promise;
+    const cached = this.familyCache[accountId];
+    if (!force && cached && Date.now() - (cached.checkedAt || 0) < FAMILY_MS) return;
+    const epoch = monitor.epochs[key];
+    const work = (async () => {
+      const s = this.ctx.accounts.session(key);
+      const sessionFetch = (url, options) => s.fetch(url, options);
+      try {
+        const token = await steamLib.cachedSessionToken(sessionFetch, accountId);
+        let result;
+        try {
+          result = await family.fetchFamily(this.ctx.publicFetch, token, accountId);
+        } catch (e) {
+          if (e.status === 401 || e.status === 403) steamLib.forgetSessionToken(accountId);
+          throw e;
+        }
+        if (monitor.epochs[key] !== epoch || monitor.states[key]?.id !== accountId) return;
+        result.names = await this.familyNames(token, accountId, result, cached?.names || {});
+        this.familyCache[accountId] = { ...result, checkedAt: Date.now() };
+        this.familyState[accountId] = { status: 'ready', groupId: result.groupId };
+        this.saveOwned();
+        this.rebuild();
+      } catch (e) {
+        this.ctx.log.warn('family', `${key}: ${e.message}`);
+        this.familyState[accountId] = { status: 'error', message: e.message };
+        this.ctx.hub.publish();
+      }
+    })();
+    this.checks[checkKey] = { accountId, promise: work };
+    try {
+      await work;
+    } finally {
+      if (this.checks[checkKey]?.promise === work) delete this.checks[checkKey];
+    }
+  }
+  // Nicknames of the owners: friends already known, then GetPlayerLinkDetails
+  // (the method the friends list uses); unknown ids keep their saved name.
+  async familyNames(token, accountId, result, saved) {
+    const names = { ...saved };
+    const known = this.ctx.friends?.knownFriends?.() || new Map();
+    const ids = [
+      ...new Set([...result.members, ...Object.values(result.apps).flatMap(a => a.owners)]),
+    ].filter(id => id !== accountId);
+    for (const id of ids) if (known.get(id)?.name) names[id] = known.get(id).name;
+    const missing = ids.filter(id => !names[id]);
+    for (let i = 0; i < missing.length; i += 100) {
+      const chunk = missing.slice(i, i + 100);
+      const u = new URL('https://api.steampowered.com/IPlayerService/GetPlayerLinkDetails/v1/');
+      u.search = new URLSearchParams({
+        access_token: token,
+        ...Object.fromEntries(chunk.map((id, n) => [`steamids[${n}]`, id])),
+      });
+      try {
+        const r = await this.ctx.publicFetch(u.href, { signal: AbortSignal.timeout(15000) });
+        if (!r.ok) throw Error(`HTTP ${r.status}`);
+        for (const x of parseSteamLinkDetails(await r.json())) if (x.name !== x.id) names[x.id] = x.name;
+      } catch (e) {
+        this.ctx.log.debug?.('family', `names: ${e.message}`);
+      }
+    }
+    return Object.fromEntries(ids.filter(id => names[id]).map(id => [id, names[id]]));
   }
   // Computed once per rebuild, not on every state message.
   suggestions() {
@@ -581,10 +689,12 @@ class LibraryService {
   accountChanged(key, state) {
     if (state.status === 'connected') {
       this.syncOwned(key).catch(e => this.ctx.log?.warn('library', e.message));
-      if (key.startsWith('steam:'))
+      if (key.startsWith('steam:')) {
+        this.syncFamily(key).catch(e => this.ctx.log?.warn('family', e.message));
         this.readSteamLocalMeta()
           .then(() => this.rebuild())
           .catch(e => this.ctx.log?.warn('steam-local', e.message));
+      }
     } else if (state.status === 'unavailable') {
       // Offline: show the last saved library of a previously verified account.
       if (state.id && !this.cloud[key]) {
@@ -612,20 +722,28 @@ class LibraryService {
     } else if (state.status === 'signedOut') {
       delete this.cloud[key];
       this.state[key] = { status: 'signedOut' };
-      this.rebuild();
+      this.afterSteamSignOut(key);
     }
   }
   accountRemoved(key) {
     delete this.cloud[key];
     delete this.state[key];
+    this.afterSteamSignOut(key);
+  }
+  // Launch data of a signed-out Steam account is no longer shown.
+  afterSteamSignOut(key) {
     this.rebuild();
+    if (key.startsWith('steam:'))
+      this.readSteamLocalMeta()
+        .then(() => this.rebuild())
+        .catch(e => this.ctx.log?.warn('steam-local', e.message));
   }
   async syncAll(force = true) {
     await Promise.all(
       this.ctx.accounts.monitor.keys().map(async key => {
         if (this.ctx.accounts.monitor.states[key]?.status === 'unavailable')
           await this.ctx.accounts.monitor.refresh(key);
-        await this.syncOwned(key, force);
+        await Promise.all([this.syncOwned(key, force), this.syncFamily(key, force)]);
       })
     );
   }

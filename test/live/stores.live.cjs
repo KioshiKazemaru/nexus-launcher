@@ -78,3 +78,33 @@ test('IsThereAnyDeal lookup and prices (needs ITAD_KEY)', async t => {
   const prices = await integrations.itadPrices(get, process.env.ITAD_KEY, [ids['620']], 'US');
   assert.ok(prices[ids['620']]);
 });
+
+// Steam Families: the two unofficial methods behind «Семейная библиотека».
+// Without a token Steam answers 401 for a method it knows and 404 for one it
+// removed, so the check needs no account. With STEAM_WEBAPI_TOKEN (the
+// webapi_token of a signed-in store session) and STEAM_ID the answers are parsed.
+const family = require('../../src/family.cjs');
+for (const method of ['GetFamilyGroupForUser', 'GetSharedLibraryApps'])
+  test(`IFamilyGroupsService/${method} still exists`, async () => {
+    const r = await get(
+      `https://api.steampowered.com/IFamilyGroupsService/${method}/v1/?steamid=76561197960287930`
+    );
+    assert.notEqual(r.status, 404, `${method} is gone`);
+    assert.ok([200, 400, 401, 403].includes(r.status), `${method}: HTTP ${r.status}`);
+  });
+
+test('Steam Families with a session token (needs STEAM_WEBAPI_TOKEN and STEAM_ID)', async t => {
+  const token = process.env.STEAM_WEBAPI_TOKEN,
+    id = process.env.STEAM_ID;
+  if (!token || !id) return t.skip('STEAM_WEBAPI_TOKEN / STEAM_ID not set');
+  const result = await family.fetchFamily(get, token, id);
+  assert.equal(typeof result.groupId, 'string');
+  for (const [appId, app] of Object.entries(result.apps)) {
+    assert.match(appId, /^\d+$/);
+    assert.ok(
+      app.owners.every(o => family.STEAM_ID.test(o)),
+      `${appId}: owner ids`
+    );
+  }
+  console.log('family', result.groupId || '(none)', Object.keys(result.apps).length, 'apps');
+});

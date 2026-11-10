@@ -1,0 +1,36 @@
+# Nightly contract checks against the real Steam and Epic endpoints
+# (test/live/*.live.cjs). They are not part of `npm test`: the services change
+# without notice, and a failure here means Nexus must follow them.
+name: live-api
+
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+      # Steam: GetItems, storesearch, featuredcategories, IFamilyGroupsService
+      # (GetFamilyGroupForUser, GetSharedLibraryApps). Epic: giveaways, catalog.
+      - run: npm run test:live
+        env:
+          ITAD_KEY: ${{ secrets.ITAD_KEY }}
+          # Optional: the webapi_token of a Steam account in a family and its SteamID64,
+          # to check the family answers too (otherwise only that the methods exist).
+          STEAM_WEBAPI_TOKEN: ${{ secrets.STEAM_WEBAPI_TOKEN }}
+          STEAM_ID: ${{ secrets.STEAM_ID }}

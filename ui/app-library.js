@@ -340,7 +340,9 @@ function libraryGameAbout(g, owned, preferred) {
   const tags = (g.tags || []).map(t => `<span>${esc(t)}</span>`).join('');
   const platform = o =>
     `<button data-library-provider="${esc(o.provider)}" class="${p === o.provider ? 'active' : ''}"><strong>${names[o.provider]}</strong><span>${o.installed ? 'Установлена' : o.owned ? 'Имеется в аккаунте' : 'На диске'}${o.accountIds?.length > 1 ? ' · на ' + o.accountIds.length + ' аккаунтах' : ''}</span></button>`;
-  return `<section><h2>ОБ ИГРЕ</h2><p>${esc(desc)}</p><div class="preview-tags">${tags}</div>${collectionsBox(owned)}${trackProcessBox(owned)}${launchOptionsBox(owned)}<h2>ПЛАТФОРМЫ</h2><div class="library-game-providers">${(owned.offers || []).map(platform).join('')}</div>${newsBox(owned)}</section>`;
+  const source = librarySourceLabel(owned);
+  const sourceLine = source ? `<p class="library-source source-${source.kind}">${esc(source.text)}</p>` : '';
+  return `<section>${sourceLine}<h2>ОБ ИГРЕ</h2><p>${esc(desc)}</p><div class="preview-tags">${tags}</div>${collectionsBox(owned)}${trackProcessBox(owned)}${launchOptionsBox(owned)}<h2>ПЛАТФОРМЫ</h2><div class="library-game-providers">${(owned.offers || []).map(platform).join('')}</div>${newsBox(owned)}</section>`;
 }
 // Right column: friends, launches and hours, achievements, DLC, workshop, screenshots.
 function libraryGameActivity(g, owned, played) {
@@ -410,12 +412,19 @@ function treeRow(g, playing) {
     installed || g.progress ? '' : 'not-installed',
     isRunning(g.id) ? 'running' : '',
   ].join(' ');
-  return `<button class="${cls}" data-detail="${esc(g.id)}" title="${esc(g.name)}${friends ? ` · играют друзья: ${friends}` : ''}"><span class="tree-friends">${
+  const source = librarySourceLabel(g);
+  return `<button class="${cls}" data-detail="${esc(g.id)}" title="${esc(g.name)}${source ? ' · ' + esc(source.text) : ''}${friends ? ` · играют друзья: ${friends}` : ''}"><span class="tree-friends">${
     friends
       ? '<svg viewBox="0 0 10 12" aria-label="Играют друзья"><circle cx="5" cy="3" r="2.6"/><path d="M0 12c0-3.6 2.2-5.6 5-5.6s5 2 5 5.6z"/></svg>'
       : ''
   }</span><span class="tree-icon">${artTag(g)}</span><span class="tree-name">${esc(g.name)}</span>${
-    isRunning(g.id) ? '<small>Запущено</small>' : g.progress ? '<small>Загрузка</small>' : ''
+    isRunning(g.id)
+      ? '<small>Запущено</small>'
+      : g.progress
+        ? '<small>Загрузка</small>'
+        : source?.kind === 'family'
+          ? '<small class="tree-family">Семья</small>'
+          : ''
   }</button>`;
 }
 // Pages whose layout hides the library panel (see style.css).
@@ -444,11 +453,7 @@ function renderLibraryTree() {
   const shown = filteredLibrary().filter(g => !q || g.name.toLowerCase().includes(q));
   // Totals like Steam's "(30/386)": every game of the account, installed or not.
   const everything = activeGames().filter(
-    g =>
-      !g.hidden &&
-      g.offers?.some(
-        o => (filter === 'all' || o.provider === filter) && (o.owned === true || o.installed === true)
-      )
+    g => !g.hidden && g.offers?.some(o => offerMatchesFilter(o) && inAccountLibrary(o))
   );
   const favorites = new Set(state.settings.favorites || []);
   const collections = state.settings.collections || [];

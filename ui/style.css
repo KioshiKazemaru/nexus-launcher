@@ -6996,3 +6996,39 @@ body[data-page='friend'] .layout > aside {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Where an installed Steam game comes from: Steam Families, not confirmed, found on the PC. */
+.portrait-platforms .pill.source-family,
+.tree-game small.tree-family {
+  color: #b6e27a;
+}
+.portrait-platforms .pill.source-family {
+  border-color: #a4d0074d;
+}
+.portrait-platforms .pill.source-unconfirmed {
+  color: #f0c674;
+  border-color: #f0c6744d;
+}
+.portrait-platforms .pill.source-local {
+  color: #a7b3c2;
+}
+.library-source {
+  margin: 0 0 14px;
+  padding: 8px 12px;
+  border-radius: 4px;
+  background: #ffffff0a;
+  color: var(--st-text);
+  font-size: 13px;
+}
+.library-source.source-family {
+  border-left: 3px solid #a4d007;
+}
+.library-source.source-unconfirmed {
+  border-left: 3px solid #f0c674;
+}
+.library-source.source-local {
+  border-left: 3px solid #6b7280;
+}
+.profile-empty p {
+  max-width: 560px;
+}

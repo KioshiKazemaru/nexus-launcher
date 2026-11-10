@@ -568,10 +568,45 @@ function store() {
 function libraryMode() {
   return state.settings.libraryView || 'installed';
 }
+// «Имеющиеся»: the account's games and installed games Steam may let the account
+// play (Steam Families, unconfirmed). Installed Steam games found while no
+// Steam account is connected ('local') are only in «Скачанные».
+function inAccountLibrary(o) {
+  return o.owned === true || (o.installed === true && o.librarySource !== 'local');
+}
+// The left panel's choice: a store, or 'family' (Steam Families games).
+function offerMatchesFilter(o) {
+  if (filter === 'all') return true;
+  if (filter === 'family') return o.librarySource === 'family';
+  return o.provider === filter;
+}
+// Where an installed Steam game comes from, when it is not the account's own.
+function librarySourceLabel(g) {
+  const o = (g.offers || []).find(
+    x => x.provider === 'steam' && x.librarySource && x.librarySource !== 'own'
+  );
+  if (!o || (g.offers || []).some(x => x.librarySource === 'own' && x.provider === 'steam')) return null;
+  if (o.librarySource === 'family') {
+    const owners = (o.familyOwners || []).map(x => x.name || 'участник семьи');
+    return {
+      kind: 'family',
+      short: 'Семья',
+      text: 'Семейная библиотека' + (owners.length ? ' · владелец: ' + owners.join(', ') : ''),
+    };
+  }
+  if (o.librarySource === 'unconfirmed')
+    return {
+      kind: 'unconfirmed',
+      short: 'Не на аккаунте',
+      text: 'Доступна через Steam (не на вашем аккаунте)',
+    };
+  if (o.librarySource === 'local') return { kind: 'local', short: 'Найдено на ПК', text: 'Найдено на ПК' };
+  return null;
+}
 function libraryGames() {
   return activeGames().filter(g =>
     libraryMode() === 'owned'
-      ? g.offers?.some(o => o.owned === true || o.installed === true)
+      ? g.offers?.some(inAccountLibrary)
       : g.progress || g.offers?.some(o => o.installed === true)
   );
 }
@@ -588,9 +623,7 @@ function filteredLibrary() {
   if (filter !== 'all')
     list = list.filter(g =>
       g.offers?.some(
-        o =>
-          o.provider === filter &&
-          (libraryMode() === 'owned' ? o.owned === true || o.installed === true : o.installed)
+        o => offerMatchesFilter(o) && (libraryMode() === 'owned' ? inAccountLibrary(o) : o.installed)
       )
     );
   if (query) list = list.filter(g => g.name.toLowerCase().includes(query.toLowerCase()));
@@ -637,10 +670,16 @@ function libraryCard(g) {
   g = game(g.id) || g;
   const platforms = [
     ...new Set(
-      g.offers.filter(o => (libraryMode() === 'owned' ? o.owned : o.installed)).map(o => o.provider)
+      g.offers
+        .filter(o => (libraryMode() === 'owned' ? inAccountLibrary(o) : o.installed))
+        .map(o => o.provider)
     ),
   ];
-  return `<article class="library-card" data-price-game="${esc(g.id)}" data-library-preview="${esc(g.id)}"><button data-detail="${esc(g.id)}" class="portrait-open">${portrait(g)}<span class="portrait-title">${esc(g.name)}</span><span class="portrait-platforms">${platforms.map(p => `<span class="pill ${p === 'steam' ? 'blue' : ''}">${names[p]}</span>`).join('')}</span>${g.offers.some(o => o.installed) ? '<span class="installed-mark">✓</span>' : ''}${g.hidden ? '<span class="hidden-mark">скрыта</span>' : ''}${g.progress && Number.isFinite(g.progress.percent) ? `<span class="card-progress"><i style="width:${g.progress.percent}%"></i></span>` : ''}</button></article>`;
+  const source = librarySourceLabel(g);
+  const sourcePill = source
+    ? `<span class="pill source-${source.kind}" title="${esc(source.text)}">${esc(source.short)}</span>`
+    : '';
+  return `<article class="library-card" data-price-game="${esc(g.id)}" data-library-preview="${esc(g.id)}"><button data-detail="${esc(g.id)}" class="portrait-open" title="${esc(g.name + (source ? ' · ' + source.text : ''))}">${portrait(g)}<span class="portrait-title">${esc(g.name)}</span><span class="portrait-platforms">${platforms.map(p => `<span class="pill ${p === 'steam' ? 'blue' : ''}">${names[p]}</span>`).join('')}${sourcePill}</span>${g.offers.some(o => o.installed) ? '<span class="installed-mark">✓</span>' : ''}${g.hidden ? '<span class="hidden-mark">скрыта</span>' : ''}${g.progress && Number.isFinite(g.progress.percent) ? `<span class="card-progress"><i style="width:${g.progress.percent}%"></i></span>` : ''}</button></article>`;
 }
 function accountLibraryLine(a) {
   const x = a.library || {},

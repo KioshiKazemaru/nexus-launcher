@@ -71,7 +71,7 @@ function registerSocialIpc(register, ctx) {
     ({ kind, source } = {}) =>
       libraryList(
         ctx.library.games || [],
-        ['owned', 'installed', 'played'].includes(kind) ? kind : 'owned',
+        ['owned', 'family', 'installed', 'played'].includes(kind) ? kind : 'owned',
         ['steam', 'epic'].includes(source) ? source : 'all'
       ),
     { quiet: true }

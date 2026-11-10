@@ -2,31 +2,52 @@
 // "Профиль": the connected accounts (Steam level and badges) and statistics
 // of the library: games, hours, the most played games, latest achievements.
 
+// What an offer adds to the profile: 'own' (the account's), 'family' (Steam
+// Families) or null. Installed Steam games found without a connected account
+// ('local') and those Steam did not confirm ('unconfirmed') are not counted.
+function offerShare(o) {
+  if (!o) return null;
+  if (o.provider === 'steam') {
+    if (o.librarySource === 'family') return 'family';
+    if (o.librarySource === 'local' || o.librarySource === 'unconfirmed') return null;
+    return o.owned || o.installed ? 'own' : null;
+  }
+  return o.owned || o.installed || o.provider === 'custom' ? 'own' : null;
+}
+// own wins over family when a game is both.
+function gameShare(g, provider) {
+  const shares = (g.offers || []).filter(o => !provider || o.provider === provider).map(offerShare);
+  return shares.includes('own') ? 'own' : shares.includes('family') ? 'family' : null;
+}
+
 // Library games → statistics for the profile page.
+// games / byProvider.*.games count the account's own games; family counts
+// Steam Families games apart; launches and hours cover both.
 function libraryStats(games, now = Date.now()) {
-  const list = (Array.isArray(games) ? games : []).filter(g => g && Array.isArray(g.offers));
-  const owned = p =>
-    list.filter(g => g.offers.some(o => o.provider === p && (o.owned || o.installed))).length;
-  const minutes = p =>
-    list.reduce(
-      (n, g) => n + Math.max(0, ...g.offers.filter(o => o.provider === p).map(o => Number(o.playtime) || 0)),
-      0
-    );
-  // Launched: has playtime, or a launch date (known from local files even before sign-in).
+  const all = (Array.isArray(games) ? games : []).filter(g => g && Array.isArray(g.offers));
+  const list = all.filter(g => gameShare(g));
+  const own = list.filter(g => gameShare(g) === 'own');
+  const counted = (g, p) => g.offers.filter(o => o.provider === p && offerShare(o));
+  const byProvider = p => ({
+    games: list.filter(g => gameShare(g, p) === 'own').length,
+    family: list.filter(g => gameShare(g, p) === 'family').length,
+    minutes: list.reduce((n, g) => n + Math.max(0, ...counted(g, p).map(o => Number(o.playtime) || 0)), 0),
+  });
+  // Launched: has playtime, or a launch date.
   const played = list.filter(g => Number(g.playtime) > 0 || Number(g.lastPlayed) > 0);
   const total = list.reduce((n, g) => n + (Number(g.playtime) || 0), 0);
   const month = list.filter(g => (Number(g.lastPlayed) || 0) * 1000 > now - 30 * 24 * 3600 * 1000).length;
   return {
-    games: list.length,
-    installed: list.filter(g => g.offers.some(o => o.installed)).length,
+    games: own.length,
+    family: list.length - own.length,
+    // Installed Steam games the library cannot count (no account, or not confirmed).
+    foundOnPc: all.filter(g => !gameShare(g) && g.offers.some(o => o.installed)).length,
+    unconfirmed: all.filter(g => g.librarySource === 'unconfirmed').length,
+    installed: list.filter(g => g.offers.some(o => o.installed && offerShare(o))).length,
     played: played.length,
     neverPlayed: list.length - played.length,
     minutes: total,
-    byProvider: {
-      steam: { games: owned('steam'), minutes: minutes('steam') },
-      epic: { games: owned('epic'), minutes: minutes('epic') },
-      custom: { games: owned('custom'), minutes: minutes('custom') },
-    },
+    byProvider: { steam: byProvider('steam'), epic: byProvider('epic'), custom: byProvider('custom') },
     playedThisMonth: month,
     top: played
       .filter(g => Number(g.playtime) > 0)
@@ -106,18 +127,21 @@ function epicStats(games) {
       .map(({ id, name, minutes, lastPlayed }) => ({ id, name, minutes, lastPlayed: ms(lastPlayed) })),
   };
 }
-// The games behind a label of my profile: 'owned' | 'installed' | 'played',
+// The games behind a label of my profile: 'owned' | 'family' | 'installed' | 'played',
 // of all stores or one ('steam' | 'epic'); most played first, like Steam's list.
 function libraryList(games, kind = 'owned', source = 'all') {
   const list = (Array.isArray(games) ? games : []).filter(g => g && Array.isArray(g.offers));
-  const of = g => (source === 'all' ? g.offers : g.offers.filter(o => o.provider === source));
+  // Only what the profile counts (see offerShare): never games merely found on the PC.
+  const of = g => g.offers.filter(o => (source === 'all' || o.provider === source) && offerShare(o));
   return list
     .filter(g => {
       const offers = of(g);
       if (!offers.length) return false;
       if (kind === 'installed') return offers.some(o => o.installed);
       if (kind === 'played') return Number(g.playtime) > 0 || Number(g.lastPlayed) > 0;
-      return source === 'all' || offers.some(o => o.owned || o.installed);
+      // «Игр в библиотеке» lists the account's own games, «из семьи» the shared ones.
+      const share = gameShare(g, source === 'all' ? '' : source);
+      return kind === 'family' ? share === 'family' : share === 'own';
     })
     .map(g => ({
       id: g.id,
@@ -135,4 +159,4 @@ function libraryList(games, kind = 'owned', source = 'all') {
     );
 }
 
-module.exports = { libraryStats, libraryList, latestAchievements, parseBadges, epicStats };
+module.exports = { libraryStats, libraryList, offerShare, latestAchievements, parseBadges, epicStats };

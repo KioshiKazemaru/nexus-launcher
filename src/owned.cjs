@@ -107,11 +107,11 @@ function parseSteamStoreLibrary(data, accountId) {
   return steamOwned(apps, accountId);
 }
 function filterLibrary(games, mode) {
-  // "Owned" also lists installed games: Steam installs them only with a licence
-  // (own or Family Sharing), even when the account list does not include them.
-  return games.filter(g =>
-    g.offers?.some(o => (mode === 'owned' ? o.owned === true || o.installed === true : o.installed === true))
-  );
+  // "Owned" also lists installed games Steam may let the account play (Steam
+  // Families, unconfirmed), but not those found while no Steam account is
+  // connected ('local'): they are only "installed" (same rule as ui/app-store.js).
+  const inLibrary = o => o.owned === true || (o.installed === true && o.librarySource !== 'local');
+  return games.filter(g => g.offers?.some(o => (mode === 'owned' ? inLibrary(o) : o.installed === true)));
 }
 module.exports = {
   steamOwned,
