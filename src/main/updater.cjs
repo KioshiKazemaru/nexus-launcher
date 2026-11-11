@@ -17,6 +17,28 @@ const os = require('node:os');
 const path = require('node:path');
 
 const RELEASES = 'https://github.com/KioshiKazemaru/nexus-launcher/releases';
+const RELEASES_API = 'https://api.github.com/repos/KioshiKazemaru/nexus-launcher/releases';
+
+// The headlines of a release description (Markdown): the top-level points, their bold
+// title when they have one, as plain text. At most 4, each at most 140 characters.
+function releaseHeadlines(body) {
+  if (typeof body !== 'string') return [];
+  return body
+    .split(/\r?\n/)
+    .filter(line => /^[-*] /.test(line))
+    .map(line => {
+      const bold = line.match(/^[-*] \*\*(.+?)\*\*/);
+      const text = (bold ? bold[1] : line.slice(2))
+        .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+        .replace(/[*_`]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .replace(/[.:]$/, '');
+      return text.length > 140 ? text.slice(0, 139) + '…' : text;
+    })
+    .filter(Boolean)
+    .slice(0, 4);
+}
 // A file of a release: a plain name, no folders.
 const FILE_NAME = /^Nexus[\w.-]*\.(exe|dmg)$/;
 const SHA512 = /^[A-Za-z0-9+/]{86}==$/;
@@ -62,7 +84,27 @@ class Updater {
   found(version, files = []) {
     const v = /^\d+\.\d+\.\d+$/.test(String(version)) ? String(version) : null;
     this.files = Array.isArray(files) ? files : [];
-    this.set({ status: this.manual ? 'manual' : 'downloading', version: v });
+    this.set({ status: this.manual ? 'manual' : 'downloading', version: v, notes: [] });
+    // Only with the real updater (tests and local builds ask nothing of GitHub).
+    if (v && this.updater) this.loadNotes(v).catch(e => this.ctx.log?.warn('update', 'notes: ' + e.message));
+    if (this.manual && v)
+      this.ctx.notices?.add([
+        {
+          kind: 'update',
+          key: 'update:' + v,
+          title: `Вышла новая версия Nexus ${v}`,
+          body: 'Скачайте и установите её в окне обновления или в «Аккаунтах»',
+        },
+      ]);
+  }
+  // «Что нового»: the headlines of the release description on GitHub.
+  async loadNotes(version) {
+    const res = await this.fetch(`${RELEASES_API}/tags/v${version}`, {
+      headers: { Accept: 'application/vnd.github+json' },
+    });
+    if (!res.ok) throw Error(`HTTP ${res.status}`);
+    const notes = releaseHeadlines((await res.json())?.body);
+    if (this.state.version === version) this.set({ notes });
   }
   // A build without an update source is not an error: a local build (no app-update.yml)
   // or Linux started outside the AppImage and the .deb package. An installer the system
@@ -180,4 +222,4 @@ class Updater {
   }
 }
 
-module.exports = { Updater };
+module.exports = { Updater, releaseHeadlines };

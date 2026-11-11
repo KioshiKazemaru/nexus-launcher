@@ -170,6 +170,7 @@ function restoreBackup(settings, data, size = 0) {
   if (isStr(s.steamRoot, 1000)) settings.steamRoot = s.steamRoot;
   for (const k of [
     'notifyGiveaways',
+    'notifyWishSales',
     'autoUpdate',
     'autoStart',
     'diagnostics',

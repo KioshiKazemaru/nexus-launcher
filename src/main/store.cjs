@@ -22,6 +22,7 @@ const {
 } = require('../providers.cjs');
 const { storeUrl } = require('../core.cjs');
 const { fetchFreeGames, newGiveaways, giveawayKey } = require('../free-games.cjs');
+const { saleNotices } = require('./notices.cjs');
 const wishlist = require('../wishlist.cjs');
 const steamLib = require('../steam-library.cjs');
 const dealsApi = require('../deals.cjs');
@@ -767,9 +768,16 @@ class StoreService {
       );
       this.ctx.storage.saveSettings();
       // The very first check only remembers the current giveaways.
-      if (!first && this.ctx.settings.notifyGiveaways)
-        this.notify('Бесплатно в Epic Games', fresh.map(g => g.name).join(', '), () =>
-          this.ctx.showPage('store')
+      if (!first)
+        this.ctx.notices?.add(
+          fresh.map(g => ({
+            kind: 'giveaway',
+            key: 'giveaway:' + giveawayKey(g),
+            title: `Бесплатно в Epic Games: ${g.name}`,
+            body: 'Заберите игру в магазине Epic Games, пока раздача идёт',
+            image: typeof g.image === 'string' ? g.image : '',
+          })),
+          { system: !!this.ctx.settings.notifyGiveaways }
         );
     }
     this.ctx.hub.publish();
@@ -991,7 +999,9 @@ class StoreService {
         accounts: accounts.length,
       };
       this.ctx.hub.publish();
-      this.initialPrices().catch(e => this.ctx.log?.warn('prices', e.message));
+      this.initialPrices()
+        .then(() => this.checkWishSales())
+        .catch(e => this.ctx.log?.warn('prices', e.message));
       return report;
     })().finally(() => {
       this.wishRunning = null;
@@ -999,6 +1009,17 @@ class StoreService {
     return this.wishRunning;
   }
   // The old button «Импортировать желаемое» does the same.
+  // Wishlist games that went on sale: to the bell (and a system notification).
+  checkWishSales() {
+    const s = this.ctx.settings;
+    const games = s.wishlist.map(id => this.find(id)).filter(Boolean);
+    const date = t => new Date(t).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+    return (
+      this.ctx.notices?.add(saleNotices(games, this.country(), providerNames, date), {
+        system: s.notifyWishSales !== false,
+      }) || []
+    );
+  }
   importWishlists() {
     return this.syncWishlists();
   }

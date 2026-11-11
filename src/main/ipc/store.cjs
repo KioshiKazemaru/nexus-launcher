@@ -100,6 +100,27 @@ function registerStoreIpc(register, ctx) {
     state: ctx.hub.reply(),
   }));
   register(
+    'notifyWishSales',
+    save(enabled => (settings.notifyWishSales = bool(enabled)))
+  );
+  // The bell: opened (everything read), one notice removed, all cleared.
+  register(
+    'noticesRead',
+    withState(() => ctx.notices.readAll()),
+    { quiet: true }
+  );
+  register(
+    'noticeRemove',
+    withState(id => {
+      if (typeof id !== 'string' || id.length > 40) throw Error('Некорректное уведомление');
+      ctx.notices.remove(id);
+    })
+  );
+  register(
+    'noticesClear',
+    withState(() => ctx.notices.clear())
+  );
+  register(
     'notifyGiveaways',
     save(enabled => (settings.notifyGiveaways = bool(enabled)))
   );

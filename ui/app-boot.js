@@ -251,6 +251,8 @@ function applyState() {
     );
   updateOffline();
   renderUpdatePopup();
+  renderBell();
+  refreshProfileIfAccountsChanged();
   // Gamepad mode (ui/bigpicture.js) follows the state too.
   globalThis.bigPicture?.refresh();
 
@@ -323,6 +325,88 @@ if (api?.onStateChanged)
     state = absorbState(next);
     scheduleApply();
   });
+// The bell: notices of the main process (src/main/notices.cjs), newest first. Opening it
+// marks everything read; what was unread stays highlighted until the panel closes.
+const BELL_KIND = { sale: 'Скидка', giveaway: 'Раздача', update: 'Nexus' };
+let bellUnread = null;
+function noticeAgo(t, now = Date.now()) {
+  const min = Math.floor((now - t) / 60000);
+  if (min < 1) return 'только что';
+  if (min < 60) return min + ' мин назад';
+  if (min < 24 * 60) return Math.floor(min / 60) + ' ч назад';
+  return new Date(t).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+}
+function bellPanel(list) {
+  const items = list
+    .map(n => {
+      const img = safeImage(n.image);
+      const pic = img
+        ? `<img src="${esc(img)}" alt="" loading="lazy" referrerpolicy="no-referrer">`
+        : `<span class="bell-kind-icon ${esc(n.kind)}" aria-hidden="true"></span>`;
+      return `<div class="bell-item ${bellUnread?.has(n.id) ? 'unread' : ''}"><button class="bell-open" data-bell-open="${esc(n.id)}">${pic}<span><small>${esc(BELL_KIND[n.kind] || '')} · ${noticeAgo(n.at)}</small><strong>${esc(n.title)}</strong><span>${esc(n.body)}</span></span></button><button class="bell-remove" data-bell-remove="${esc(n.id)}" aria-label="Убрать уведомление" title="Убрать">×</button></div>`;
+    })
+    .join('');
+  return `<div class="bell-head"><strong>Уведомления</strong>${list.length ? '<button class="link" data-bell-clear>Очистить все</button>' : ''}</div>${items ? `<div class="bell-list">${items}</div>` : '<p class="bell-empty">Пока ничего нет. Здесь появятся скидки на игры из желаемого, раздачи Epic Games и новые версии Nexus.</p>'}`;
+}
+function renderBell() {
+  const list = state?.settings?.notices || [];
+  const unread = list.filter(n => !n.read).length;
+  const count = $('#bell-count');
+  count.hidden = !unread;
+  count.textContent = unread > 99 ? '99+' : String(unread);
+  $('#bell').classList.toggle('has-unread', !!unread);
+  $('#bell').setAttribute('aria-label', unread ? `Уведомления: ${unread} новых` : 'Уведомления');
+  const panel = $('#bell-panel');
+  if (!panel.hidden) panel.innerHTML = bellPanel(list);
+}
+function setBellOpen(open) {
+  const panel = $('#bell-panel');
+  if (open === !panel.hidden) return;
+  const list = state?.settings?.notices || [];
+  bellUnread = open ? new Set(list.filter(n => !n.read).map(n => n.id)) : null;
+  panel.hidden = !open;
+  $('#bell').setAttribute('aria-expanded', String(open));
+  renderBell();
+  if (open && bellUnread.size && api && !demo)
+    call('noticesRead')
+      .then(next => {
+        state = next;
+        renderBell();
+      })
+      .catch(() => {});
+}
+$('#bell').addEventListener('click', event => {
+  event.stopPropagation();
+  setBellOpen($('#bell-panel').hidden);
+});
+document.addEventListener('click', event => {
+  if (!$('#bell-panel').hidden && !event.composedPath().includes($('.bell-wrap'))) setBellOpen(false);
+});
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && !$('#bell-panel').hidden) {
+    setBellOpen(false);
+    $('#bell').focus();
+  }
+});
+$('#bell-panel').addEventListener('click', event =>
+  run(async () => {
+    const el = event.target.closest('button');
+    if (!el) return;
+    if (el.dataset.bellClear !== undefined) {
+      state = await call('noticesClear');
+      return renderBell();
+    }
+    if (el.dataset.bellRemove) {
+      state = await call('noticeRemove', el.dataset.bellRemove);
+      return renderBell();
+    }
+    const n = (state.settings.notices || []).find(x => x.id === el.dataset.bellOpen);
+    if (!n) return;
+    setBellOpen(false);
+    if (n.kind === 'sale' && n.gameId && game(n.gameId)) showDetail(n.gameId);
+    else setPage({ sale: 'wishlist', giveaway: 'store', update: 'accounts' }[n.kind] || 'store');
+  })
+);
 // A newer version to download by hand (Windows, macOS): a small window in the corner
 // with the download's progress; "Позже" hides it until the next version.
 const UPDATE_LATER = 'nexus.updateLater';
@@ -338,7 +422,8 @@ function renderUpdatePopup() {
   const u = state?.updater || {};
   const loading = typeof u.progress === 'number';
   const show = u.status === 'manual' && !!u.version && (loading || updateLater() !== u.version) && !demo;
-  const key = show ? [u.version, u.progress, u.error, state.platform].join('|') : '';
+  const notes = Array.isArray(u.notes) ? u.notes.slice(0, 4) : [];
+  const key = show ? [u.version, u.progress, u.error, state.platform, notes.join('\n')].join('|') : '';
   if (box.hidden === !show && box.dataset.key === key) return;
   box.dataset.key = key;
   const mac = state.platform === 'darwin';
@@ -352,7 +437,7 @@ function renderUpdatePopup() {
       ? esc(u.error)
       : `У вас ${esc(state.version || '')}. Nexus скачает установщик и запустит его: библиотека, аккаунты и настройки сохранятся.`;
   box.innerHTML = show
-    ? `<strong id="update-popup-title">Вышла новая версия Nexus ${esc(u.version)}</strong><p>${hint}</p>${loading ? `<progress max="100" value="${Number(u.progress) || 0}"></progress>` : `<div><button class="primary" data-update-popup="download">${u.error ? 'Повторить' : 'Скачать и установить'}</button><button class="secondary" data-update-popup="later">Позже</button></div>`}`
+    ? `<strong id="update-popup-title">Вышла новая версия Nexus ${esc(u.version)}</strong>${notes.length && !loading ? `<div class="update-notes"><small>Что нового</small><ul>${notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul></div>` : ''}<p>${hint}</p>${loading ? `<progress max="100" value="${Number(u.progress) || 0}"></progress>` : `<div><button class="primary" data-update-popup="download">${u.error ? 'Повторить' : 'Скачать и установить'}</button><button class="secondary" data-update-popup="later">Позже</button></div>`}`
     : '';
   box.hidden = !show;
 }
@@ -439,6 +524,7 @@ new MutationObserver(() => {
   updateOffline();
   render();
   renderUpdatePopup();
+  renderBell();
 })().catch(e => {
   $('#content').innerHTML =
     `<div class="notice warning">Не удалось загрузить приложение: ${esc(e.message)}</div>`;
