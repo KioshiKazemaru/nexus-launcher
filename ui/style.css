@@ -1005,6 +1005,11 @@ dialog::backdrop {
   display: flex;
   gap: 8px;
 }
+.update-popup progress {
+  width: 100%;
+  height: 6px;
+  accent-color: #1a9fff;
+}
 .demo-badge {
   color: #dcbd78;
 }

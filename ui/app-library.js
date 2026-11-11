@@ -741,7 +741,10 @@ function updatesCard() {
       checking: 'Проверяем обновления…',
       downloading: `Загружаем версию ${esc(u.version || '')}${u.percent ? ' · ' + u.percent + '%' : ''}`,
       ready: `Версия ${esc(u.version || '')} загружена`,
-      manual: `Вышла версия ${esc(u.version || '')}. Скачайте установщик и установите поверх текущей версии: библиотека, аккаунты и настройки сохранятся.`,
+      manual:
+        typeof u.progress === 'number'
+          ? `Загружаем установщик версии ${esc(u.version || '')}… ${u.progress}%`
+          : `Вышла версия ${esc(u.version || '')}. Nexus скачает установщик и запустит его: библиотека, аккаунты и настройки сохранятся.${u.error ? ' ' + esc(u.error) : ''}`,
       current: 'Установлена последняя версия',
       error: 'Ошибка обновления: ' + esc(u.error || ''),
       unsupported:
@@ -753,7 +756,7 @@ function updatesCard() {
     u.status === 'ready'
       ? '<button class="primary" id="install-update">Перезапустить и обновить</button>'
       : u.status === 'manual'
-        ? '<button class="primary" id="open-update">Скачать ↗</button>'
+        ? `<button class="primary" id="open-update" ${typeof u.progress === 'number' ? 'disabled' : ''}>Скачать и установить</button>`
         : '<button class="secondary" id="check-update">Проверить</button>';
   const auto = u.manual ? 'Проверять обновления автоматически' : 'Загружать обновления автоматически';
   return `<section class="settings-card"><div class="settings-row"><div><h3>Обновления · Nexus ${esc(state.version || '')}</h3><p>${text}</p></div><div class="account-actions">${action}</div></div><label class="check"><input type="checkbox" id="auto-update" ${state.settings.autoUpdate !== false ? 'checked' : ''}> ${auto}</label></section>`;

@@ -67,6 +67,7 @@ const channels = [
   'deals',
   'epicStoreSignIn',
   'openUpdatePage',
+  'downloadUpdate',
   'getArtwork',
   'searchCatalog',
   'homeCatalog',

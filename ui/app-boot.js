@@ -319,7 +319,7 @@ if (api?.onStateChanged)
     scheduleApply();
   });
 // A newer version to download by hand (Windows, macOS): a small window in the corner
-// until it is downloaded or postponed; "Позже" hides it until the next version.
+// with the download's progress; "Позже" hides it until the next version.
 const UPDATE_LATER = 'nexus.updateLater';
 function updateLater() {
   try {
@@ -331,25 +331,37 @@ function updateLater() {
 function renderUpdatePopup() {
   const box = $('#update-popup');
   const u = state?.updater || {};
-  const show = u.status === 'manual' && !!u.version && updateLater() !== u.version && !demo;
-  if (box.hidden === !show && box.dataset.version === (u.version || '')) return;
-  box.dataset.version = u.version || '';
+  const loading = typeof u.progress === 'number';
+  const show = u.status === 'manual' && !!u.version && (loading || updateLater() !== u.version) && !demo;
+  const key = show ? [u.version, u.progress, u.error, state.platform].join('|') : '';
+  if (box.hidden === !show && box.dataset.key === key) return;
+  box.dataset.key = key;
+  const mac = state.platform === 'darwin';
+  const hint = loading
+    ? u.progress >= 100
+      ? mac
+        ? 'Открываем образ диска: перетащите Nexus в «Программы».'
+        : 'Запускаем установщик, Nexus закроется.'
+      : `Загружаем установщик… ${u.progress}%`
+    : u.error
+      ? esc(u.error)
+      : `У вас ${esc(state.version || '')}. Nexus скачает установщик и запустит его: библиотека, аккаунты и настройки сохранятся.`;
   box.innerHTML = show
-    ? `<strong id="update-popup-title">Вышла новая версия Nexus ${esc(u.version)}</strong><p>У вас ${esc(state.version || '')}. Скачайте установщик и установите поверх: библиотека, аккаунты и настройки сохранятся.</p><div><button class="primary" data-update-popup="download">Скачать ↗</button><button class="secondary" data-update-popup="later">Позже</button></div>`
+    ? `<strong id="update-popup-title">Вышла новая версия Nexus ${esc(u.version)}</strong><p>${hint}</p>${loading ? `<progress max="100" value="${Number(u.progress) || 0}"></progress>` : `<div><button class="primary" data-update-popup="download">${u.error ? 'Повторить' : 'Скачать и установить'}</button><button class="secondary" data-update-popup="later">Позже</button></div>`}`
     : '';
   box.hidden = !show;
 }
 $('#update-popup').addEventListener('click', event =>
   run(async () => {
     const act = event.target.closest('[data-update-popup]')?.dataset.updatePopup;
-    if (!act) return;
+    if (act === 'download') return call('downloadUpdate');
+    if (act !== 'later') return;
     try {
       localStorage.setItem(UPDATE_LATER, state.updater?.version || '');
     } catch {
       /* the window simply shows again next time */
     }
     $('#update-popup').hidden = true;
-    if (act === 'download') await call('openUpdatePage');
   })
 );
 // Offline: banner, and a refresh as soon as the network is back.

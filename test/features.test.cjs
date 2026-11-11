@@ -402,6 +402,77 @@ test('macOS and Windows find an update and offer its release page instead of ins
   assert.equal(linux.releaseUrl(), 'https://github.com/KioshiKazemaru/nexus-launcher/releases/tag/v0.13.1');
 });
 
+test('"Скачать" downloads the installer, checks its SHA-512 and starts it', async () => {
+  const crypto = require('node:crypto');
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const { Updater } = require('../src/main/updater.cjs');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nexus-upd-'));
+  const body = Buffer.from('installer bytes '.repeat(1000));
+  const sha512 = crypto.createHash('sha512').update(body).digest('base64');
+  const ctx = { hub: { publish() {} }, log: { warn() {} } };
+  const make = (platform, files) => {
+    const u = new Updater(ctx, platform);
+    u.tempDir = () => dir;
+    u.requested = [];
+    u.fetch = async url => {
+      u.requested.push(url);
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: () => String(body.length) },
+        body: (async function* () {
+          yield body.subarray(0, 5000);
+          yield body.subarray(5000);
+        })(),
+      };
+    };
+    u.started = [];
+    u.start = async file => u.started.push(file);
+    u.opened = 0;
+    u.openRelease = async () => u.opened++;
+    u.found('0.13.5', files);
+    return u;
+  };
+  try {
+    const win = make('win32', [{ url: 'Nexus-Setup-0.13.5.exe', sha512, size: body.length }]);
+    await win.download();
+    assert.deepEqual(win.requested, [
+      'https://github.com/KioshiKazemaru/nexus-launcher/releases/download/v0.13.5/Nexus-Setup-0.13.5.exe',
+    ]);
+    assert.deepEqual(win.started, [path.join(dir, 'Nexus-Setup-0.13.5.exe')]);
+    assert.ok(fs.readFileSync(win.started[0]).equals(body));
+    assert.equal(win.state.progress, 100);
+
+    // A file that is not the release's: removed, not started.
+    const bad = make('win32', [{ url: 'Nexus-Setup-0.13.5.exe', sha512: 'A'.repeat(86) + '==' }]);
+    await assert.rejects(bad.download(), /не совпадает/);
+    assert.deepEqual(bad.started, []);
+    assert.equal(fs.existsSync(path.join(dir, 'Nexus-Setup-0.13.5.exe')), false);
+    assert.equal(bad.state.progress, null);
+    assert.match(bad.state.error, /Не удалось скачать/);
+
+    // macOS: the disk image of this processor.
+    const files = [
+      { url: 'Nexus-0.13.5-mac-x64.zip', sha512 },
+      { url: 'Nexus-0.13.5-mac-x64.dmg', sha512 },
+      { url: 'Nexus-0.13.5-mac-arm64.dmg', sha512 },
+    ];
+    const mac = make('darwin', files);
+    assert.equal(mac.installerFile('arm64').url, 'Nexus-0.13.5-mac-arm64.dmg');
+    assert.equal(mac.installerFile('x64').url, 'Nexus-0.13.5-mac-x64.dmg');
+
+    // No usable file (a name with folders, no checksum): the release page instead.
+    const none = make('win32', [{ url: '../evil.exe', sha512 }, { url: 'Nexus-Setup-0.13.5.exe' }]);
+    await none.download();
+    assert.equal(none.opened, 1);
+    assert.deepEqual(none.requested, []);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('Linux outside the AppImage and the .deb package has no update source, not an error', () => {
   const { Updater } = require('../src/main/updater.cjs');
   const u = new Updater({ hub: { publish() {} }, log: { warn() {} } }, 'linux');

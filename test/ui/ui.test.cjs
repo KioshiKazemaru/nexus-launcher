@@ -525,11 +525,11 @@ test(
       });
       await p.waitForTimeout(150);
       const card = p.locator('.settings-card', { has: p.locator('#auto-update') });
-      assert.match(await card.innerText(), /Вышла версия 0\.13\.1.*Скачайте установщик/s);
+      assert.match(await card.innerText(), /Вышла версия 0\.13\.1.*скачает установщик/s);
       assert.match(await card.innerText(), /Проверять обновления автоматически/);
       assert.equal(await p.locator('#install-update').count(), 0);
       const updateCalls = () =>
-        p.evaluate(() => window.__calls.filter(c => c[0] === 'openUpdatePage').length);
+        p.evaluate(() => window.__calls.filter(c => c[0] === 'downloadUpdate').length);
       // The small window in the corner: "Позже" hides it until the next version.
       const popup = p.locator('#update-popup');
       assert.ok(await popup.isVisible());
@@ -552,7 +552,19 @@ test(
       await p.click('[data-update-popup="download"]');
       await p.waitForTimeout(100);
       assert.equal(await updateCalls(), 1);
-      assert.ok(await popup.isHidden());
+      // While the installer downloads: its progress, no buttons.
+      const push = updater =>
+        p.evaluate(async u => {
+          const s = await window.nexus.state();
+          window.__push({ ...s, updater: u });
+        }, updater);
+      await push({ status: 'manual', version: '0.13.2', manual: true, progress: 42 });
+      await p.waitForTimeout(150);
+      assert.match(await popup.innerText(), /Загружаем установщик… 42%/);
+      assert.equal(await popup.locator('button').count(), 0);
+      assert.ok(await p.locator('#open-update').isDisabled());
+      await push({ status: 'manual', version: '0.13.2', manual: true, progress: null });
+      await p.waitForTimeout(150);
       await p.click('#open-update');
       await p.waitForTimeout(100);
       assert.equal(await updateCalls(), 2);

@@ -56,8 +56,9 @@ function registerAppIpc(register, ctx, { onlineAgain }) {
     withState(() => ctx.updater.check())
   );
   register('installUpdate', () => ctx.updater.install());
-  // macOS: the new version's release page (the update is installed by hand).
+  // Windows, macOS: the new version's release page, or its installer downloaded and started.
   register('openUpdatePage', () => ctx.updater.openRelease());
+  register('downloadUpdate', () => ctx.updater.download());
 }
 
 module.exports = { registerAppIpc };
