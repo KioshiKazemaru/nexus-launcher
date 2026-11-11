@@ -108,6 +108,11 @@ for (const type of ['pointerdown', 'keydown'])
   document.addEventListener(type, () => (lastStoreInput = Date.now()));
 setInterval(() => {
   if (page !== 'store' || query.trim() || document.hidden || showcaseHover) return;
+  if (
+    document.activeElement?.closest('#showcase-block') ||
+    matchMedia('(prefers-reduced-motion: reduce)').matches
+  )
+    return;
   if (Date.now() - lastStoreInput < 20000 || !$('#showcase-block')) return;
   const count = featuredItems().length;
   if (count < 2) return;
@@ -175,7 +180,7 @@ document.addEventListener(
   'wheel',
   event => {
     const rail = event.target.closest?.(
-      '.sale-rail,.dlc-rail,.rec-rail,.quick-rail,.recent-shelf,.store-list-tabs,.library-game-links'
+      '.sale-rail,.dlc-rail,.rec-rail,.recent-shelf,.store-list-tabs,.library-game-links'
     );
     if (!rail || rail.scrollWidth <= rail.clientWidth + 1 || Math.abs(event.deltaY) <= Math.abs(event.deltaX))
       return;

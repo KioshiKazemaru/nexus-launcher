@@ -108,6 +108,12 @@ function gameScreens(g, count = 4) {
 function gameDescription(g) {
   return g?.desc || priceOffers(g).find(o => o.description)?.description || '';
 }
+function showcaseArrow(items, index, step) {
+  const next = items[(index + step + items.length) % items.length];
+  const art = safeImage(next.capsule) || artwork(next);
+  const left = step < 0;
+  return `<button class="carousel-arrow ${left ? 'left' : 'right'}" data-feature-step="${step}" aria-label="${left ? 'Предыдущая игра' : 'Следующая игра'}">${art ? `<img src="${esc(art)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ''}<span aria-hidden="true">${left ? '‹' : '›'}</span></button>`;
+}
 function showcase() {
   const items = featuredItems();
   if (!items.length) return '';
@@ -122,7 +128,7 @@ function showcase() {
     main
       ? `<img id="showcase-main" src="${esc(main)}" data-default="${esc(main)}" data-fallback="${esc(artwork(g))}" alt="${esc(g.name)}" referrerpolicy="no-referrer">`
       : '<span class="cover-missing">Обложка недоступна</span>'
-  }${capsule ? '' : `<span class="showcase-name">${esc(g.name)}</span>`}</button><div class="showcase-info"><h2>${esc(g.name)}</h2>${
+  }</button><div class="showcase-info"><h2>${esc(g.name)}</h2>${
     screens.length
       ? `<div class="screenshot-grid">${screens.map(src => `<img src="${esc(src)}" data-showcase-shot="${esc(src)}" alt="Скриншот ${esc(g.name)}" loading="lazy" referrerpolicy="no-referrer">`).join('')}</div>`
       : `<div class="showcase-description">${esc(gameDescription(g) || 'Описание появится, когда магазин его пришлёт.')}</div>`
@@ -131,11 +137,11 @@ function showcase() {
     return `<div class="showcase-status"><span class="feature-label ${label.kind}">${esc(label.title)}</span>${reviewLine(g)}</div>${label.note ? `<div class="feature-note">${esc(label.note)}</div>` : ''}`;
   })()}${
     tags.length ? `<div class="showcase-tags">${tags.map(t => `<span>${esc(t)}</span>`).join('')}</div>` : ''
-  }<div class="showcase-prices">${priceOffers(g)
+  }<div class="showcase-bottom"><div class="showcase-prices">${priceOffers(g)
     .map(o => `<div><span>${names[o.provider]}</span>${salePrice(o)}</div>`)
     .join(
       ''
-    )}</div><button class="primary" data-detail="${esc(g.id)}">Открыть игру →</button></div><button class="carousel-arrow left" data-feature-step="-1" aria-label="Предыдущая игра">❮</button><button class="carousel-arrow right" data-feature-step="1" aria-label="Следующая игра">❯</button></section><div class="carousel-dots">${items.map((_, i) => `<button class="${i === index ? 'active' : ''}" data-feature-index="${i}" aria-label="Игра ${i + 1}"></button>`).join('')}</div></div>`;
+    )}</div><button class="secondary" data-detail="${esc(g.id)}">Подробнее →</button></div></div>${items.length > 1 ? showcaseArrow(items, index, -1) + showcaseArrow(items, index, 1) : ''}</section>${items.length > 1 ? `<div class="carousel-dots">${items.map((item, i) => `<button class="${i === index ? 'active' : ''}" data-feature-index="${i}" aria-label="${esc(item.name)}" aria-pressed="${i === index}"></button>`).join('')}</div>` : ''}</div>`;
 }
 // Updates only the carousel (auto-rotation must not rebuild the whole page).
 function updateShowcase(keepCurrent = false) {
@@ -146,7 +152,17 @@ function updateShowcase(keepCurrent = false) {
     featuredIndex = at >= 0 ? at : 0;
   }
   const block = $('#showcase-block');
-  if (block) block.outerHTML = showcase();
+  if (block) {
+    const focused = document.activeElement;
+    const control =
+      block.contains(focused) &&
+      ['data-feature-step', 'data-feature-index'].find(attr => focused.hasAttribute(attr));
+    block.outerHTML = showcase();
+    if (control)
+      $(`#showcase-block [${control}="${CSS.escape(focused.getAttribute(control))}"]`)?.focus({
+        preventScroll: true,
+      });
+  }
   // No carousel yet: a full render only when there is now something to show
   // (otherwise render → request → update would repeat endlessly).
   else if (page === 'store' && !query.trim() && featuredItems().length) render();
@@ -529,16 +545,7 @@ function store() {
   ]).filter(g => priceOffers(g).some(o => o.discount > 0));
   // Only failures are worth a line; successful counts were technical noise.
   const failed = Object.entries(home?.providers || {}).filter(([, v]) => !v.ok);
-  return `${notice()}<div class="store-subnav"><div class="store-platforms">${[
-    ['all', 'Все магазины'],
-    ['steam', 'Steam'],
-    ['epic', 'Epic Games'],
-  ]
-    .map(
-      ([p, n]) =>
-        `<button class="${storeProvider === p ? 'active' : ''}" data-store-platform="${p}">${n}</button>`
-    )
-    .join('')}<button data-page="wishlist">★ Желаемое</button></div>${regionControl()}</div>
+  return `${notice()}
  ${
    !searching
      ? (showcase() ||
@@ -757,12 +764,11 @@ function library() {
   if (page === 'favorites') list = list.filter(g => has('favorites', g.id));
   if (page === 'recent') list = recentGames(list).slice(0, 60);
   if (page === 'wishlist') return wishlistPage();
-  const recent = recentGames(list).slice(0, 8),
-    quick = list.slice(0, 5);
+  const home = page === 'library' && !collectionFilter && !query.trim();
+  const recent = home ? recentGames(list).slice(0, 8) : [];
   return `${notice()}<div class="library-heading"><h1>${page === 'favorites' ? 'Избранное' : page === 'recent' ? 'Недавние игры' : collectionName() || 'Библиотека'}</h1><div class="library-view" role="group" aria-label="Состав библиотеки"><button data-library-view="installed" class="${libraryMode() === 'installed' ? 'active' : ''}">↓ Скачанные</button><button data-library-view="owned" class="${libraryMode() === 'owned' ? 'active' : ''}">▦ Имеющиеся</button></div><button class="ghost" id="sync-libraries">↻ Обновить аккаунты</button></div>${libraryTools()}<div id="library-status">${libraryStatus()}</div>
- ${quick.length && page === 'library' ? `<section class="library-quick"><div class="shelf-title"><h2>Быстрый доступ</h2><span>Steam + Epic Games</span></div><div class="quick-rail">${quick.map(g => `<button data-detail="${esc(g.id)}"><div>${artTag(g)}</div><strong>${esc(g.name)}</strong><small>${g.offers.some(o => o.installed) ? 'Готова к запуску' : 'В аккаунте · можно установить'}</small></button>`).join('')}</div></section>` : ''}
- ${recent.length && page === 'library' ? `<div class="shelf-title"><h2>Недавние игры</h2><span>Steam, Epic Games и Nexus</span></div><div class="recent-shelf">${recent.map(libraryCard).join('')}</div>` : ''}
- ${page === 'library' && !collectionFilter ? newsShelf() : ''}
+ ${home ? newsShelf() : ''}
+ ${recent.length ? `<div class="shelf-title"><h2>Недавние игры</h2></div><div class="recent-shelf">${recent.map(libraryCard).join('')}</div>` : ''}
  <div class="shelf-title"><h2>${libraryMode() === 'installed' ? 'Скачанные игры' : 'Игры на аккаунтах'} <span>(${list.length})</span></h2><div class="library-platforms">${[
    ['all', 'Все'],
    ['steam', 'Steam'],
