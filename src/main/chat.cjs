@@ -24,6 +24,8 @@ const icon = path.join(
 const POLL_OPEN_MS = 4000;
 const POLL_IDLE_MS = 20000;
 const TOKEN_MS = 5 * 60000;
+const BRIEF_MS = 60000; // a short chat sign-in (mid-game) is kept this long for the next message
+const QUEUE_MS = 15000; // how often a waiting message checks whether the game is over
 const EPIC_NO_SEND =
   'Epic Games не даёт писать друзьям из сторонних программ: сервер чата Epic отклоняет личные сообщения. Написать можно в Epic Games Launcher или в игре.';
 
@@ -44,6 +46,8 @@ function steamError(e) {
 // steamcommunity.com/chat (ui_mode 3, qos_level 2, "online" not set by the
 // user). So with the Steam client open Nexus stays off the chat servers:
 // friends' statuses come from the Web API, history and new messages too.
+// (Only mid-game, without the client's port, a short sign-in sends a message:
+// then the client's status was seen to stay as it was — see sendBriefly.)
 const STEAM_CLIENT_OPEN =
   'Клиент Steam запущен — переписка Steam идёт в нём (вход Nexus в чат Steam сбросил бы ваш статус в клиенте)';
 
@@ -299,8 +303,18 @@ class ChatService {
   }
   start() {
     this.schedule(1500);
+    // The port switch early, so a restart for it is rarely needed (never mid-game);
+    // messages left waiting at the last exit go out now or after the game.
+    setTimeout(() => {
+      this.prepareSteamClient();
+      if (this.queued().length) this.scheduleQueue(1000);
+    }, 5000).unref?.();
   }
   stop() {
+    clearTimeout(this.queueTimer);
+    this.queueTimer = null;
+    this.brief?.cm.stop();
+    this.brief = null;
     clearTimeout(this.timer);
     this.timer = null;
     for (const x of this.epic.values()) x.stop();
@@ -550,23 +564,165 @@ class ChatService {
       const account = this.account('steam', k.accountId);
       // steam-user escapes the brackets itself (the text is not BBCode).
       try {
-        at = await this.steam(account).send(k.friendId, clean);
+        at = await this.steamSend(account, k.friendId, clean);
       } catch (e) {
-        if (e.code !== 'STEAM_CLIENT_OPEN') throw e;
-        // The Steam client is open: it sends the message itself (see steam-cef.cjs).
-        at = await this.sendViaSteamClient(k.friendId, clean);
+        if (e.code !== 'STEAM_IN_GAME') throw e;
+        // Steam is in a game and cannot be restarted for its port: the message
+        // waits (saved with the history) and goes out once the game is over.
+        const msg = {
+          from: 'me',
+          text: clean,
+          at,
+          pending: true,
+          id: `q${at}${Math.random().toString(36).slice(2, 8)}`,
+        };
+        this.store(k.key, c.addToHistory(this.history[k.key], msg));
+        this.emit({ type: 'message', conv: k.key, message: msg });
+        this.ctx.log.info('chat', 'steam: a message waits for the game to end');
+        this.scheduleQueue(QUEUE_MS);
+        return msg;
       }
-      const seen = this.steamSeen.get(k.accountId);
-      if (seen) seen.set(k.friendId, Math.max(seen.get(k.friendId) || 0, at));
     } else throw Error(EPIC_NO_SEND);
     const msg = { from: 'me', text: clean, at };
     this.store(k.key, c.addToHistory(this.history[k.key], msg));
     this.emit({ type: 'message', conv: k.key, message: msg });
     return msg;
   }
+  async steamSend(account, friendId, text) {
+    let at;
+    try {
+      at = await this.steam(account).send(friendId, text);
+    } catch (e) {
+      if (e.code !== 'STEAM_CLIENT_OPEN') throw e;
+      // The Steam client is open: it sends the message itself (see steam-cef.cjs).
+      at = await this.sendViaSteamClient(friendId, text, account);
+    }
+    const seen = this.steamSeen.get(account.id);
+    if (seen) seen.set(friendId, Math.max(seen.get(friendId) || 0, at));
+    return at;
+  }
+  // ---- messages waiting for the end of a game ------------------------------------
+  queued() {
+    const out = [];
+    for (const [key, list] of Object.entries(this.history))
+      for (const m of list || []) if (m.pending && key.startsWith('steam|')) out.push({ key, m });
+    return out.sort((a, b) => a.m.at - b.m.at);
+  }
+  scheduleQueue(ms) {
+    if (this.queueTimer) return;
+    this.queueTimer = setTimeout(() => {
+      this.queueTimer = null;
+      this.flushQueue().catch(e => this.ctx.log.warn('chat', `queue: ${e.message}`));
+    }, ms);
+    this.queueTimer.unref?.();
+  }
+  updateMessage(key, id, patch) {
+    const list = (this.history[key] || []).map(m => (m.id === id ? { ...m, ...patch } : m));
+    const msg = list.find(m => m.id === id);
+    if (!msg) return;
+    for (const k of Object.keys(msg)) if (msg[k] === undefined) delete msg[k];
+    list.sort((a, b) => a.at - b.at);
+    this.store(key, list);
+    this.emit({ type: 'message-update', conv: key, id, message: msg });
+  }
+  async flushQueue() {
+    if (this.flushing) return;
+    const items = this.queued();
+    if (!items.length) return;
+    this.flushing = true;
+    try {
+      if ((await this.ctx.actions?.runningSteamApp?.().catch(() => '0')) !== '0')
+        return this.scheduleQueue(QUEUE_MS);
+      for (const { key, m } of items) {
+        const k = c.parseConvKey(key);
+        try {
+          const account = this.account('steam', k.accountId);
+          const at = await this.steamSend(account, k.friendId, m.text);
+          this.updateMessage(key, m.id, { pending: undefined, at });
+          this.ctx.log.info('chat', 'steam: a waiting message is sent');
+        } catch (e) {
+          // A new game started meanwhile: the rest waits again.
+          if (e.code === 'STEAM_IN_GAME') return this.scheduleQueue(QUEUE_MS);
+          this.updateMessage(key, m.id, { pending: undefined, failed: e.message });
+        }
+      }
+    } finally {
+      this.flushing = false;
+    }
+  }
+  // A sign-in to Steam's chat servers next to the running client, only to send: kept a
+  // minute for the next messages, then signed off. Checked live: during a game the
+  // client's status and «в игре» stay as they were, during the sign-in and after it.
+  async sendBriefly(account, friendId, text) {
+    let b = this.brief;
+    if (!b || b.accountId !== account.id) {
+      this.brief?.cm.stop();
+      const cm = new SteamCm({
+        webLogon: () => this.steamWebLogon(account),
+        log: this.ctx.log,
+        SteamUserImpl: this.SteamUserImpl,
+        steamClientOpen: () => false,
+      });
+      b = this.brief = { cm, accountId: account.id, timer: null };
+    }
+    clearTimeout(b.timer);
+    const done = () => {
+      clearTimeout(b.timer);
+      b.timer = setTimeout(() => {
+        b.cm.stop();
+        if (this.brief === b) this.brief = null;
+      }, BRIEF_MS);
+      b.timer.unref?.();
+    };
+    try {
+      const at = await b.cm.send(friendId, text);
+      this.ctx.log.info('chat', 'steam: sent through a short chat sign-in (game running)');
+      return at;
+    } finally {
+      done();
+    }
+  }
+  // A Steam screenshot (steamcommunity.com/sharedfiles/filedetails/?id=…) → its picture.
+  async sharedImage(id) {
+    if (!/^\d{1,20}$/.test(id)) throw Error('Некорректный скриншот');
+    this.sharedImages ||= new Map();
+    if (this.sharedImages.has(id)) return this.sharedImages.get(id);
+    const r = await this.ctx.publicFetch(
+      'https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v1/',
+      {
+        method: 'POST',
+        body: new URLSearchParams({ itemcount: '1', 'publishedfileids[0]': id }),
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        signal: AbortSignal.timeout(15000),
+      }
+    );
+    const d = r.ok ? (await r.json().catch(() => ({})))?.response?.publishedfiledetails?.[0] : null;
+    const url = [d?.file_url, d?.preview_url].find(u => c.chatImageUrl(u)) || '';
+    const out = url ? { url, title: String(d.title || '') } : null;
+    if (this.sharedImages.size > 300) this.sharedImages.clear();
+    if (r.ok) this.sharedImages.set(id, out);
+    return out;
+  }
+  // A waiting or failed message: sent again (now or after the game) or removed.
+  async retry(key, id, drop = false) {
+    const k = this.conv(key);
+    const m = (this.history[k.key] || []).find(x => x.id === id);
+    if (!m) return null;
+    if (drop) {
+      this.store(
+        k.key,
+        this.history[k.key].filter(x => x.id !== id)
+      );
+      this.emit({ type: 'message-update', conv: k.key, id, removed: true });
+      return null;
+    }
+    this.updateMessage(k.key, id, { pending: true, failed: undefined });
+    await this.flushQueue();
+    return (this.history[k.key] || []).find(x => x.id === id) || null;
+  }
   // Through the Steam client's DevTools port; the first time the port is
   // switched on and Steam restarted quietly (only while no game runs).
-  async sendViaSteamClient(friendId, text) {
+  async sendViaSteamClient(friendId, text, account) {
     const cef = this.steamCef;
     const wait = ms => new Promise(r => setTimeout(r, ms));
     let restarted = false;
@@ -578,7 +734,17 @@ class ChatService {
       } catch (e) {
         if (e.code === 'NO_PORT' && !restarted) {
           restarted = true;
-          await this.openSteamPort();
+          try {
+            await this.openSteamPort();
+          } catch (err) {
+            // Mid-game Steam is not restarted: a short sign-in to the chat servers
+            // sends the message (the client keeps its status and the game).
+            if (err.code !== 'STEAM_IN_GAME' || !account) throw err;
+            return this.sendBriefly(account, friendId, text).catch(x => {
+              this.ctx.log.warn('chat', `steam brief send: ${x.message}`);
+              throw x.eresult ? x : err;
+            });
+          }
         } else if ((e.code !== 'NO_PORT' && e.code !== 'NOT_READY') || i >= 60) {
           this.ctx.log.warn('chat', `steam client send: ${e.message}`);
           throw e.eresult ? e : Error(`Не отправлено: ${e.message}`);
@@ -613,8 +779,11 @@ class ChatService {
       this.ctx.log.info('chat', 'steam: the DevTools port of the Steam client is switched on');
     }
     if ((await this.ctx.actions.runningSteamApp?.().catch(() => '0')) !== '0')
-      throw Error(
-        'Steam сейчас в игре, а перезапустить его во время игры нельзя: без этого он не примет сообщение от Nexus. Напишите в оверлее Steam (Shift+Tab). После выхода из игры отправка из Nexus заработает, в том числе в следующих играх.'
+      throw Object.assign(
+        Error(
+          'Steam сейчас в игре, а перезапустить его во время игры нельзя: сообщение отправится после выхода из игры.'
+        ),
+        { code: 'STEAM_IN_GAME' }
       );
     // Steam reads the switch at start: a quiet restart (tray only).
     await this.ctx.steamInstall.stopSteam(exe);

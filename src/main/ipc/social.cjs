@@ -1,6 +1,7 @@
 'use strict';
 // Like the Steam client: friends and chat windows, profiles and comments, my status,
 // the activity feed, notification and tray switches, and the in-game overlay.
+const { shell } = require('electron');
 const { setAutoStart } = require('../autostart.cjs');
 const { HOTKEYS } = require('../overlay.cjs');
 const { libraryList } = require('../../profile.cjs');
@@ -46,6 +47,24 @@ function registerSocialIpc(register, ctx) {
     p => {
       if (typeof p?.text !== 'string' || p.text.length > 4000) throw Error('Слишком длинное сообщение');
       return ctx.chat.send(String(p.conv || ''), p.text);
+    },
+    socialOnly
+  );
+  register(
+    'chatRetry',
+    p => ctx.chat.retry(String(p?.conv || ''), String(p?.id || ''), p?.drop === true),
+    socialOnly
+  );
+  // A Steam screenshot page in a message → the picture itself (for the preview).
+  register('chatImage', id => ctx.chat.sharedImage(String(id || '')), { ...socialOnly, quiet: true });
+  // A link from a conversation: only web pages, in the user's browser.
+  register(
+    'chatOpenLink',
+    url => {
+      const u = new URL(String(url || ''));
+      if (!['https:', 'http:'].includes(u.protocol) || u.username || u.password)
+        throw Error('Ссылка недоступна');
+      return shell.openExternal(u.href);
     },
     socialOnly
   );

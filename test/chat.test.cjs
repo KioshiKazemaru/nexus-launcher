@@ -518,12 +518,123 @@ test('Steam chat through the client: the port is switched on once, with a quiet 
     calls.map(x => x[0]),
     ['stop', 'start']
   );
-  // In a game Steam is not restarted.
+  // In a game Steam is not restarted: a short sign-in to the chat servers sends it.
   cef.port = false;
   app = '730';
   calls.length = 0;
-  await assert.rejects(t.chat.send(key, 'ещё'), /в игре/);
-  assert.equal(calls.length, 0);
+  FakeSteamUser.last = null;
+  const inGame = await t.chat.send(key, 'ещё');
+  assert.equal(calls.length, 0, 'no Steam restart mid-game');
+  assert.deepEqual(FakeSteamUser.last.sent, [[FRIEND, 'ещё']]);
+  assert.equal(inGame.pending, undefined);
+  assert.ok(t.chat.brief, 'the sign-in is kept a minute for the next message');
+  t.chat.stop();
+  assert.equal(FakeSteamUser.last.loggedOff, true, 'then signed off');
+});
+
+test('Steam chat mid-game: when Steam does not let even a short sign-in, the message waits and goes out after the game', async () => {
+  const t = steamChat();
+  const cef = fakeCef({ port: false });
+  t.chat.steamCef = cef;
+  let app = '730';
+  t.chat.ctx.actions = {
+    processRunning: async name => name === 'steam.exe',
+    steamExe: () => path.join('D:', 'steam', 'steam.exe'),
+    runningSteamApp: async () => app,
+  };
+  t.chat.ctx.steamInstall = { stopSteam: async () => {}, startSteam: () => (cef.port = true) };
+  t.chat.sendBriefly = async () => {
+    throw Error('чат Steam не ответил');
+  };
+  const key = c.convKey('steam', ME, FRIEND);
+  const msg = await t.chat.send(key, 'после игры');
+  assert.equal(msg.pending, true, 'no error: the message waits');
+  assert.ok(t.chat.history[key].some(m => m.pending && m.text === 'после игры'));
+  clearTimeout(t.chat.queueTimer);
+  t.chat.queueTimer = null;
+  await t.chat.flushQueue();
+  assert.equal(cef.sent.length, 0, 'still in the game');
+  clearTimeout(t.chat.queueTimer);
+  t.chat.queueTimer = null;
+  app = '0';
+  await t.chat.flushQueue();
+  assert.deepEqual(cef.sent, [[FRIEND, 'после игры']]);
+  const sent = t.chat.history[key].find(m => m.id === msg.id);
+  assert.equal(sent.pending, undefined);
+  assert.equal(sent.at, 1700000000000);
+  assert.ok(t.events.some(e => e.type === 'message-update' && e.id === msg.id && !e.message.pending));
+  // A message can be cancelled while it waits.
+  app = '730';
+  const again = await t.chat.send(key, 'отмена');
+  await t.chat.retry(key, again.id, true);
+  assert.ok(!t.chat.history[key].some(m => m.id === again.id));
+  t.chat.stop();
+});
+
+test('Steam chat: pictures uploaded in the chat and screenshot pages', async () => {
+  assert.equal(
+    c.steamText(
+      '[img src="https://images.steamusercontent.com/ugc/1/ABC/" width="1920" height="1080"][/img]'
+    ),
+    'https://images.steamusercontent.com/ugc/1/ABC/'
+  );
+  assert.equal(c.steamText('[img]https://i.imgur.com/a.png[/img]'), 'https://i.imgur.com/a.png');
+  assert.equal(c.chatImageUrl('https://images.steamusercontent.com/ugc/1/'), true);
+  assert.equal(c.chatImageUrl('https://evil.example/ugc/1.png'), false);
+  const t = steamChat();
+  const posts = [];
+  t.chat.ctx.publicFetch = async (url, o) => {
+    posts.push(String(o.body));
+    return {
+      ok: true,
+      json: async () => ({
+        response: {
+          publishedfiledetails: [
+            { file_url: 'https://images.steamusercontent.com/ugc/9/X/', title: 'Скрин' },
+          ],
+        },
+      }),
+    };
+  };
+  assert.deepEqual(await t.chat.sharedImage('123'), {
+    url: 'https://images.steamusercontent.com/ugc/9/X/',
+    title: 'Скрин',
+  });
+  await t.chat.sharedImage('123');
+  assert.equal(posts.length, 1, 'cached');
+  await assert.rejects(t.chat.sharedImage('1 OR 1'));
+  t.chat.stop();
+});
+
+test('chat window: links in a message become previews and links', () => {
+  const { chatParts, chatImageSrc } = require('../ui/chat-media.js');
+  assert.deepEqual(chatParts('смотри https://images.steamusercontent.com/ugc/1/A/ ок'), [
+    { text: 'смотри ' },
+    {
+      url: 'https://images.steamusercontent.com/ugc/1/A/',
+      image: 'https://images.steamusercontent.com/ugc/1/A/',
+    },
+    { text: ' ок' },
+  ]);
+  assert.deepEqual(chatParts('скрин (https://steamcommunity.com/sharedfiles/filedetails/?id=42).'), [
+    { text: 'скрин (' },
+    { url: 'https://steamcommunity.com/sharedfiles/filedetails/?id=42', shared: '42' },
+    { text: ').' },
+  ]);
+  assert.deepEqual(chatParts('https://example.com/page'), [{ url: 'https://example.com/page' }]);
+  assert.equal(chatImageSrc('https://i.imgur.com/x.jpg'), 'https://i.imgur.com/x.jpg');
+  assert.equal(chatImageSrc('https://i.imgur.com/gallery/x'), '', 'a page, not a picture');
+  assert.equal(chatImageSrc('https://example.com/x.png'), '', 'unknown host: no preview');
+  assert.equal(chatImageSrc('http://i.imgur.com/x.png'), '');
+  // The chat window may load exactly these hosts.
+  const html = fs.readFileSync(path.join(__dirname, '..', 'ui', 'chat.html'), 'utf8');
+  for (const h of [
+    '*.steamusercontent.com',
+    'steamuserimages-a.akamaihd.net',
+    'i.imgur.com',
+    'cdn.discordapp.com',
+  ])
+    assert.ok(html.includes('https://' + h), h);
 });
 
 test('Steam chat through the client: a refusal of Steam is shown as is', async () => {

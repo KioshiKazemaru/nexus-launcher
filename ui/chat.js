@@ -1,5 +1,5 @@
 'use strict';
-/* global api, $, esc, avatarTag, statusLine, timeText, dayText, PROVIDER_NAMES */
+/* global api, $, esc, avatarTag, statusLine, timeText, dayText, PROVIDER_NAMES, chatParts */
 // The chat window: a tab per friend, the conversation and the input.
 // Enter sends, Shift+Enter starts a new line.
 
@@ -91,10 +91,52 @@ function messagesHtml(list) {
     }
     const grouped = prev && prev.from === m.from && m.at - prev.at < 5 * 60000;
     const who = m.from === 'me' ? 'Вы' : tab?.name || 'Друг';
-    html += `<div class="msg ${m.from === 'me' ? 'mine' : 'theirs'} ${grouped ? 'grouped' : ''}">${grouped ? '' : `<div class="msg-head"><strong>${esc(who)}</strong><time>${timeText(m.at)}</time></div>`}<p title="${esc(new Date(m.at).toLocaleString('ru-RU'))}">${esc(m.text)}</p></div>`;
+    const state = m.pending
+      ? `<small class="msg-state">⏳ отправится, как только Steam сможет <button class="link" data-retry="${esc(m.id)}" data-drop="1">Отменить</button></small>`
+      : m.failed
+        ? `<small class="msg-state failed">Не отправлено: ${esc(m.failed)} <button class="link" data-retry="${esc(m.id)}">Повторить</button> <button class="link" data-retry="${esc(m.id)}" data-drop="1">Удалить</button></small>`
+        : '';
+    html += `<div class="msg ${m.from === 'me' ? 'mine' : 'theirs'} ${grouped ? 'grouped' : ''} ${m.pending ? 'pending' : ''}">${grouped ? '' : `<div class="msg-head"><strong>${esc(who)}</strong><time>${timeText(m.at)}</time></div>`}${messageBody(m)}${state}</div>`;
     prev = m;
   }
   return html;
+}
+// The text with its links: pictures as previews, Steam screenshot pages too.
+const sharedImages = new Map(); // id → { url, title } | null | 'loading'
+function messageBody(m) {
+  const parts = chatParts(m.text);
+  let text = '',
+    media = '';
+  for (const p of parts) {
+    const shared = p.shared && sharedImages.get(p.shared);
+    if (p.shared && shared === undefined) loadShared(p.shared);
+    const src = p.image || (shared && shared.url);
+    if (src)
+      media += `<button class="chat-img" data-img="${esc(src)}" data-link="${esc(p.url)}" title="Открыть картинку"><img src="${esc(src)}" alt="${esc(shared?.title || 'Картинка')}" loading="lazy" referrerpolicy="no-referrer"></button>`;
+    else if (p.url)
+      text += `<a href="#" data-link="${esc(p.url)}" title="Открыть в браузере">${esc(p.shared ? 'Скриншот Steam' : p.url)}</a>`;
+    else text += esc(p.text);
+  }
+  // A message that is only a picture shows just the picture.
+  const title = esc(new Date(m.at).toLocaleString('ru-RU'));
+  return `${text.trim() ? `<p title="${title}">${text}</p>` : ''}${media ? `<div class="chat-media">${media}</div>` : ''}`;
+}
+async function loadShared(id) {
+  sharedImages.set(id, 'loading');
+  const r = await api.chatImage(id).catch(() => null);
+  sharedImages.set(id, r?.url ? r : null);
+  render();
+}
+function openViewer(src, link) {
+  closeViewer();
+  const box = document.createElement('div');
+  box.id = 'viewer';
+  box.className = 'viewer';
+  box.innerHTML = `<img src="${esc(src)}" alt="" referrerpolicy="no-referrer"><div class="viewer-bar"><button class="ghost" data-link="${esc(link || src)}">Открыть в браузере</button><button class="ghost" data-viewer-close>Закрыть (Esc)</button></div>`;
+  document.body.append(box);
+}
+function closeViewer() {
+  document.getElementById('viewer')?.remove();
 }
 function render() {
   renderTabs();
@@ -174,9 +216,19 @@ async function send() {
 }
 
 document.addEventListener('click', e => {
-  const el = e.target.closest('button');
+  if (e.target.id === 'viewer') return closeViewer();
+  const el = e.target.closest('button, a[data-link]');
   if (!el) return;
-  if (el.dataset.tab) activate(el.dataset.tab);
+  if (el.tagName === 'A') e.preventDefault();
+  if (el.dataset.img) openViewer(el.dataset.img, el.dataset.link);
+  else if (el.dataset.link) api.chatOpenLink(el.dataset.link).catch(() => {});
+  else if (el.dataset.viewerClose !== undefined) closeViewer();
+  else if (el.dataset.retry && active) {
+    const conv = active;
+    api
+      .chatRetry({ conv, id: el.dataset.retry, drop: el.dataset.drop === '1' })
+      .catch(err => ((conversation(conv).error = err.message), render()));
+  } else if (el.dataset.tab) activate(el.dataset.tab);
   else if (el.dataset.close) closeTab(el.dataset.close);
   else if (el.dataset.profile) api.openProfile({ provider: 'steam', id: el.dataset.profile }).catch(() => {});
 });
@@ -193,6 +245,10 @@ document.addEventListener('keydown', e => {
     e.preventDefault();
     send();
   }
+  if (e.key === 'Escape' && document.getElementById('viewer')) {
+    e.preventDefault();
+    return closeViewer();
+  }
   if (e.key === 'Escape' && e.ctrlKey && active) closeTab(active);
 });
 window.addEventListener('focus', reportViewing);
@@ -207,6 +263,15 @@ api.onSocialEvent(async ev => {
     if (ev.conv !== active && ev.message.from === 'them' && tab) tab.unread++;
     if (ev.conv === active) render();
     else renderTabs();
+  }
+  // A message that waited (or failed) has changed: sent, failed or removed.
+  if (ev.type === 'message-update') {
+    const c = conversations.get(ev.conv);
+    if (!c) return;
+    c.messages = ev.removed
+      ? c.messages.filter(m => m.id !== ev.id)
+      : c.messages.map(m => (m.id === ev.id ? ev.message : m)).sort((a, b) => a.at - b.at);
+    if (ev.conv === active) render();
   }
   if (ev.type === 'presence')
     for (const t of tabs)

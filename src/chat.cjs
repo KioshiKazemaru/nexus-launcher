@@ -48,6 +48,9 @@ function steamText(message) {
       .replace(/\[sticker type="?([^"\]]*)"?[^\]]*\]\[\/sticker\]/gi, '[стикер $1]')
       .replace(/\[url=([^\]]+)\]([^[]*)\[\/url\]/gi, '$2 ($1)')
       .replace(/\[img\]([^[]*)\[\/img\]/gi, '$1')
+      // Pictures uploaded in the Steam chat: [img src=… width=… height=…][/img]
+      .replace(/\[img\s[^\]]*?src="?([^"\s\]]+)"?[^\]]*\](?:\[\/img\])?/gi, ' $1 ')
+      .replace(/\[og[^\]]*\]([^[]*)\[\/og\]/gi, '$1')
       .replace(
         /\[(\/?)(b|i|u|s|code|quote|spoiler|lobbyinvite|gameinvite|random|flip)(?=[\s=\]])[^\]]*\]/gi,
         ''
@@ -56,6 +59,12 @@ function steamText(message) {
       .replace(//g, '[')
   );
 }
+// A picture the chat window may show (the same hosts as its Content-Security-Policy,
+// see ui/chat-media.js).
+const chatImageUrl = url =>
+  /^https:\/\/(([\w-]+\.)*(steamstatic\.com|steamusercontent\.com)|steamuserimages-a\.akamaihd\.net|steamcdn-a\.akamaihd\.net)\//.test(
+    String(url || '')
+  );
 // Plain text → Steam message: square brackets are escaped so they are not BBCode.
 const steamEscape = text => cleanText(text).replace(/\[/g, '\\[');
 
@@ -196,6 +205,7 @@ module.exports = {
   cleanText,
   steamText,
   steamEscape,
+  chatImageUrl,
   parseSteamMessages,
   parseSteamSessions,
   xmlEscape,
