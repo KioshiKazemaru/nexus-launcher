@@ -47,6 +47,16 @@ async function scanLegendary(files) {
   return offers;
 }
 
+// Heroic Games Launcher link (src/backend/protocol.ts of Heroic): an installed
+// game starts, for one that is not installed Heroic offers to install it.
+// Launch options go as repeated `arg` parameters.
+function heroicUri(appId, args = []) {
+  if (!/^[\w.-]{1,100}$/.test(String(appId || ''))) throw Error('Некорректная игра Epic');
+  const q = new URLSearchParams({ appName: String(appId), runner: 'legendary' });
+  for (const a of args) q.append('arg', String(a));
+  return `heroic://launch?${q}`;
+}
+
 // The Epic launcher accepts install/uninstall/verify actions only with the full
 // namespace:itemId:appName id; otherwise its library is opened.
 function clientUri(action, offer) {
@@ -64,6 +74,7 @@ module.exports = {
   manifestDir: () => system.epicFiles()?.manifests || '',
   installedDat: () => system.epicFiles()?.installedDat || '',
   scanLegendary,
+  heroicUri,
   // Installed games plus the installations the Epic launcher is running now.
   scanInstalled: async ({ nexusEpicDir } = {}) => {
     const files = system.epicFiles();

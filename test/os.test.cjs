@@ -343,3 +343,112 @@ test(
     }
   }
 );
+
+test('Heroic link: the documented launch form with runner and launch options; bad ids are refused', () => {
+  assert.equal(epic.heroicUri('Salt'), 'heroic://launch?appName=Salt&runner=legendary');
+  const u = new URL(epic.heroicUri('Min', ['-windowed', 'a b']));
+  assert.equal(u.protocol, 'heroic:');
+  assert.equal(u.hostname, 'launch');
+  assert.equal(u.searchParams.get('appName'), 'Min');
+  assert.equal(u.searchParams.get('runner'), 'legendary');
+  assert.deepEqual(u.searchParams.getAll('arg'), ['-windowed', 'a b']);
+  assert.throws(() => epic.heroicUri('../x'), /Некорректная/);
+});
+
+test('Linux Epic games: Heroic opens them (and installs missing ones); without Heroic its site is offered', async () => {
+  const electron = require('electron');
+  const T = electron.__test;
+  const { ActionsService } = require('../src/main/actions.cjs');
+  const changes = [];
+  const actions = new ActionsService({
+    settings: { launchOptions: {} },
+    library: { expectChange: () => changes.push(1) },
+    log: { warn() {}, info() {} },
+  });
+  const opened = () => T.opened.filter(u => u.startsWith('heroic:') || u.includes('heroicgameslauncher'));
+  T.opened.length = 0;
+  actions.clients.schemeRegistered = async () => true;
+  const heroicGame = {
+    provider: 'epic',
+    appId: 'Salt',
+    installed: true,
+    via: 'legendary',
+    legendaryFile: '/h/.config/heroic/legendaryConfig/legendary/installed.json',
+  };
+  assert.equal(await actions.playLegendary(heroicGame, '-novid'), 'heroic');
+  assert.deepEqual(opened(), ['heroic://launch?appName=Salt&runner=legendary&arg=-novid']);
+  // Not installed: Heroic asks to install it, Nexus watches for the new install.
+  assert.equal(await actions.playLegendary({ provider: 'epic', appId: 'Min', installed: false }), 'heroic');
+  assert.equal(opened()[1], 'heroic://launch?appName=Min&runner=legendary');
+  assert.equal(changes.length, 1);
+  // No Heroic: nothing is opened but its site, if the user wants it.
+  actions.clients.schemeRegistered = async () => false;
+  const original = electron.dialog.showMessageBox;
+  electron.dialog.showMessageBox = async () => ({ response: 0 });
+  try {
+    assert.equal(await actions.playLegendary(heroicGame), 'canceled');
+  } finally {
+    electron.dialog.showMessageBox = original;
+  }
+  assert.equal(opened()[2], 'https://heroicgameslauncher.com/');
+});
+
+// macOS layout, scanned on any Unix: Steam in ~/Library and a game of the Epic Games Launcher.
+test(
+  'macOS: the library scan finds Steam in Application Support and the games of Epic Games Launcher',
+  { skip: process.platform === 'win32' && 'Unix paths' },
+  async () => {
+    const home = tmp();
+    const steam = path.join(home, 'Library', 'Application Support', 'Steam');
+    fs.mkdirSync(path.join(steam, 'steamapps', 'common', 'Hades'), { recursive: true });
+    fs.writeFileSync(
+      path.join(steam, 'steamapps', 'appmanifest_1145360.acf'),
+      '"AppState" { "appid" "1145360" "name" "Hades" "StateFlags" "4" "installdir" "Hades" }'
+    );
+    const manifests = path.join(
+      home,
+      'Library',
+      'Application Support',
+      'Epic',
+      'EpicGamesLauncher',
+      'Data',
+      'Manifests'
+    );
+    fs.mkdirSync(manifests, { recursive: true });
+    const game = path.join(home, 'Games', 'Fortnite');
+    fs.mkdirSync(game, { recursive: true });
+    fs.writeFileSync(
+      path.join(manifests, 'A1.item'),
+      JSON.stringify({
+        AppName: 'Fortnite',
+        DisplayName: 'Fortnite',
+        InstallLocation: game,
+        CatalogNamespace: 'fn',
+        CatalogItemId: 'fi',
+        LaunchExecutable: 'Fortnite.app',
+      })
+    );
+    const saved = { ...process.env };
+    Object.assign(process.env, { HOME: home, NEXUS_PLATFORM: 'darwin' });
+    for (const k of ['NEXUS_NO_SYSTEM_SCAN', 'ProgramData', 'XDG_DATA_HOME', 'XDG_CONFIG_HOME'])
+      delete process.env[k];
+    try {
+      const { LibraryService } = require('../src/main/library.cjs');
+      const library = new LibraryService({
+        settings: { steamRoot: '', custom: [], customPlaytime: {} },
+        storage: { loadOwned: () => ({}), file: () => path.join(home, 'nexus-epic') },
+        log: { warn() {}, debug() {} },
+      });
+      const local = await library.readLocal();
+      assert.deepEqual(local.steamRoots, [fs.realpathSync(steam)]);
+      assert.equal(local.offers.find(o => o.provider === 'steam')?.name, 'Hades');
+      const fortnite = local.offers.find(o => o.provider === 'epic');
+      assert.equal(fortnite.appId, 'Fortnite');
+      assert.equal(fortnite.via, undefined, 'a game of Epic Games Launcher, not of Heroic');
+      assert.equal(require('../src/platforms/epic.cjs').manifestDir(), manifests);
+    } finally {
+      for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k];
+      Object.assign(process.env, saved);
+    }
+  }
+);

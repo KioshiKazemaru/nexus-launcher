@@ -50,7 +50,9 @@ class ActionsService {
     let how = 'launcher';
     const extra = launchOptions.optionsFor(this.ctx.settings, id);
     if (o.provider === 'custom') await this.runCustom(o, extra);
-    else if (o.provider === 'epic' && !system.features().epicLauncher) how = await this.playEpicLinux(o);
+    // Linux has no Epic Games Launcher; games of Heroic / Legendary are theirs on any system.
+    else if (o.provider === 'epic' && (o.via === 'legendary' || !system.features().epicLauncher))
+      how = await this.playLegendary(o, extra);
     else if (
       !o.installed &&
       this.ctx.settings.nexusDownloads !== false &&
@@ -129,18 +131,16 @@ class ActionsService {
 
   // ---- Steam without its window --------------------------------------------------
 
-  // Linux has no Epic Games Launcher: an installed game is started by Legendary
-  // (when the game is in its own list) or opened in Heroic Games Launcher.
-  async playEpicLinux(o) {
-    if (!o.installed)
-      throw Error(
-        'Epic Games Launcher для Linux не существует. Установите игру в Heroic Games Launcher — она появится в Nexus.'
-      );
-    if (!/^[\w.-]{1,100}$/.test(String(o.appId))) throw Error('Некорректная игра Epic');
-    const heroic = /heroic/i.test(o.legendaryFile || '');
-    if (!heroic) {
+  // Epic games of Heroic Games Launcher / Legendary (the only way on Linux).
+  // The legendary command starts games of its own list; everything else goes
+  // to Heroic, which also offers to install a game that is not installed yet.
+  async playLegendary(o, extra = '') {
+    const epic = platforms.get('epic');
+    const args = launchOptions.splitArgs(extra);
+    const uri = epic.heroicUri(o.appId, args);
+    if (o.installed && o.via === 'legendary' && !/heroic/i.test(o.legendaryFile || '')) {
       const started = await new Promise(resolve => {
-        const child = spawn('legendary', ['launch', String(o.appId)], {
+        const child = spawn('legendary', ['launch', String(o.appId), ...args], {
           detached: true,
           stdio: 'ignore',
           shell: false,
@@ -153,12 +153,29 @@ class ActionsService {
       });
       if (started) return 'legendary';
     }
+    if (!(await this.clients.schemeRegistered('heroic'))) {
+      const { response } = await dialog.showMessageBox(this.ctx.mainWindow?.() || null, {
+        type: 'question',
+        buttons: ['Открыть сайт Heroic', 'Отмена'],
+        defaultId: 0,
+        cancelId: 1,
+        title: 'Нужен Heroic Games Launcher',
+        message: o.installed
+          ? 'Чтобы запустить игру Epic, нужен Heroic Games Launcher'
+          : 'Чтобы установить игру Epic, нужен Heroic Games Launcher',
+        detail:
+          'Epic Games Launcher для Linux не существует. Heroic — бесплатный лаунчер для игр Epic: установите его (Flatpak, AppImage или пакет дистрибутива), войдите в аккаунт Epic и повторите. Игры, установленные в Heroic, Nexus найдёт сам.',
+      });
+      if (response === 0) await shell.openExternal('https://heroicgameslauncher.com/');
+      return 'canceled';
+    }
     try {
-      await shell.openExternal(`heroic://launch/legendary/${encodeURIComponent(o.appId)}`);
-      return 'heroic';
+      await shell.openExternal(uri);
     } catch {
       throw Error('Не удалось открыть Heroic Games Launcher. Запустите игру из Heroic.');
     }
+    if (!o.installed) this.ctx.library.expectChange();
+    return 'heroic';
   }
 
   steamExe() {

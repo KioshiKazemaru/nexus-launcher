@@ -94,16 +94,15 @@ class ClientInstaller {
   // Installed = the link handler is registered AND its program exists.
   async installed(provider) {
     if (!CLIENTS[provider]) return true;
-    if (system.platform() !== 'win32') return this.handlerRegistered(provider);
+    if (system.platform() !== 'win32') return this.schemeRegistered(CLIENTS[provider].protocol);
     // Windows scenarios of the tests run on other systems: there is no registry to ask.
     if (process.platform !== 'win32') return true;
     const exe = await this.handlerExe(provider);
     return !!exe && fs.existsSync(exe);
   }
-  // macOS and Linux: is any program registered for the client's links (steam://…)?
+  // macOS and Linux: is any program registered for links of this scheme (steam, heroic…)?
   // When that cannot be told, the link is tried anyway.
-  async handlerRegistered(provider) {
-    const scheme = CLIENTS[provider].protocol;
+  async schemeRegistered(scheme) {
     try {
       if (app.getApplicationNameForProtocol?.(`${scheme}://`)) return true;
     } catch {}
