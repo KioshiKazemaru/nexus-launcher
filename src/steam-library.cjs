@@ -272,6 +272,50 @@ async function saleInfo(fetcher, appIds, country = 'US') {
   return result;
 }
 
+// --- the DLC of one game: names, prices, pictures (one GetItems per 100) ---
+function parseDlcItems(json) {
+  const items = json?.response?.store_items;
+  if (!Array.isArray(items)) throw Error('Steam не вернул дополнения');
+  const out = [];
+  for (const item of items) {
+    if (!/^\d+$/.test(String(item?.appid)) || typeof item.name !== 'string' || item.visible === false)
+      continue;
+    const p = item.best_purchase_option;
+    const discount = Math.max(0, Math.min(100, Number(p?.discount_pct) || 0));
+    out.push({
+      appId: String(item.appid),
+      name: item.name.slice(0, 200),
+      free: !!item.is_free,
+      price: typeof p?.formatted_final_price === 'string' ? p.formatted_final_price.slice(0, 40) : '',
+      originalPrice:
+        discount && typeof p?.formatted_original_price === 'string'
+          ? p.formatted_original_price.slice(0, 40)
+          : '',
+      discount,
+      comingSoon: !!item.release?.is_coming_soon,
+      image: storeAssets(item.assets).image || '',
+    });
+  }
+  return out;
+}
+async function dlcItems(fetcher, appIds, country = 'US') {
+  const out = [];
+  for (let i = 0; i < appIds.length; i += 100) {
+    const u = new URL('https://api.steampowered.com/IStoreBrowseService/GetItems/v1/');
+    u.search = new URLSearchParams({
+      input_json: JSON.stringify({
+        ids: appIds.slice(i, i + 100).map(appid => ({ appid: Number(appid) })),
+        context: { language: 'russian', country_code: country },
+        data_request: { include_assets: true, include_release: true },
+      }),
+    });
+    const r = await fetcher(u.href, { credentials: 'omit', signal: AbortSignal.timeout(15000) });
+    if (!r.ok) throw Error(`Steam GetItems: HTTP ${r.status}`);
+    out.push(...parseDlcItems(await r.json()));
+  }
+  return out;
+}
+
 // --- store front details (description, tags, reviews, screenshots) -------
 
 // What the Steam store shows next to a featured game. One GetItems request
@@ -581,6 +625,8 @@ module.exports = {
   storeItems,
   parseSaleInfo,
   saleInfo,
+  parseDlcItems,
+  dlcItems,
   parseStoreDetails,
   storeDetails,
   findSteamApp,

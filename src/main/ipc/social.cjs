@@ -4,6 +4,7 @@
 const { setAutoStart } = require('../autostart.cjs');
 const { HOTKEYS } = require('../overlay.cjs');
 const { libraryList } = require('../../profile.cjs');
+const { ACTIVITY_DAYS } = require('../../presence.cjs');
 const { bool, wrappers } = require('./helpers.cjs');
 
 // Notifications, tray and overlay switches.
@@ -15,6 +16,10 @@ const PRESENCE_SETTINGS = [
   'closeToTray',
   'startHidden',
   'overlay',
+  'activityRecord',
+  'activityOnline',
+  'activityGame',
+  'activityStop',
 ];
 
 function registerSocialIpc(register, ctx) {
@@ -85,10 +90,14 @@ function registerSocialIpc(register, ctx) {
   // My status and the friends' activity.
   register('setStatus', s => ctx.presence.setStatus(s), { social: true });
   register('activity', () => ctx.presence.feed(), { quiet: true, social: true });
+  register('clearActivity', () => ctx.presence.clearActivity(), { social: true });
   register(
     'presenceSetting',
     save(({ name, value }) => {
-      if (name === 'overlayHotkey') {
+      if (name === 'activityDays') {
+        if (!ACTIVITY_DAYS.includes(Number(value))) throw Error('Неизвестный срок');
+        settings.activityDays = Number(value);
+      } else if (name === 'overlayHotkey') {
         if (!HOTKEYS.includes(value)) throw Error('Неизвестное сочетание клавиш');
         settings.overlayHotkey = value;
       } else {

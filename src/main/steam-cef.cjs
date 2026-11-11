@@ -116,6 +116,76 @@ async function sendFriendMessage(friendId64, text, deps = {}) {
   return r.at ? r.at * 1000 : Date.now();
 }
 
+// ---- the user's status, set in the running client ----
+// What the client's own status menu calls: FriendStore.SetUserPersonaState
+// (0 offline, 1 online, 3 away, 7 invisible). → the state the client now shows.
+const CLIENT_PERSONA = { online: 1, away: 3, invisible: 7, off: 0 };
+async function setPersonaState(status, deps = {}) {
+  if (!Object.hasOwn(CLIENT_PERSONA, status)) throw Error('Неизвестный статус');
+  const url = await target(deps.fetch);
+  if (!url) throw Object.assign(Error('порт клиента Steam закрыт'), { code: 'NO_PORT' });
+  const r = await evaluate(
+    url,
+    `(() => {
+  const fs = window.g_FriendsUIApp?.FriendStore;
+  if (!fs?.SetUserPersonaState || !fs.self?.accountid) return { error: 'notready' };
+  fs.SetUserPersonaState(${CLIENT_PERSONA[status]}, true);
+  return { state: Number(fs.m_eUserPersonaState) };
+})()`,
+    deps
+  );
+  if (r?.error === 'notready')
+    throw Object.assign(Error('клиент Steam ещё входит в аккаунт'), { code: 'NOT_READY' });
+  if (!r || r.error) throw Error('клиент Steam не сменил статус');
+  return r.state;
+}
+
+// ---- what only the client has: private games' achievements, dynamic collections ----
+// Only for the account signed in to the client (accountId: its 32-bit id).
+async function clientCall(accountId, body, deps = {}) {
+  const url = await target(deps.fetch);
+  if (!url) throw Object.assign(Error('порт клиента Steam закрыт'), { code: 'NO_PORT' });
+  const r = await evaluate(
+    url,
+    `(async () => {
+  const self = window.g_FriendsUIApp?.FriendStore?.self?.accountid;
+  if (!self) return { error: 'notready' };
+  if (self !== ${Number(accountId)}) return { error: 'other' };
+  ${body}
+})()`,
+    deps
+  );
+  if (r?.error === 'notready')
+    throw Object.assign(Error('клиент Steam ещё входит в аккаунт'), { code: 'NOT_READY' });
+  if (r?.error === 'other')
+    throw Object.assign(Error('в клиенте Steam открыт другой аккаунт'), { code: 'OTHER_ACCOUNT' });
+  if (!r || r.error) throw Error('клиент Steam не ответил');
+  return r.value;
+}
+function myAchievements(steamId64, appId, deps = {}) {
+  if (!/^\d{1,10}$/.test(String(appId))) throw Error('Некорректная игра');
+  const accountId = Number(BigInt(String(steamId64)) - STEAM_ID_BASE);
+  return clientCall(
+    accountId,
+    `const r = await SteamClient.Apps.GetMyAchievementsForApp(${JSON.stringify(String(appId))});
+  return { value: typeof r === 'string' ? JSON.parse(r) : r };`,
+    deps
+  );
+}
+// The user's collections as the client sees them, dynamic ones with their games worked out.
+function myCollections(steamId64, deps = {}) {
+  const accountId = Number(BigInt(String(steamId64)) - STEAM_ID_BASE);
+  return clientCall(
+    accountId,
+    `const list = window.collectionStore?.userCollections || [];
+  return { value: list.filter(c => /^uc-/.test(String(c.id))).map(c => ({
+    id: String(c.id), name: String(c.displayName || ''), dynamic: !!c.bIsDynamic,
+    apps: (c.allApps || []).map(a => Number(a.appid)).filter(Number.isFinite),
+  })) };`,
+    deps
+  );
+}
+
 // ---- new messages, the moment the client has them ----
 // The client calls the binding from its own message handlers: the friend's
 // messages (OnReceivedNewMessage) and the user's (OnUserChatEcho: sent from
@@ -270,6 +340,10 @@ module.exports = {
   evaluate,
   sendExpression,
   sendFriendMessage,
+  setPersonaState,
+  myAchievements,
+  myCollections,
+  CLIENT_PERSONA,
   parseEvent,
   SteamClientEvents,
   HOOK,

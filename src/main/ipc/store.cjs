@@ -10,6 +10,7 @@ function registerStoreIpc(register, ctx) {
   register('browseCatalog', p => store.browse(p));
   register('homeCatalog', p => store.home(p));
   register('browseDlc', p => store.dlc(p));
+  register('gameDlc', p => store.gameDlc(p || {}), { quiet: true });
   register('recommendations', p => store.recommendations(p));
   register('gamePrices', p => store.gamePrices(p));
   register('gameDeals', p => store.deals(p));

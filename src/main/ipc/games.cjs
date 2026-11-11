@@ -63,6 +63,14 @@ function registerGamesIpc(register, ctx) {
     return { result, state: ctx.hub.reply() };
   });
   register('gameDlcs', v => ctx.epicInstall.dlcs(gameId(v)), { quiet: true });
+  // «Управление» → «Добавить ярлык на рабочий стол» / «Удалить ярлык с рабочего стола».
+  register('gameShortcut', p => {
+    const id = gameId(p?.id);
+    if (p?.action === 'create') ctx.shortcuts.create(id);
+    else if (p?.action === 'remove') ctx.shortcuts.remove(id);
+    else if (p?.action !== 'status') throw Error('Неизвестное действие');
+    return { exists: ctx.shortcuts.exists(id), supported: ctx.shortcuts.supported() };
+  });
   // "Хранилище": drives, free space, games by size.
   register('storageInfo', () => ctx.disk.info(), { quiet: true });
   register('openGameFolder', dir => {

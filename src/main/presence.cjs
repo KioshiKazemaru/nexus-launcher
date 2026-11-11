@@ -131,7 +131,36 @@ class PresenceService {
     this.connect();
     this.ctx.social?.broadcast({ type: 'my-status', status: this.status() });
     this.ctx.tray?.update();
+    this.applyClientStatus(this.status());
     return this.status();
+  }
+  // With the Steam client open Nexus is not on Steam's chat servers (see chat.cjs),
+  // so setPersona above does not reach Steam: the status is set in the client itself,
+  // the way its own status menu does it.
+  applyClientStatus(status) {
+    if (process.env.NEXUS_TEST === '1' || !this.ctx.accounts?.connected?.('steam').length) return;
+    const cef = this.steamCef || require('./steam-cef.cjs');
+    Promise.resolve()
+      .then(() => this.ctx.actions?.processRunning?.('steam.exe'))
+      .then(async open => {
+        if (!open) return;
+        try {
+          await cef.setPersonaState(status);
+          this.ctx.log.info('presence', `steam client status: ${status}`);
+        } catch (e) {
+          if (e.code !== 'NO_PORT') throw e;
+          this.ctx.chat?.prepareSteamClient?.();
+          // After the window's own «Ваш статус: …», not under it.
+          setTimeout(
+            () =>
+              this.ctx.toast?.(
+                'Клиент Steam запущен, и статус в нём Nexus сменит после следующего запуска Steam. Пока статус можно сменить в самом Steam.'
+              ),
+            2500
+          ).unref?.();
+        }
+      })
+      .catch(e => this.ctx.log.warn('presence', `steam client status: ${e.message}`));
   }
   // ---- my status ---------------------------------------------------------------
   attach(account, client) {
@@ -300,13 +329,18 @@ class PresenceService {
       appId: ev.appId || 0,
       conv: convKey(ev.provider, ev.accountId, ev.friendId),
     };
-    const before = this.activity;
-    this.activity = p.addActivity(before, entry);
-    if (this.activity === before || this.activity[0] !== entry) return; // a repeat
-    this.file.schedule(() => JSON.stringify(this.activity));
-    this.ctx.social?.broadcast({ type: 'activity', entry });
-    this.ctx.overlay?.event({ kind: 'friend', entry });
     const s = this.settings();
+    // «Активность друзей» → settings: what is recorded and for how long. Notifications
+    // and the overlay do not depend on it.
+    if (p.activityWanted(s, ev.type)) {
+      const before = this.activity;
+      const keep = p.activityKeep(s);
+      this.activity = p.addActivity(before, entry, Date.now(), keep > p.WEEK ? 1000 : 300, keep);
+      if (this.activity === before || this.activity[0] !== entry) return; // a repeat
+      this.file.schedule(() => JSON.stringify(this.activity));
+      this.ctx.social?.broadcast({ type: 'activity', entry });
+    }
+    this.ctx.overlay?.event({ kind: 'friend', entry });
     if (ev.type === 'online' && s.notifyFriendOnline === true)
       this.notify(entry.name, 'Теперь в сети', () => this.ctx.social?.openChat(entry.conv));
     if (ev.type === 'game' && s.notifyFriendGame !== false)
@@ -315,7 +349,14 @@ class PresenceService {
       );
   }
   feed() {
-    return this.activity.filter(x => Date.now() - x.at < p.WEEK);
+    const s = this.settings();
+    const keep = p.activityKeep(s);
+    return this.activity.filter(x => Date.now() - x.at < keep && p.activityWanted(s, x.type));
+  }
+  clearActivity() {
+    this.activity = [];
+    this.file.schedule(() => JSON.stringify(this.activity));
+    return [];
   }
   notify(title, body, onClick) {
     if (this.ctx.social?.chatFocused?.()) return;

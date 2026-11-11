@@ -67,11 +67,17 @@ function parseNews(json, appId) {
   return items
     .filter(x => x && typeof x.title === 'string' && Number(x.date) > 0)
     .map(x => {
+      // The feed's own links point to steamstore-a.akamaihd.net/news/externalpost/…,
+      // which Nexus does not open; every post (Steam's and the press's) has a page
+      // on the Steam store's news hub.
       let url = '';
-      try {
-        const u = new URL(String(x.url || ''));
-        if (u.protocol === 'https:') url = u.href;
-      } catch {}
+      if (/^\d{1,20}$/.test(String(x.gid || '')) && /^\d{1,10}$/.test(String(appId)))
+        url = `https://store.steampowered.com/news/app/${appId}/view/${x.gid}`;
+      else
+        try {
+          const u = new URL(String(x.url || ''));
+          if (u.protocol === 'https:') url = u.href;
+        } catch {}
       return {
         id: String(x.gid || x.date),
         appId: Number(appId),

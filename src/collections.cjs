@@ -5,7 +5,8 @@
 //   <Steam>\userdata\<accountId32>\config\cloudstorage\cloud-storage-namespace-1.json
 // as [[key, { key, value: "<json>", is_deleted? }], ...] with keys
 // "user-collections.<id>". Static collections have "added" app ids; dynamic
-// ones ("filterSpec") are rules Nexus cannot evaluate and are skipped.
+// ones ("filterSpec") are rules only the Steam client evaluates: their games come
+// from the running client (main/steam-cef.cjs myCollections), else they are skipped.
 // "hidden" and "favorite" are Steam's built-in collections.
 
 const MAX_COLLECTIONS = 200;
@@ -23,13 +24,15 @@ function parseSteamCollections(json) {
     } catch {
       continue;
     }
-    if (!value || typeof value !== 'object' || value.filterSpec) continue;
+    if (!value || typeof value !== 'object') continue;
+    const dynamic = !!value.filterSpec;
     const appIds = (Array.isArray(value.added) ? value.added : []).map(String).filter(x => /^\d+$/.test(x));
     const removed = new Set((Array.isArray(value.removed) ? value.removed : []).map(String));
     out.push({
       id: String(value.id || key.slice('user-collections.'.length)).slice(0, 100),
       name: String(value.name || '').slice(0, MAX_NAME),
-      appIds: [...new Set(appIds.filter(a => !removed.has(a)))],
+      appIds: dynamic ? [] : [...new Set(appIds.filter(a => !removed.has(a)))],
+      ...(dynamic ? { dynamic: true } : {}),
     });
   }
   return out;
@@ -41,10 +44,30 @@ function validName(name) {
   return n;
 }
 
+// The games of dynamic collections, as the Steam client worked them out:
+// clientList [{ id, name, dynamic, apps }]. Collections only the client has are added.
+function withClientCollections(parsed, clientList) {
+  const byId = new Map((Array.isArray(clientList) ? clientList : []).map(c => [String(c.id), c]));
+  const apps = x => (Array.isArray(x.apps) ? x.apps : []).map(String).filter(a => /^\d{1,10}$/.test(a));
+  const out = parsed.map(c => {
+    const x = c.dynamic ? byId.get(c.id) : null;
+    return x ? { ...c, appIds: apps(x), resolved: true } : c;
+  });
+  for (const x of byId.values())
+    if (!out.some(c => c.id === x.id))
+      out.push({
+        id: String(x.id).slice(0, 100),
+        name: String(x.name || '').slice(0, MAX_NAME),
+        appIds: apps(x),
+        ...(x.dynamic ? { dynamic: true, resolved: true } : {}),
+      });
+  return out;
+}
+
 // Applies Steam collections to Nexus settings. steamToGame maps a Steam app id
 // to the current Nexus game id. Returns a short report.
 function importSteamCollections(settings, parsed, steamToGame) {
-  const report = { collections: 0, games: 0, hidden: 0, favorites: 0 };
+  const report = { collections: 0, games: 0, hidden: 0, favorites: 0, dynamic: 0, dynamicSkipped: 0 };
   const ids = list => [...new Set(list.map(a => steamToGame(a)).filter(Boolean))];
   for (const c of parsed) {
     const games = ids(c.appIds);
@@ -61,14 +84,27 @@ function importSteamCollections(settings, parsed, steamToGame) {
       continue;
     }
     if (!c.name) continue;
+    if (c.dynamic && !c.resolved) {
+      report.dynamicSkipped++;
+      continue;
+    }
+    if (c.dynamic) report.dynamic++;
     const id = 'steam-' + c.id.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 60);
     const existing = settings.collections.find(x => x.id === id);
     if (existing) {
       existing.name = c.name;
-      existing.games = [...new Set([...existing.games, ...games])];
+      // A dynamic collection follows its rules: its games are replaced, not added to.
+      existing.games = c.dynamic ? games : [...new Set([...existing.games, ...games])];
+      if (c.dynamic) existing.dynamic = true;
     } else {
       if (settings.collections.length >= MAX_COLLECTIONS) break;
-      settings.collections.push({ id, name: c.name, games, source: 'steam' });
+      settings.collections.push({
+        id,
+        name: c.name,
+        games,
+        source: 'steam',
+        ...(c.dynamic ? { dynamic: true } : {}),
+      });
     }
     report.collections++;
     report.games += games.length;
@@ -103,6 +139,7 @@ function setHidden(settings, gameId, hidden) {
 module.exports = {
   parseSteamCollections,
   importSteamCollections,
+  withClientCollections,
   createCollection,
   setInCollection,
   setHidden,

@@ -24,6 +24,7 @@ const {
   Menu,
   protocol,
   net,
+  shell,
 } = require('electron');
 // Windows and Linux: no menu bar. macOS always has one, and its «Правка» items
 // are what make ⌘C / ⌘V / ⌘Q work in the window.
@@ -93,6 +94,7 @@ const { PresenceService } = require('./main/presence.cjs');
 const { NexusTray } = require('./main/tray.cjs');
 const { Overlay } = require('./main/overlay.cjs');
 const { NewsService } = require('./main/news.cjs');
+const { Shortcuts, playArg } = require('./main/shortcuts.cjs');
 const { WorkshopService } = require('./main/workshop.cjs');
 const { ProfileService } = require('./main/profile.cjs');
 const { registerAllIpc } = require('./main/ipc/index.cjs');
@@ -141,7 +143,12 @@ process.on('unhandledRejection', e =>
   ctx.log.error('process', 'unhandled rejection', e instanceof Error ? e : String(e))
 );
 
-app.on('second-instance', () => ctx.focusMain?.());
+// A desktop shortcut of a game (main/shortcuts.cjs) starts the game; anything else shows the window.
+app.on('second-instance', (_e, argv) => {
+  const id = playArg(argv);
+  if (id && ctx.shortcuts) ctx.shortcuts.launch(id);
+  else ctx.focusMain?.();
+});
 // macOS: a click on the Dock icon shows the window hidden by its close button.
 app.on('activate', () => ctx.focusMain?.());
 app.on('window-all-closed', () => {}); // The main window decides when to quit.
@@ -438,6 +445,7 @@ async function start() {
   ctx.chat = new ChatService(ctx);
   ctx.presence = new PresenceService(ctx);
   ctx.news = new NewsService(ctx);
+  ctx.shortcuts = new Shortcuts(ctx, { shell, app });
   ctx.workshop = new WorkshopService(ctx);
   ctx.profile = new ProfileService(ctx);
   ctx.overlay = new Overlay(ctx);
@@ -505,6 +513,14 @@ async function start() {
   ctx.presence.start();
   ctx.overlay.start();
   ctx.epicInstall.init();
+  // Started from a game's desktop shortcut: the game starts once the library is read.
+  const playFromShortcut = playArg(process.argv);
+  if (playFromShortcut) setTimeout(() => ctx.shortcuts.launch(playFromShortcut), 3000).unref?.();
+  // Shortcuts of games no longer installed are removed (only the ones Nexus made).
+  if (process.env.NEXUS_TEST !== '1') {
+    setTimeout(() => ctx.shortcuts.cleanup(), 120000).unref?.();
+    setInterval(() => ctx.shortcuts.cleanup(), 600000).unref?.();
+  }
   ctx.accounts.refreshAll().catch(e => ctx.log.warn('accounts', e.message));
   whenOnline('prices', () => ctx.store.initialPrices())();
   whenOnline('watch', () => ctx.store.watcher.check())();

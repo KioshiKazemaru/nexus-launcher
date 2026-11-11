@@ -7888,3 +7888,160 @@ body[data-page='community'] #content {
   font-size: 12px;
   color: #8f98a0;
 }
+
+/* «Свойства…» of a library game (app-props.js): tabs on the left, like Steam. */
+.props-dialog {
+  width: min(820px, 94vw);
+  min-height: min(520px, 80vh);
+}
+.props-layout {
+  display: flex;
+  gap: 18px;
+  margin-top: 12px;
+}
+.props-tabs {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 190px;
+  gap: 2px;
+}
+.props-tabs button {
+  padding: 9px 12px;
+  text-align: left;
+  color: #b8bcbf;
+  background: none;
+  border: 0;
+  border-radius: 2px;
+}
+.props-tabs button:hover {
+  color: #fff;
+  background: #ffffff12;
+}
+.props-tabs button.active {
+  color: #fff;
+  background: #3d4450;
+}
+.props-body {
+  flex: 1;
+  min-width: 0;
+}
+.props-body h2 {
+  margin: 18px 0 8px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: #8b929a;
+}
+.props-body > .check {
+  display: block;
+  margin: 6px 0;
+}
+.props-install {
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  background: #0000002e;
+  border-radius: 3px;
+}
+.props-install h3 {
+  margin-top: 0;
+}
+.props-path {
+  margin: 4px 0;
+  font-family: Consolas, monospace;
+  font-size: 12px;
+  word-break: break-all;
+}
+.props-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+@media (max-width: 640px) {
+  .props-layout {
+    flex-direction: column;
+  }
+  .props-tabs {
+    flex-direction: row;
+    flex-basis: auto;
+    flex-wrap: wrap;
+  }
+}
+
+/* DLC of a Steam game (app-props.js): library page, «Свойства», store page. */
+.dlc-row .dlc-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dlc-row .dlc-price {
+  flex: none;
+  font-size: 12px;
+  color: #c7d5e0;
+}
+.dlc-row .dlc-price s {
+  color: #738895;
+}
+.dlc-row .dlc-discount {
+  padding: 1px 4px;
+  color: #beee11;
+  background: #4c6b22;
+}
+.dlc-row .dlc-owned {
+  color: #a4d007;
+}
+.dlc-row.owned .dlc-name {
+  color: #fff;
+}
+.dlc-list > button.link {
+  display: block;
+  margin-top: 6px;
+}
+.props-dlc,
+.sg-dlc {
+  max-height: 60vh;
+  overflow: auto;
+}
+.props-dlc .dlc-row,
+.sg-dlc .dlc-row {
+  padding: 6px 10px;
+  background: #0000002e;
+  margin-bottom: 2px;
+}
+
+/* «Активность друзей» → «⚙ Настройки» (app-social.js). */
+.section-buttons {
+  display: flex;
+  gap: 6px;
+}
+.activity-settings {
+  max-width: 560px;
+  margin-bottom: 18px;
+}
+.activity-settings .check {
+  display: block;
+  margin: 6px 0;
+}
+.activity-types {
+  padding-left: 22px;
+}
+.activity-types.disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+.activity-settings-buttons {
+  margin-top: 12px;
+}
+.activity-settings .field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 4px;
+  font-size: 13px;
+  color: #dcdedf;
+}
+.activity-settings .field select {
+  font-size: 13px;
+  padding: 4px 8px;
+}

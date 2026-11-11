@@ -3,7 +3,7 @@
 // Each item runs the same action as the button on the game's library page.
 /* global state, demo, api, call, esc, $, run, render, toast, toggle, has, activeGames, isRunning,
    selectedLibraryOffer, librarySelection:writable, libraryProvider:writable, showDetail, CLICK_BY_ID,
-   hideHover, hideLibraryHover */
+   hideHover, hideLibraryHover, openProps */
 let gameMenuId = null;
 
 function gameMenuDir(o) {
@@ -27,7 +27,17 @@ function gameMenuHtml(g) {
       )
     )
     .join('');
+  const shortcut =
+    installed && state.platform !== 'darwin' && !demo
+      ? item(
+          'shortcut',
+          state.settings.shortcuts?.[g.id]
+            ? 'Удалить ярлык с рабочего стола'
+            : 'Добавить ярлык на рабочий стол'
+        )
+      : '';
   const manage = [
+    shortcut,
     gameMenuDir(o) && installed ? item('folder', 'Обзор локальных файлов') : '',
     installed && o.provider !== 'custom' ? item('verify', 'Проверить целостность файлов') : '',
     '<hr>',
@@ -119,10 +129,12 @@ const GAME_MENU_ACTIONS = {
     const o = selectedLibraryOffer(activeGames().find(v => v.id === id));
     await call('openGameFolder', gameMenuDir(o));
   },
-  verify: async id => {
+  verify: async (id, from) => {
     gameMenuSelect(id);
-    const el = document.createElement('button');
     const g = activeGames().find(v => v.id === id);
+    // «Свойства» names the store of the copy to check; the menu checks the chosen one.
+    if (from?.dataset?.provider) libraryProvider = from.dataset.provider;
+    const el = document.createElement('button');
     // Epic games downloaded by Nexus are checked by Nexus, the rest by their client.
     if (selectedLibraryOffer(g)?.provider === 'epic' && state.settings.nexusDownloads !== false)
       el.dataset.downloadAction = 'repair';
@@ -149,7 +161,16 @@ const GAME_MENU_ACTIONS = {
     gameMenuSelect(id);
     return CLICK_BY_ID['library-store']();
   },
-  properties: id => showDetail(id, true),
+  shortcut: async id => {
+    const had = !!state.settings.shortcuts?.[id];
+    const r = await call('gameShortcut', { id, action: had ? 'remove' : 'create' });
+    state.settings.shortcuts = { ...(state.settings.shortcuts || {}) };
+    if (r.exists) state.settings.shortcuts[id] = true;
+    else delete state.settings.shortcuts[id];
+    toast(r.exists ? 'Ярлык добавлен на рабочий стол' : 'Ярлык удалён с рабочего стола');
+    render();
+  },
+  properties: id => openProps(id),
 };
 
 document.addEventListener('contextmenu', event => {

@@ -50,7 +50,86 @@ test('ids of merged games: favorites, recent, platform choice, hidden and collec
   assert.equal(remapGameIds(s, games), false);
 });
 
-test('Steam collections: static ones, hidden and favorites are imported; dynamic and deleted are skipped', () => {
+test('Steam collections: dynamic ones get their games from the Steam client, else are skipped', () => {
+  const entry = (id, value) => [
+    `user-collections.${id}`,
+    { key: `user-collections.${id}`, value: JSON.stringify(value) },
+  ];
+  const parsed = collections.parseSteamCollections([
+    entry('uc-1', { id: 'uc-1', name: 'Кооп', added: [10] }),
+    entry('uc-2', { id: 'uc-2', name: 'Рогалики', filterSpec: { x: 1 } }),
+  ]);
+  assert.deepEqual(parsed[1], { id: 'uc-2', name: 'Рогалики', appIds: [], dynamic: true });
+  // Without the client: the dynamic one is skipped and counted.
+  const s1 = settings();
+  const r1 = collections.importSteamCollections(
+    s1,
+    collections.withClientCollections(parsed, null),
+    a => `steam:${a}`
+  );
+  assert.equal(r1.dynamicSkipped, 1);
+  assert.deepEqual(
+    s1.collections.map(c => c.name),
+    ['Кооп']
+  );
+  // With the client: its games, and a re-import replaces them (the rules decide).
+  const client = [
+    { id: 'uc-2', name: 'Рогалики', dynamic: true, apps: [20, 30, 'x'] },
+    { id: 'uc-9', name: 'Только в клиенте', dynamic: true, apps: [40] },
+  ];
+  const s = settings();
+  const r = collections.importSteamCollections(
+    s,
+    collections.withClientCollections(parsed, client),
+    a => `steam:${a}`
+  );
+  assert.equal(r.dynamic, 2);
+  assert.equal(r.dynamicSkipped, 0);
+  const dyn = s.collections.find(c => c.id === 'steam-uc-2');
+  assert.deepEqual(dyn.games, ['steam:20', 'steam:30']);
+  assert.equal(dyn.dynamic, true);
+  assert.ok(s.collections.some(c => c.name === 'Только в клиенте'));
+  client[0].apps = [30];
+  collections.importSteamCollections(s, collections.withClientCollections(parsed, client), a => `steam:${a}`);
+  assert.deepEqual(s.collections.find(c => c.id === 'steam-uc-2').games, ['steam:30']);
+});
+
+test('achievements from the running Steam client (games marked private)', () => {
+  const list = ach.parseClientAchievements({
+    result: 1,
+    data: {
+      rgAchievements: [
+        {
+          strID: 'A',
+          strName: 'Альфа',
+          strDescription: 'Сделать',
+          bAchieved: true,
+          rtUnlocked: 100,
+          strImage: 'https://shared.steamstatic.com/community_assets/images/apps/1/a.jpg',
+        },
+        {
+          strID: 'B',
+          strName: 'Тайна',
+          strDescription: 'Секрет',
+          bHidden: true,
+          bAchieved: false,
+          strImage: 'https://evil.test/b.jpg',
+        },
+        { strName: 'без id' },
+      ],
+    },
+  });
+  assert.deepEqual(
+    list.map(a => [a.id, a.unlocked, a.unlockedAt, a.description, !!a.icon]),
+    [
+      ['A', true, 100, 'Сделать', true],
+      ['B', false, 0, 'Скрытое достижение', false],
+    ]
+  );
+  assert.throws(() => ach.parseClientAchievements({}), /не вернул/);
+});
+
+test('Steam collections: static ones, hidden and favorites are imported; deleted are skipped', () => {
   const entry = (id, value, extra = {}) => [
     `user-collections.${id}`,
     { key: `user-collections.${id}`, value: JSON.stringify(value), ...extra },
@@ -65,7 +144,7 @@ test('Steam collections: static ones, hidden and favorites are imported; dynamic
   ]);
   assert.deepEqual(
     parsed.map(c => c.id),
-    ['uc-1', 'hidden', 'favorite']
+    ['uc-1', 'uc-2', 'hidden', 'favorite']
   );
   const s = settings();
   const report = collections.importSteamCollections(
@@ -73,7 +152,14 @@ test('Steam collections: static ones, hidden and favorites are imported; dynamic
     parsed,
     a => ({ 10: 'steam:10', 20: 'steam:20' })[a] || null
   );
-  assert.deepEqual(report, { collections: 1, games: 2, hidden: 1, favorites: 1 });
+  assert.deepEqual(report, {
+    collections: 1,
+    games: 2,
+    hidden: 1,
+    favorites: 1,
+    dynamic: 0,
+    dynamicSkipped: 1,
+  });
   assert.deepEqual(s.collections[0], {
     id: 'steam-uc-1',
     name: 'Кооп',

@@ -1198,10 +1198,29 @@ class LibraryService {
     const accounts = this.ctx.accounts.connected('steam');
     if (!accounts.length) throw Error('Сначала войдите в аккаунт Steam');
     if (!this.local.steamRoots.length) throw Error('Папка Steam не найдена. Укажите её в «Аккаунтах».');
-    const total = { collections: 0, games: 0, hidden: 0, favorites: 0, accounts: 0 };
+    const total = { collections: 0, games: 0, hidden: 0, favorites: 0, dynamic: 0, accounts: 0 };
     const errors = [];
     for (const a of accounts) {
       const id32 = steamLib.toAccountId32(a.id);
+      // Dynamic collections: their games as the running Steam client worked them out.
+      let clientList = null;
+      if (process.env.NEXUS_TEST !== '1')
+        clientList = await require('./steam-cef.cjs')
+          .myCollections(a.id)
+          .catch(e => (this.ctx.log.debug('collections', `client: ${e.message}`), null));
+      const apply = parsed => {
+        const report = collections.importSteamCollections(
+          this.ctx.settings,
+          collections.withClientCollections(parsed, clientList),
+          appId => this.steamGameId(appId)
+        );
+        for (const k of ['collections', 'games', 'hidden', 'favorites', 'dynamic']) total[k] += report[k];
+        total.accounts++;
+        if (report.dynamicSkipped)
+          errors.push(
+            `${a.name}: динамических коллекций без состава: ${report.dynamicSkipped}. Их игры знает только клиент Steam: запустите его под этим аккаунтом и повторите импорт`
+          );
+      };
       let found = false;
       for (const root of this.local.steamRoots) {
         const file = path.join(
@@ -1220,19 +1239,14 @@ class LibraryService {
         }
         found = true;
         try {
-          const report = collections.importSteamCollections(
-            this.ctx.settings,
-            collections.parseSteamCollections(JSON.parse(text)),
-            appId => this.steamGameId(appId)
-          );
-          for (const k of ['collections', 'games', 'hidden', 'favorites']) total[k] += report[k];
-          total.accounts++;
+          apply(collections.parseSteamCollections(JSON.parse(text)));
         } catch (e) {
           errors.push(`${a.name}: ${e.message}`);
         }
         break;
       }
-      if (!found)
+      if (!found && clientList?.length) apply([]);
+      else if (!found)
         errors.push(`${a.name}: коллекции не найдены — откройте библиотеку в клиенте Steam хотя бы раз`);
     }
     this.ctx.storage.saveSettings();
@@ -1291,12 +1305,27 @@ class LibraryService {
         this.ctx.log.debug('achievements', e.message);
       }
     }
-    const list = achievements.mergeAchievements(api, xml);
+    let list = achievements.mergeAchievements(api, xml);
+    // Games marked private are hidden from the web API and the profile page even for
+    // their owner: the running Steam client still has them.
+    let client = null;
+    if (!list.length && process.env.NEXUS_TEST !== '1')
+      try {
+        client = achievements.parseClientAchievements(
+          await require('./steam-cef.cjs').myAchievements(account.id, offer.appId)
+        );
+        list = client;
+      } catch (e) {
+        this.ctx.log.debug('achievements', `client: ${e.message}`);
+      }
     const value = list.length
       ? { available: true, account: account.name, list, ...achievements.summarize(list) }
       : {
           available: false,
-          reason: api || xml ? 'У этой игры нет достижений.' : 'Steam не отдал достижения. Попробуйте позже.',
+          reason:
+            api || xml || client
+              ? 'У этой игры нет достижений.'
+              : 'Steam не отдал достижения. Если игра отмечена в Steam как приватная, запустите клиент Steam: Nexus возьмёт их у него.',
         };
     this.achievementCache.set(key, { at: Date.now(), value });
     return value;

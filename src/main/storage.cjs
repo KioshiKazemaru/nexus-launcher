@@ -28,6 +28,8 @@ const defaults = () => ({
   recent: [],
   // «Итоги Nexus»: finished game sessions (see year-review.cjs).
   playLog: [],
+  // Desktop shortcuts Nexus made: { game id: file name } (main/shortcuts.cjs).
+  shortcuts: {},
   custom: [],
   steamRoot: '',
   autoStart: false,
@@ -70,6 +72,12 @@ const defaults = () => ({
   notifyFriendOnline: false,
   notifyFriendGame: true,
   notifyAchievements: true,
+  // «Активность друзей»: what is recorded and how many days it is kept.
+  activityRecord: true,
+  activityOnline: true,
+  activityGame: true,
+  activityStop: true,
+  activityDays: 7,
   closeToTray: true,
   startHidden: false,
   launchOptions: {},

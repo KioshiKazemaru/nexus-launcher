@@ -285,7 +285,7 @@ test('news: plain text, the first picture, patch notes, merged feeds', () => {
           tags: ['patchnotes'],
         },
         {
-          gid: '2',
+          gid: 'x2',
           title: 'Скидка',
           url: 'javascript:alert(1)',
           date: 1700001000,
@@ -302,12 +302,17 @@ test('news: plain text, the first picture, patch notes, merged feeds', () => {
   assert.match(items[0].text, /Изменения\n+• Быстрее\n• Меньше ошибок/);
   assert.doesNotMatch(items[0].text, /<|\[/);
   assert.match(items[0].text, /& ещё/);
+  assert.equal(
+    items[0].url,
+    'https://store.steampowered.com/news/app/570/view/1',
+    'the store news page, not the akamaihd link Nexus does not open'
+  );
   assert.equal(items[1].url, '', 'only https links');
   assert.equal(items[1].image, '', 'pictures only from Steam');
   assert.equal(news.plainText('слово '.repeat(200), 50).length <= 51, true);
   assert.deepEqual(
     news.mergeFeeds([items, [items[1]]]).map(x => x.id),
-    ['2', '1']
+    ['x2', '1']
   );
   assert.throws(() => news.parseNews({}), /не отдал/);
 });

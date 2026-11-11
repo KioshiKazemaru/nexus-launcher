@@ -95,7 +95,7 @@ async function loadStorage() {
   } catch (e) {
     storageState = { ...storageState, loading: false, error: e.message };
   }
-  if (page === 'storage') render();
+  if (page === 'storage' || propsDlg) render();
 }
 function storageRow(x) {
   const busy = x.busy || !!state.progress?.[x.id];
@@ -329,7 +329,7 @@ function libraryGameActions(g, owned, preferred, played) {
         : 'Пока не запускалась'
     ) +
     fact('ВЫ ИГРАЛИ', owned.playtime ? hours(owned.playtime) : '—');
-  const buttons = `${clientButtons(preferred)}<button class="secondary" id="library-hide" title="${owned.hidden ? 'Показать в библиотеке' : 'Скрыть из библиотеки'}">${owned.hidden ? '👁 Показать' : 'Скрыть'}</button><button class="secondary" id="library-favorite" aria-label="Избранное">${has('favorites', g.id) ? '★' : '☆'}</button><button class="secondary" id="library-wish" aria-label="Желаемое">${has('wishlist', g.id) ? '♥' : '♡'}</button>`;
+  const buttons = `${clientButtons(preferred)}<button class="secondary" id="library-hide" title="${owned.hidden ? 'Показать в библиотеке' : 'Скрыть из библиотеки'}">${owned.hidden ? '👁 Показать' : 'Скрыть'}</button><button class="secondary" id="library-favorite" aria-label="Избранное">${has('favorites', g.id) ? '★' : '☆'}</button><button class="secondary" id="library-wish" aria-label="Желаемое">${has('wishlist', g.id) ? '♥' : '♡'}</button><button class="secondary" data-props-open="${esc(g.id)}" aria-label="Свойства" title="Свойства">⚙</button>`;
   return `<div class="library-game-actions">${main}<div class="library-game-launch">${facts}</div>${progressLine(owned)}<div class="library-game-right">${buttons}</div></div>`;
 }
 // Left column: description, tags, collections, launch settings, platforms, news.
@@ -360,7 +360,7 @@ function libraryGameActivity(g, owned, played) {
         `<img src="${esc(safeImage(src))}" alt="Скриншот ${esc(g.name)}" referrerpolicy="no-referrer" loading="lazy">`
     )
     .join('');
-  return `<aside class="library-game-activity">${gameFriendsBox(owned)}<h2>АКТИВНОСТЬ</h2>${launches}${mergedNote(owned)}${achievementsBox(owned)}${dlcBox(owned)}${workshopBox(owned)}<h2>СКРИНШОТЫ</h2><div class="library-gallery">${shots || `<div class="library-activity-box">${artTag(g)}</div>`}</div></aside>`;
+  return `<aside class="library-game-activity">${gameFriendsBox(owned)}<h2>АКТИВНОСТЬ</h2>${launches}${mergedNote(owned)}${achievementsBox(owned)}${dlcSummary(owned)}${dlcBox(owned)}${workshopBox(owned)}<h2>СКРИНШОТЫ</h2><div class="library-gallery">${shots || `<div class="library-activity-box">${artTag(g)}</div>`}</div></aside>`;
 }
 // A game made of several store entries: how they were joined, and the split button.
 function mergedNote(owned) {
@@ -1014,6 +1014,7 @@ function render() {
                           ? libraryGamePage()
                           : library();
   renderCommunity();
+  renderPropsDialog();
   $('#footer-status').textContent = state.warnings[0] || '';
   renderDownloads();
   requestVisiblePrices();
@@ -1202,7 +1203,7 @@ function sgLeft(g, sp, st, c) {
   const requirements = sgRequirements(sp);
   return `<div class="sg-left">${demo ? '<div class="notice warning">Демонстрационная карточка. Внешние действия отключены.</div>' : ''}${ownershipBadge(g)}${detailPanel(g, sp)}${
     sp?.critics ? sgSection('Обзоры', `<div class="sg-rich sg-critics">${sp.critics}</div>`) : ''
-  }${sgSection('Об этой игре', sgAbout(sp, st, c.desc))}${
+  }${storeDlcSection(g)}${sgSection('Об этой игре', sgAbout(sp, st, c.desc))}${
     requirements ? sgSection('Системные требования', requirements) : ''
   }${sp?.legal ? `<p class="sg-legal">${esc(sp.legal)}</p>` : ''}</div>`;
 }

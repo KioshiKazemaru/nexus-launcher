@@ -123,6 +123,22 @@ async function loadActivity() {
   }
   if (page === 'activity') render();
 }
+// «⚙ Настройки» of the page, like Steam's friends settings.
+let activitySettingsOpen = false;
+function activitySettings() {
+  if (!activitySettingsOpen || demo) return '';
+  const days = Number(state.settings.activityDays) || 7;
+  const options = [
+    [1, '1 день'],
+    [3, '3 дня'],
+    [7, 'неделю'],
+    [30, '30 дней'],
+  ]
+    .map(([v, n]) => `<option value="${v}" ${days === v ? 'selected' : ''}>${n}</option>`)
+    .join('');
+  const off = state.settings.activityRecord === false;
+  return `<section class="settings-card activity-settings"><h3>Настройки активности</h3>${presenceCheck('activityRecord', 'Записывать активность друзей')}<div class="activity-types ${off ? 'disabled' : ''}"><p class="hint">Что записывать:</p>${presenceCheck('activityOnline', 'Друг зашёл в сеть')}${presenceCheck('activityGame', 'Друг начал играть')}${presenceCheck('activityStop', 'Друг закончил играть')}<label class="field">Хранить <select id="activity-days">${options}</select></label></div><h3>Уведомления</h3>${presenceCheck('notifyFriendGame', 'Когда друг начинает играть')}${presenceCheck('notifyFriendOnline', 'Когда друг заходит в сеть', false)}<div class="activity-settings-buttons"><button class="secondary" id="activity-clear">Очистить записанную активность</button></div><p class="hint">Записи хранятся только на этом компьютере. Статус «Не подключаться» выключает и запись, и уведомления.</p></section>`;
+}
 const ACTIVITY_VERBS = { online: 'теперь в сети', game: 'начал(а) играть в', stop: 'закончил(а) играть в' };
 function activityDay(t) {
   const d = new Date(t),
@@ -153,7 +169,10 @@ function activityPage() {
       return `${head}<div class="activity-item ${esc(x.type)}"><span class="profile-avatar">${avatar ? `<img src="${esc(avatar)}" alt="" referrerpolicy="no-referrer">` : esc((x.name || '?').slice(0, 1))}</span><div><p><strong>${esc(x.name)}</strong> ${esc(ACTIVITY_VERBS[x.type] || '')}${x.type !== 'online' ? ` <b>${lib ? `<button class="link" data-detail="${esc(lib.id)}">${esc(x.game || lib.name)}</button>` : esc(x.game || 'игру')}</b>` : ''}</p><small>${new Date(x.at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })} · ${x.provider === 'steam' ? 'Steam' : 'Epic Games'}</small></div>${x.provider === 'steam' ? `<button class="secondary" data-activity-chat="${esc(x.conv)}">Написать</button>` : ''}</div>`;
     })
     .join('');
-  return `${notice()}<div class="section-head"><h1>Активность друзей</h1><button class="secondary" id="activity-refresh">↻ Обновить</button></div><p class="subheading">Кто из друзей Steam и Epic Games заходил в сеть и во что играл. Nexus записывает это, пока он запущен (в том числе в трее); записи хранятся неделю.</p>${activityState.error ? `<p class="watch-error">${esc(activityState.error)}</p>` : ''}${
+  const days =
+    { 1: 'день', 3: '3 дня', 7: 'неделю', 30: '30 дней' }[Number(state.settings.activityDays) || 7] ||
+    'неделю';
+  return `${notice()}<div class="section-head"><h1>Активность друзей</h1><span class="section-buttons"><button class="secondary" id="activity-settings-toggle" aria-expanded="${activitySettingsOpen}">⚙ Настройки</button><button class="secondary" id="activity-refresh">↻ Обновить</button></span></div><p class="subheading">${state.settings.activityRecord === false ? 'Запись активности выключена в настройках.' : `Кто из друзей Steam и Epic Games заходил в сеть и во что играл. Nexus записывает это, пока он запущен (в том числе в трее); записи хранятся ${days}.`}</p>${activitySettings()}${activityState.error ? `<p class="watch-error">${esc(activityState.error)}</p>` : ''}${
     rows ||
     `<div class="empty"><h2>${activityState.loading ? 'Загружаем…' : 'Пока ничего не произошло'}</h2><p>Статус «Не подключаться» в настройках отключает отслеживание.</p></div>`
   }`;
@@ -1051,7 +1070,16 @@ document.addEventListener('click', event =>
     else if (el.dataset.workshopApp) await call('openWorkshop', { appId: el.dataset.workshopApp });
     else if (el.dataset.workshopFolder) await call('openWorkshop', { folder: el.dataset.workshopFolder });
     else if (el.dataset.activityChat) await call('openChat', el.dataset.activityChat);
-    else if (el.id === 'activity-refresh') {
+    else if (el.id === 'activity-settings-toggle') {
+      activitySettingsOpen = !activitySettingsOpen;
+      render();
+    } else if (el.id === 'activity-clear') {
+      if (!confirm('Удалить всю записанную активность друзей? Это нельзя отменить.')) return;
+      await call('clearActivity');
+      activityState = { loading: false, list: null, error: '' };
+      render();
+      toast('Активность очищена');
+    } else if (el.id === 'activity-refresh') {
       activityState = { loading: false, list: null, error: '' };
       render();
     } else if (el.id === 'news-refresh') loadNewsFeed(true);
@@ -1107,7 +1135,8 @@ document.addEventListener(
     event.stopImmediatePropagation();
     run(async () => {
       const id = event.target.dataset.game;
-      state = await call('setLaunchOptions', { id, options: $('#launch-options').value });
+      // The field of this form: the same box is also in «Свойства» (app-gamemenu.js).
+      state = await call('setLaunchOptions', { id, options: event.target.querySelector('input').value });
       render();
       toast(state.settings.launchOptions?.[id] ? 'Параметры запуска сохранены' : 'Параметры запуска убраны');
     });
@@ -1119,6 +1148,13 @@ document.addEventListener('change', event =>
     const el = event.target;
     if (el.dataset?.presenceSetting) {
       state = await call('presenceSetting', { name: el.dataset.presenceSetting, value: el.checked });
+      // What the feed shows follows the settings at once.
+      if (el.dataset.presenceSetting.startsWith('activity'))
+        activityState = { loading: false, list: null, error: '' };
+      render();
+    } else if (el.id === 'activity-days') {
+      state = await call('presenceSetting', { name: 'activityDays', value: Number(el.value) });
+      activityState = { loading: false, list: null, error: '' };
       render();
     } else if (el.id === 'overlay-hotkey') {
       state = await call('presenceSetting', { name: 'overlayHotkey', value: el.value });

@@ -51,10 +51,22 @@ function changes(old, now) {
   return out;
 }
 
-// Activity feed: newest first, at most `max`, nothing older than a week.
-const WEEK = 7 * 24 * 3600 * 1000;
-function addActivity(list, entry, now = Date.now(), max = 300) {
-  const clean = (Array.isArray(list) ? list : []).filter(x => x && now - x.at < WEEK);
+// Activity feed: newest first, at most `max`, nothing older than `keep` (a week by default).
+const DAY = 24 * 3600 * 1000;
+const WEEK = 7 * DAY;
+const ACTIVITY_DAYS = [1, 3, 7, 30];
+// The settings of «Активность друзей»: how long to keep it and which events.
+function activityKeep(settings) {
+  const days = Number(settings?.activityDays);
+  return (ACTIVITY_DAYS.includes(days) ? days : 7) * DAY;
+}
+function activityWanted(settings, type) {
+  if (settings?.activityRecord === false) return false;
+  const name = { online: 'activityOnline', game: 'activityGame', stop: 'activityStop' }[type];
+  return !name || settings?.[name] !== false;
+}
+function addActivity(list, entry, now = Date.now(), max = 300, keep = WEEK) {
+  const clean = (Array.isArray(list) ? list : []).filter(x => x && now - x.at < keep);
   // The same friend switching back and forth within a minute is one entry.
   const dup = clean.findIndex(
     x =>
@@ -80,6 +92,9 @@ module.exports = {
   steamPersona,
   changes,
   addActivity,
+  activityKeep,
+  activityWanted,
+  ACTIVITY_DAYS,
   playingName,
   WEEK,
 };

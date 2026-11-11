@@ -410,6 +410,7 @@ class ChatService {
   }
   // Both chats are connected once a social window is opened, then kept for the session.
   connectChats() {
+    this.prepareSteamClient();
     for (const account of this.ctx.accounts.connected('steam'))
       this.steam(account)
         .connect()
@@ -586,6 +587,23 @@ class ChatService {
       }
     }
   }
+  // With the Steam client open, messages go through its DevTools port, and Steam reads
+  // the switch only when it starts — mid-game it cannot be restarted. So the switch is
+  // set as soon as the user opens the chat (no restart): from the next start of Steam,
+  // usually the next game Nexus launches, sending also works during a game.
+  prepareSteamClient() {
+    if (process.env.NEXUS_TEST === '1' || !this.ctx.accounts.connected('steam').length) return;
+    try {
+      const exe = this.ctx.actions?.steamExe?.();
+      const dir = exe && path.dirname(exe);
+      if (dir && !this.steamCef.enabled(dir)) {
+        this.steamCef.enable(dir);
+        this.ctx.log.info('chat', 'steam: the DevTools port switch is set (works from the next Steam start)');
+      }
+    } catch (e) {
+      this.ctx.log.debug?.('chat', e.message);
+    }
+  }
   async openSteamPort() {
     const exe = this.ctx.actions?.steamExe?.();
     if (!exe) throw Error('Steam не найден');
@@ -595,7 +613,9 @@ class ChatService {
       this.ctx.log.info('chat', 'steam: the DevTools port of the Steam client is switched on');
     }
     if ((await this.ctx.actions.runningSteamApp?.().catch(() => '0')) !== '0')
-      throw Error('Steam сейчас в игре: отправка из Nexus заработает после перезапуска Steam');
+      throw Error(
+        'Steam сейчас в игре, а перезапустить его во время игры нельзя: без этого он не примет сообщение от Nexus. Напишите в оверлее Steam (Shift+Tab). После выхода из игры отправка из Nexus заработает, в том числе в следующих играх.'
+      );
     // Steam reads the switch at start: a quiet restart (tray only).
     await this.ctx.steamInstall.stopSteam(exe);
     this.ctx.steamInstall.startSteam(exe);

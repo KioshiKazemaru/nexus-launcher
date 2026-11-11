@@ -54,6 +54,24 @@ function parseXmlAchievements(xml) {
   return out;
 }
 
+// The running Steam client's own list (SteamClient.Apps.GetMyAchievementsForApp):
+// it also has the games marked private, which the web API and the profile page hide.
+function parseClientAchievements(value) {
+  const list = value?.data?.rgAchievements;
+  if (!Array.isArray(list)) throw Error('клиент Steam не вернул достижения');
+  return list
+    .filter(a => typeof a?.strID === 'string')
+    .map(a => ({
+      id: a.strID.slice(0, 120),
+      name: String(a.strName || a.strID).slice(0, 200),
+      description:
+        a.bHidden && !a.bAchieved ? 'Скрытое достижение' : String(a.strDescription || '').slice(0, 400),
+      unlocked: !!a.bAchieved,
+      unlockedAt: Number(a.rtUnlocked) || 0,
+      icon: safeIcon(String(a.strImage || '')),
+    }));
+}
+
 // Icons from the XML page are merged into the API list by api name.
 function mergeAchievements(api, xml) {
   if (!api?.length) return xml || [];
@@ -70,4 +88,10 @@ function summarize(list) {
   };
 }
 
-module.exports = { parseApiAchievements, parseXmlAchievements, mergeAchievements, summarize };
+module.exports = {
+  parseApiAchievements,
+  parseXmlAchievements,
+  parseClientAchievements,
+  mergeAchievements,
+  summarize,
+};

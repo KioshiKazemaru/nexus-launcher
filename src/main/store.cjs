@@ -286,11 +286,7 @@ class StoreService {
       try {
         const data = await details(String(g.steam));
         if (data?.success)
-          ids.push(
-            ...(data.data?.dlc || [])
-              .filter(x => /^\d+$/.test(String(x)) && !bought(x))
-              .slice(0, 3)
-          );
+          ids.push(...(data.data?.dlc || []).filter(x => /^\d+$/.test(String(x)) && !bought(x)).slice(0, 3));
       } catch (e) {
         this.ctx.log?.debug('dlc', e.message);
       }
@@ -592,6 +588,34 @@ class StoreService {
   }
   // The full store page of a game (about, requirements, languages…), kept 30 minutes:
   // Steam's when the game is on Steam, Epic Games Store's otherwise.
+  // All DLC of a Steam game, with what the Steam accounts already have (their licences):
+  // the «Дополнения» of the library page, «Свойства» and the store page.
+  async gameDlc({ appId }) {
+    appId = String(appId || '');
+    if (!/^\d{1,10}$/.test(appId)) throw Error('Дополнения есть только у игр Steam');
+    const country = this.country() || 'US';
+    this.gameDlcCache ||= new LruMap(100);
+    const key = appId + ':' + country,
+      old = this.gameDlcCache.get(key);
+    const licences = await this.ctx.library.steamLicences?.().catch(() => null);
+    const mark = v => ({
+      ...v,
+      items: v.items.map(x => ({ ...x, owned: !!licences?.has(x.appId) })),
+      known: !!licences?.size,
+    });
+    if (old && Date.now() - old.at < 1800000) return mark(old.value);
+    const u = new URL('https://store.steampowered.com/api/appdetails');
+    u.search = new URLSearchParams({ appids: appId, cc: country, l: 'russian', filters: 'basic' });
+    const data = (await responseJSON(this.ctx.publicFetch, u.href))?.[appId];
+    const ids = (data?.success ? data.data?.dlc || [] : []).map(String).filter(x => /^\d{1,10}$/.test(x));
+    const items = ids.length
+      ? await steamLib.dlcItems((url, o) => this.ctx.publicFetch(url, o), ids.slice(0, 300), country)
+      : [];
+    items.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+    const value = { appId, total: ids.length, items };
+    this.gameDlcCache.set(key, { at: Date.now(), value });
+    return mark(value);
+  }
   async storePage({ id }) {
     const g = typeof id === 'string' ? this.find(id) : null;
     if (!g) throw Error('Игра не найдена');

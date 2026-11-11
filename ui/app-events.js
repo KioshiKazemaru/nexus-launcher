@@ -547,7 +547,7 @@ CLICK_BY_ID['import-collections'] = async el => {
     state = r.state;
     render();
     toast(
-      `Коллекций: ${r.report.collections}, скрытых: +${r.report.hidden}, избранных: +${r.report.favorites}${r.report.errors.length ? '. ' + r.report.errors.join('; ') : ''}`
+      `Коллекций: ${r.report.collections}${r.report.dynamic ? ` (динамических: ${r.report.dynamic})` : ''}, скрытых: +${r.report.hidden}, избранных: +${r.report.favorites}${r.report.errors.length ? '. ' + r.report.errors.join('; ') : ''}`
     );
   } finally {
     el.disabled = false;
@@ -922,7 +922,10 @@ document.addEventListener('submit', event => {
   if (event.target.id === 'track-process-form') {
     event.preventDefault();
     run(async () => {
-      state = await call('setTrackProcess', { id: librarySelection, process: $('#track-process').value });
+      state = await call('setTrackProcess', {
+        id: librarySelection,
+        process: event.target.querySelector('input').value,
+      });
       render();
       toast('Сохранено');
     });
@@ -931,7 +934,7 @@ document.addEventListener('submit', event => {
   if (event.target.id === 'new-collection-form') {
     event.preventDefault();
     run(async () => {
-      const name = $('#new-collection').value.trim();
+      const name = event.target.querySelector('input').value.trim();
       if (!name) throw Error('Введите название коллекции');
       state = await call('createCollection', name);
       const c = state.settings.collections.find(x => x.name === name);
@@ -1027,7 +1030,8 @@ const MENU_ACTIONS = {
       ? { ...state, settings: { ...state.settings, libraryView: 'owned' } }
       : await call('libraryView', 'owned');
     await setPage('library');
-    if (!hiddenCount()) toast('Скрытых игр нет. Скрыть игру можно кнопкой «Скрыть» на её странице в библиотеке.');
+    if (!hiddenCount())
+      toast('Скрытых игр нет. Скрыть игру можно кнопкой «Скрыть» на её странице в библиотеке.');
   },
   recommendations: async () => {
     await setPage('store');

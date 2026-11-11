@@ -704,3 +704,54 @@ test('Steam chat: a message from the Steam client arrives without waiting for th
   });
   assert.equal(t.chat.history[key].length, 1);
 });
+
+test('steam-cef: the status is set in the running client like its own status menu', async () => {
+  const cef = require('../src/main/steam-cef.cjs');
+  const fetch = async () => ({
+    ok: true,
+    json: async () => [
+      {
+        title: 'SharedJSContext',
+        webSocketDebuggerUrl: 'ws://127.0.0.1:8080/devtools/page/S',
+        url: 'https://steamloopback.host/index.html',
+      },
+    ],
+  });
+  class FakeWs {
+    constructor() {
+      setImmediate(() => this.onopen());
+    }
+    send(m) {
+      FakeWs.sent = JSON.parse(m).params.expression;
+      setImmediate(() =>
+        this.onmessage({ data: JSON.stringify({ id: 1, result: { result: { value: FakeWs.answer } } }) })
+      );
+    }
+    close() {}
+  }
+  FakeWs.answer = { state: 3 };
+  assert.equal(await cef.setPersonaState('away', { fetch, WebSocketImpl: FakeWs }), 3);
+  assert.match(FakeWs.sent, /SetUserPersonaState\(3, true\)/);
+  for (const [s, n] of [
+    ['online', 1],
+    ['invisible', 7],
+    ['off', 0],
+  ]) {
+    FakeWs.answer = { state: n };
+    await cef.setPersonaState(s, { fetch, WebSocketImpl: FakeWs });
+    assert.ok(FakeWs.sent.includes(`SetUserPersonaState(${n}, true)`), s);
+  }
+  await assert.rejects(
+    cef.setPersonaState('constructor', { fetch, WebSocketImpl: FakeWs }),
+    /Неизвестный статус/
+  );
+  FakeWs.answer = { error: 'notready' };
+  await assert.rejects(
+    cef.setPersonaState('away', { fetch, WebSocketImpl: FakeWs }),
+    e => e.code === 'NOT_READY'
+  );
+  await assert.rejects(
+    cef.setPersonaState('away', { fetch: async () => null, WebSocketImpl: FakeWs }),
+    e => e.code === 'NO_PORT'
+  );
+});
