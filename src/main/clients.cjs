@@ -94,6 +94,9 @@ class ClientInstaller {
   // Installed = the link handler is registered AND its program exists.
   async installed(provider) {
     if (!CLIENTS[provider]) return true;
+    // Tests isolated from the PC (NEXUS_NO_SYSTEM_SCAN) never ask its registry or link
+    // handlers: the clients count as installed, whatever this machine has.
+    if (process.env.NEXUS_NO_SYSTEM_SCAN) return true;
     if (system.platform() !== 'win32') return this.schemeRegistered(CLIENTS[provider].protocol);
     // Windows scenarios of the tests run on other systems: there is no registry to ask.
     if (process.platform !== 'win32') return true;
