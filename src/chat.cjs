@@ -46,10 +46,15 @@ function steamText(message) {
       .replace(/\[emoticon\]([^[]*)\[\/emoticon\]/gi, ':$1:')
       .replace(/\[emoticon name="?([^"\]]*)"?\]\[\/emoticon\]/gi, ':$1:')
       .replace(/\[sticker type="?([^"\]]*)"?[^\]]*\]\[\/sticker\]/gi, '[стикер $1]')
-      .replace(/\[url=([^\]]+)\]([^[]*)\[\/url\]/gi, '$2 ($1)')
+      // Pictures uploaded in the Steam chat: [img src=… thumbnail_src=… width=…]
+      // [url=…]…[/url][/img] — the inside is a link to the same picture: shown once.
+      .replace(/\[img\s[^\]]*?src="?([^"\s\]]+)"?[^\]]*\][\s\S]*?\[\/img\]/gi, ' $1 ')
+      .replace(/\[img\s[^\]]*?src="?([^"\s\]]+)"?[^\]]*\]/gi, ' $1 ')
+      // A link whose text is the link itself: once, not "url (url)".
+      .replace(/\[url="?([^\]"]+)"?\]([^[]*)\[\/url\]/gi, (_m, url, label) =>
+        label.trim() && label.trim() !== url ? `${label} (${url})` : url
+      )
       .replace(/\[img\]([^[]*)\[\/img\]/gi, '$1')
-      // Pictures uploaded in the Steam chat: [img src=… width=… height=…][/img]
-      .replace(/\[img\s[^\]]*?src="?([^"\s\]]+)"?[^\]]*\](?:\[\/img\])?/gi, ' $1 ')
       .replace(/\[og[^\]]*\]([^[]*)\[\/og\]/gi, '$1')
       .replace(
         /\[(\/?)(b|i|u|s|code|quote|spoiler|lobbyinvite|gameinvite|random|flip)(?=[\s=\]])[^\]]*\]/gi,
@@ -189,8 +194,30 @@ function addToHistory(list, msg, max = 300) {
   next.sort((a, b) => a.at - b.at);
   return next.slice(-max);
 }
+// Steam's copy wins over a saved one of the same message (same sender and second;
+// same ordinal, or a live copy without one): a text read with older rules is
+// replaced, not shown twice.
 function mergeHistory(local, remote, max = 300) {
-  return (remote || []).reduce((list, m) => addToHistory(list, m, max), Array.isArray(local) ? local : []);
+  const list = Array.isArray(local) ? local.slice() : [];
+  const fresh = new Set((remote || []).map(m => `${m.from}|${m.at}|${m.text}`));
+  for (const m of remote || []) {
+    if (m.ordinal === undefined) continue;
+    for (const [i, x] of list.entries())
+      if (
+        x.from === m.from &&
+        x.at === m.at &&
+        (x.ordinal === m.ordinal || x.ordinal === undefined) &&
+        !fresh.has(`${x.from}|${x.at}|${x.text}`)
+      )
+        list[i] = { ...x, text: m.text, ordinal: m.ordinal };
+  }
+  // …and double copies of one message are dropped.
+  const seen = new Set();
+  const unique = list.filter(x => {
+    const k = `${x.from}|${x.at}|${x.text}`;
+    return !seen.has(k) && seen.add(k);
+  });
+  return (remote || []).reduce((acc, m) => addToHistory(acc, m, max), unique);
 }
 
 module.exports = {

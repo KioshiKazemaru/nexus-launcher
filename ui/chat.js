@@ -107,11 +107,13 @@ function messageBody(m) {
   const parts = chatParts(m.text);
   let text = '',
     media = '';
+  const shown = new Set();
   for (const p of parts) {
     const shared = p.shared && sharedImages.get(p.shared);
     if (p.shared && shared === undefined) loadShared(p.shared);
     const src = p.image || (shared && shared.url);
-    if (src)
+    if (src && shown.has(src)) continue; // the same picture twice in one message: once
+    if (src && shown.add(src))
       media += `<button class="chat-img" data-img="${esc(src)}" data-link="${esc(p.url)}" title="Открыть картинку"><img src="${esc(src)}" alt="${esc(shared?.title || 'Картинка')}" loading="lazy" referrerpolicy="no-referrer"></button>`;
     else if (p.url)
       text += `<a href="#" data-link="${esc(p.url)}" title="Открыть в браузере">${esc(p.shared ? 'Скриншот Steam' : p.url)}</a>`;

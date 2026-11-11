@@ -579,6 +579,40 @@ test('Steam chat: pictures uploaded in the chat and screenshot pages', async () 
     'https://images.steamusercontent.com/ugc/1/ABC/'
   );
   assert.equal(c.steamText('[img]https://i.imgur.com/a.png[/img]'), 'https://i.imgur.com/a.png');
+  // As Steam sends an uploaded picture: the link inside is the same picture.
+  const U = 'https://images.steamusercontent.com/ugc/1/ABC/';
+  assert.equal(
+    c.steamText(
+      `[img src=${U} thumbnail_src=${U}?imw=512&&ima=fit srcset="" width=719 height=50][url=${U}]${U}[/url][/img]`
+    ),
+    U
+  );
+  assert.equal(c.steamText(`[url=${U}]${U}[/url]`), U);
+  assert.equal(c.steamText(`[url=${U}]тут[/url]`), `тут (${U})`);
+  // A copy saved with older rules is replaced by Steam's, and doubles are dropped.
+  const old = [
+    { from: 'them', text: `${U} ${U} (${U})[/img]`, at: 1000, ordinal: 0 },
+    { from: 'them', text: `[img src=${U}]${U} (${U})[/img]`, at: 1000, ordinal: 0 },
+  ];
+  assert.deepEqual(c.mergeHistory(old, [{ from: 'them', text: U, at: 1000, ordinal: 0 }]), [
+    { from: 'them', text: U, at: 1000, ordinal: 0 },
+  ]);
+  // A live copy (no ordinal) of the same second: replaced too; another message of
+  // that second stays.
+  const live = [
+    { from: 'them', text: `[img src=${U}]${U} (${U})[/img]`, at: 2000 },
+    { from: 'me', text: 'ок', at: 2000 },
+  ];
+  assert.deepEqual(
+    c.mergeHistory(live, [
+      { from: 'them', text: U, at: 2000, ordinal: 0 },
+      { from: 'me', text: 'ок', at: 2000, ordinal: 1 },
+    ]),
+    [
+      { from: 'them', text: U, at: 2000, ordinal: 0 },
+      { from: 'me', text: 'ок', at: 2000 },
+    ]
+  );
   assert.equal(c.chatImageUrl('https://images.steamusercontent.com/ugc/1/'), true);
   assert.equal(c.chatImageUrl('https://evil.example/ugc/1.png'), false);
   const t = steamChat();
@@ -622,6 +656,18 @@ test('chat window: links in a message become previews and links', () => {
     { text: ').' },
   ]);
   assert.deepEqual(chatParts('https://example.com/page'), [{ url: 'https://example.com/page' }]);
+  // A message saved by 0.15.3/0.15.4: one picture, not six.
+  const U = 'https://images.steamusercontent.com/ugc/1/ABC/';
+  for (const saved of [
+    `${U} ${U} (${U})[/img]`,
+    `[img src=${U} thumbnail_src=${U}?imw=5 width=7]${U} (${U})[/img]`,
+  ])
+    assert.equal(
+      chatParts(saved).filter(p => p.image).length <= 2 &&
+        chatParts(saved).every(p => p.image || !p.text?.trim()),
+      true,
+      saved
+    );
   assert.equal(chatImageSrc('https://i.imgur.com/x.jpg'), 'https://i.imgur.com/x.jpg');
   assert.equal(chatImageSrc('https://i.imgur.com/gallery/x'), '', 'a page, not a picture');
   assert.equal(chatImageSrc('https://example.com/x.png'), '', 'unknown host: no preview');

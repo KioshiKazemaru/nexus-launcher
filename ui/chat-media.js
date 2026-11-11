@@ -24,7 +24,12 @@ function chatImageSrc(url) {
 // part of the link ("текст (https://…)" is how a Steam [url=…] link reads).
 function chatParts(text) {
   const out = [];
-  const s = String(text ?? '');
+  // Messages saved by older versions: Steam's picture tag and "url (url)" read once.
+  const s = String(text ?? '')
+    .replace(/\[img\s[^\]]*?src="?([^"\s\]]+)"?[^\]]*\][\s\S]*?\[\/img\]/gi, ' $1 ')
+    .replace(/(https?:\/\/[^\s()]+) \(\1\)/g, '$1')
+    .replace(/\[\/img\]/gi, '')
+    .trim();
   const re = /https?:\/\/[^\s<>"]+/g;
   let last = 0,
     m;

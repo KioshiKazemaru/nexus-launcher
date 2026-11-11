@@ -462,12 +462,12 @@ button.link:hover {
   cursor: zoom-in;
   overflow: hidden;
   line-height: 0;
-  max-width: 100%;
+  max-width: min(560px, 100%);
 }
 .chat-img img {
   display: block;
-  max-width: 320px;
-  max-height: 220px;
+  max-width: 100%;
+  max-height: 300px;
   width: auto;
   height: auto;
   object-fit: contain;
