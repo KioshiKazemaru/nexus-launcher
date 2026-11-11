@@ -281,12 +281,14 @@ function libraryGamePage() {
 }
 // The Steam library hero (the store art when it is missing) with the title on it.
 function libraryGameHero(g) {
-  const hero = artwork(g),
-    steamHero = g.steam
+  const cover = artwork(g);
+  const hero =
+    safeImage(g.hero) ||
+    (g.steam && !demo
       ? `https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/${g.steam}/library_hero.jpg`
-      : '';
+      : cover);
   const img = hero
-    ? `<img src="${esc(steamHero || hero)}" data-fallback="${esc(hero)}" alt="Баннер ${esc(g.name)}" referrerpolicy="no-referrer">`
+    ? `<img src="${esc(hero)}" data-fallback="${esc(cover)}" alt="" referrerpolicy="no-referrer">`
     : '';
   return `<div class="library-game-hero">${img}<div class="library-game-hero-shade"></div><h1>${esc(g.name)}</h1></div>`;
 }
@@ -942,6 +944,10 @@ function render() {
   document
     .querySelectorAll('[data-nav-pages]')
     .forEach(el => el.classList.toggle('active', el.dataset.navPages.split(' ').includes(page)));
+  document.querySelectorAll('.topbar nav .nav').forEach(el => {
+    if (el.classList.contains('active')) el.setAttribute('aria-current', 'page');
+    else el.removeAttribute('aria-current');
+  });
   $('#breadcrumb').innerHTML =
     page === 'library' && librarySelection
       ? 'БИБЛИОТЕКА <span>/ ' + esc(game(librarySelection)?.name || 'ИГРА') + '</span>'
@@ -962,6 +968,7 @@ function render() {
             tracking: 'МАГАЗИН <span>/ СКИДКИ</span>',
             accounts: 'NEXUS <span>/ НАСТРОЙКИ</span>',
           }[page];
+  renderStoreTools();
   $('#search').disabled = page === 'accounts';
   $('#mode-label').textContent = demo
     ? 'Демонстрационная библиотека'
@@ -993,8 +1000,7 @@ function render() {
                         : librarySelection && page === 'library'
                           ? libraryGamePage()
                           : library();
-  $('#footer-status').textContent =
-    state.warnings[0] || 'Steam в приоритете · покупка в официальном магазине';
+  $('#footer-status').textContent = state.warnings[0] || '';
   renderDownloads();
   requestVisiblePrices();
   if (page === 'store' && !query.trim()) {

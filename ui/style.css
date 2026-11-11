@@ -21,6 +21,10 @@
   --st-lib-active: #3d4450;
   --st-sale: #4c6b22;
   --st-sale-text: #beee11;
+  --client-header-height: 82px;
+  --client-footer-height: 40px;
+  --store-width: 1120px;
+  --store-gutter: 36px;
 }
 * {
   box-sizing: border-box;
@@ -1528,7 +1532,7 @@ a {
   max-width: 145px;
 }
 .layout {
-  height: calc(100vh - 126px);
+  height: calc(100vh - var(--client-header-height) - var(--client-footer-height));
   min-height: 0;
 }
 aside {
@@ -1741,34 +1745,15 @@ body[data-page='accounts'] aside,
 body[data-page='tracking'] aside {
   display: none;
 }
-body[data-page='store'] #main,
-body[data-page='game'] #main {
-  background: radial-gradient(ellipse at 50% 0, #24435f 0, #102231 50%, #0e1a25 100%);
-}
-body[data-page='store'] #content,
-body[data-page='game'] #content {
-  max-width: 1280px;
-  margin: auto;
-  padding: 0 42px 48px;
-}
-body[data-page='store'] .toolbar,
-body[data-page='game'] .toolbar {
-  background: #1c2c3c;
-}
-body[data-page='store'] .search,
-body[data-page='game'] .search {
-  width: 470px;
-  background: linear-gradient(90deg, #354453, #263c52);
-}
 .store-subnav {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: #20364d;
-  padding: 10px 12px;
-  margin: 0 -10px 24px;
-  gap: 15px;
-  box-shadow: 0 3px 7px #0003;
+  flex: 1;
+  gap: 12px;
+}
+.store-subnav[hidden] {
+  display: none;
 }
 .store-platforms {
   display: flex;
@@ -1785,22 +1770,25 @@ body[data-page='game'] .search {
   color: white;
 }
 .region {
-  font-size: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
   white-space: nowrap;
 }
 .region select {
-  background: #293f54;
+  background: #0e1b28a6;
+  color: #d3e7f8;
   border: 0;
-  border-radius: 0;
-  padding: 6px;
+  padding: 5px 8px;
 }
 .store-showcase {
-  height: 390px;
   display: grid;
-  grid-template-columns: 2.15fr 1fr;
-  background: #172c40;
+  grid-template-columns: minmax(0, 2.25fr) minmax(0, 1fr);
+  background: #0e1722;
   position: relative;
-  box-shadow: 0 3px 10px #0008;
+  border-radius: 4px;
+  box-shadow: 0 8px 20px #0008;
 }
 .showcase-image {
   position: relative;
@@ -1810,29 +1798,20 @@ body[data-page='game'] .search {
   text-align: left;
 }
 .showcase-image img {
+  display: block;
   height: 100%;
   width: 100%;
   object-fit: cover;
 }
-.showcase-name {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  padding: 45px 24px 22px;
-  font-size: 29px;
-  font-weight: 700;
-  background: linear-gradient(transparent, #061018dd);
-}
 .showcase-info {
-  padding: 18px 17px;
+  padding: 20px 18px;
   display: flex;
   flex-direction: column;
   gap: 12px;
   min-width: 0;
 }
 .showcase-info h2 {
-  font-size: 21px;
+  font-size: 23px;
   line-height: 1.2;
   margin: 0;
 }
@@ -1857,8 +1836,15 @@ body[data-page='game'] .search {
   color: #78bbe9;
   margin: 0;
 }
-.showcase-prices {
+.showcase-bottom {
   margin-top: auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 10px;
+}
+.showcase-prices {
+  flex: 1 1 140px;
   display: flex;
   flex-direction: column;
   gap: 7px;
@@ -1878,26 +1864,70 @@ body[data-page='game'] .search {
   font-size: 10px;
   color: #81909e;
 }
-.showcase-info .primary {
-  padding: 8px;
+.showcase-bottom .secondary {
+  margin-left: auto;
+  padding: 6px 10px;
   font-size: 12px;
+  white-space: nowrap;
 }
 .carousel-arrow {
   position: absolute;
-  top: 40%;
-  font-size: 25px;
-  width: 38px;
-  height: 80px;
-  background: linear-gradient(90deg, #0009, transparent);
-  z-index: 2;
+  inset-block: 0;
+  margin-block: auto;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 62px;
+  padding: 0;
+  background: #0e1722;
+  color: #c7d5e0;
+  font-size: 30px;
 }
 .carousel-arrow.left {
-  left: -38px;
+  right: calc(100% + 2px);
 }
 .carousel-arrow.right {
-  right: -38px;
-  transform: none;
-  background: linear-gradient(270deg, #0009, transparent);
+  left: calc(100% + 2px);
+}
+.carousel-arrow img {
+  display: none;
+}
+@media (min-width: 1350px) {
+  .carousel-arrow {
+    width: 82px;
+    height: 84%;
+    isolation: isolate;
+    overflow: hidden;
+    border-radius: 4px;
+  }
+  .carousel-arrow.left {
+    right: calc(100% + 10px);
+  }
+  .carousel-arrow.right {
+    left: calc(100% + 10px);
+  }
+  .carousel-arrow img {
+    display: block;
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0.28;
+    z-index: -1;
+  }
+  .carousel-arrow:hover img {
+    opacity: 0.5;
+  }
+  .carousel-arrow span {
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    line-height: 1;
+    background: #101820b8;
+    border-radius: 50%;
+  }
 }
 .carousel-dots {
   display: flex;
@@ -2143,40 +2173,6 @@ body[data-page='game'] .search {
   color: #fff;
   padding: 1px 5px;
 }
-.quick-rail {
-  display: flex;
-  overflow: auto;
-  gap: 13px;
-  padding: 0 0 12px;
-}
-.quick-rail > button {
-  flex: 0 0 236px;
-  max-width: 280px;
-  text-align: left;
-  padding: 0;
-  background: none;
-  flex-basis: 216px;
-}
-.quick-rail > button > div {
-  overflow: hidden;
-  background: #17232f;
-  height: 105px;
-}
-.quick-rail img {
-  height: 100%;
-  width: 100%;
-  object-fit: cover;
-}
-.quick-rail strong {
-  font-size: 12px;
-  display: block;
-  margin: 7px 0 3px;
-  color: #bfc8d4;
-}
-.quick-rail small {
-  font-size: 10px;
-  color: #8798a8;
-}
 .recent-shelf {
   display: flex;
   gap: 15px;
@@ -2258,22 +2254,12 @@ body[data-page='game'] .search {
   #content {
     padding: 18px;
   }
-  body[data-page='store'] #content {
-    padding: 0 38px 35px;
-  }
-  .store-showcase {
-    height: 350px;
-    grid-template-columns: 1.9fr 1fr;
-  }
   .showcase-info {
     gap: 9px;
     padding: 13px;
   }
   .showcase-info h2 {
     font-size: 18px;
-  }
-  .showcase-name {
-    font-size: 24px;
   }
   .screenshot-grid img {
     height: 53px;
@@ -3279,22 +3265,18 @@ body[data-page='library']:has(.library-game-page) #main {
 }
 /* ---- Store front, modelled on the Steam store ---------------------------- */
 /* Proportions of the Steam carousel: the 616×353 capsule is never cropped. */
-.store-showcase {
-  height: auto;
-  grid-template-columns: 616fr 324fr;
-}
 .showcase-image {
-  aspect-ratio: 616 / 353;
-}
-.showcase-info {
-  overflow: hidden;
+  aspect-ratio: 16 / 9;
+  border-radius: 4px 0 0 4px;
 }
 .showcase-info {
   gap: 10px;
-  background: linear-gradient(180deg, #1d3a52, #142333);
+  background: linear-gradient(150deg, #1b344a, #101c2a 70%);
+  border-radius: 0 4px 4px 0;
 }
 .showcase-info .screenshot-grid img {
-  height: 72px;
+  height: auto;
+  aspect-ratio: 16 / 9;
   cursor: zoom-in;
   opacity: 0.85;
   transition: opacity 0.15s;
@@ -3430,9 +3412,6 @@ body[data-page='library']:has(.library-game-page) #main {
   font-size: 11px;
 }
 @media (max-width: 1250px) {
-  .store-showcase {
-    height: auto;
-  }
   .category-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -3460,17 +3439,61 @@ body[data-page='library']:has(.library-game-page) #main {
 }
 /* ---- top bar: Steam client header ---- */
 .topbar {
+  height: var(--client-header-height);
+  padding: 0 14px;
   background: var(--st-header);
-  box-shadow: 0 1px 0 #000;
+  box-shadow: inset 0 -1px 0 #0008;
+}
+.app-strip {
+  height: 34px;
+  gap: 8px;
+}
+.client-menu {
+  display: flex;
+  align-items: center;
+  align-self: stretch;
+  gap: 3px;
+  white-space: nowrap;
+}
+.client-menu .brand,
+.client-menu-button {
+  display: flex;
+  align-items: center;
+  padding: 0 6px;
+  font-size: 12px;
+  background: transparent;
+  color: #b8bcbf;
+}
+.client-menu .brand {
+  height: 100%;
+}
+.client-menu .brand img {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+.client-menu button:hover {
+  color: #fff;
+}
+.client-menu .nav-menu button:hover {
+  color: var(--st-header);
+}
+.native-window .app-strip .client-menu,
+.mac-window .app-strip .client-menu {
+  -webkit-app-region: no-drag;
 }
 .topbar nav {
-  gap: 4px;
+  height: calc(var(--client-header-height) - 34px);
+  gap: clamp(10px, 1.3vw, 22px);
 }
 .nav {
-  color: #dcdedf;
+  height: 100%;
+  color: #e0e3e6;
+  font-size: clamp(15px, 1.55vw, 22px);
   font-weight: 700;
-  letter-spacing: 0.04em;
-  padding: 0 12px;
+  line-height: 1;
+  letter-spacing: 0;
+  padding: 0 2px;
   background: none;
 }
 .nav:hover {
@@ -3479,19 +3502,26 @@ body[data-page='library']:has(.library-game-page) #main {
 .nav.active {
   color: var(--st-blue);
 }
+.nav.active:after {
+  bottom: 6px;
+  left: 2px;
+  right: 2px;
+  height: 3px;
+  border-radius: 2px;
+}
 .nav-history {
   display: inline-flex;
-  gap: 2px;
-  margin-right: 8px;
+  gap: 1px;
+  flex-shrink: 0;
 }
 .nav-history button {
   width: 28px;
   height: 28px;
   padding: 0;
-  font-size: 13px;
-  color: #dcdedf;
-  background: #ffffff14;
-  border-radius: 2px;
+  font-size: 20px;
+  line-height: 1;
+  color: #aeb6c0;
+  background: transparent;
 }
 .nav-history button:hover:not(:disabled) {
   background: #ffffff2e;
@@ -3501,8 +3531,16 @@ body[data-page='library']:has(.library-game-page) #main {
   opacity: 0.3;
 }
 .profile-chip {
-  background: #ffffff0f;
+  height: 26px;
+  min-width: 0;
+  padding: 2px 7px 2px 3px;
+  gap: 5px;
+  background: #10151d;
   border-radius: 2px;
+}
+.profile-chip .profile-avatar {
+  width: 20px;
+  height: 20px;
 }
 .profile-chip:hover {
   background: #ffffff1f;
@@ -3512,14 +3550,41 @@ body[data-page='library']:has(.library-game-page) #main {
 }
 /* ---- toolbar (breadcrumb + search) ---- */
 .toolbar {
-  background: transparent;
-  border-bottom: 1px solid #00000066;
+  height: 40px;
+  padding: 4px 18px;
+  background: #1b2028;
+  border-bottom: 1px solid #0006;
 }
 .search {
-  background: #316282;
-  border: 1px solid #000a;
+  flex: 0 1 290px;
+  min-width: 0;
+  height: 30px;
+  padding: 0 8px;
+  background: #101822;
+  border: 1px solid #0b0e14;
   border-radius: 3px;
-  box-shadow: inset 1px 1px 0 #0003;
+}
+.search:focus-within {
+  border-color: var(--st-blue);
+}
+.search-icon {
+  position: relative;
+  width: 11px;
+  height: 11px;
+  margin-right: 2px;
+  flex: 0 0 11px;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+}
+.search-icon:after {
+  content: '';
+  position: absolute;
+  width: 5px;
+  height: 1.5px;
+  right: -4px;
+  bottom: -2px;
+  background: currentColor;
+  transform: rotate(45deg);
 }
 .search input {
   color: var(--st-bright);
@@ -3528,22 +3593,55 @@ body[data-page='library']:has(.library-game-page) #main {
 .search kbd {
   color: #9fc0d8;
 }
-/* ---- store pages: blue glow at the top, as on the Steam store ---- */
-body[data-page='store'] main,
-body[data-page='game'] main,
-body[data-page='wishlist'] main,
-body[data-page='tracking'] main {
-  background: radial-gradient(ellipse 80% 420px at 50% 0, #2a475e 0%, transparent 100%), var(--st-store);
+/* ---- store pages ---- */
+body:is([data-page='store'], [data-page='game'], [data-page='wishlist'], [data-page='tracking']) #main {
+  background: radial-gradient(ellipse 90% 500px at 50% 0, #254765, transparent 100%), #0e1722;
 }
-.store-subnav {
-  background: linear-gradient(90deg, rgba(62, 126, 167, 0.8) 0%, rgba(57, 105, 138, 0.8) 100%);
-  box-shadow: 0 0 3px #0006;
-  border-radius: 0;
+body:is([data-page='store'], [data-page='game']) #content {
+  max-width: calc(var(--store-width) + 2 * var(--store-gutter));
+  margin: 0 auto;
+  padding: 0 var(--store-gutter) 40px;
+}
+body[data-page='store'] #main {
+  scroll-padding-top: 70px;
+}
+body[data-page='store'] .toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 12;
+  width: min(calc(100% - 2 * var(--store-gutter)), var(--store-width));
+  height: auto;
+  min-height: 46px;
+  margin: 16px auto 0;
+  padding: 6px 8px;
+  background: linear-gradient(100deg, #2e5579, #163c68 64%, #17314f);
+  border: 0;
+  border-radius: 4px;
+  box-shadow: 0 3px 10px #0005;
+}
+body[data-page='store'] .search {
+  flex-basis: clamp(195px, 24vw, 320px);
+  background: #0e1b28a6;
+  color: #a6c3da;
+}
+@media (min-width: 1550px) {
+  :root {
+    --store-width: 1220px;
+  }
+}
+@media (max-width: 880px) {
+  .region > span {
+    display: none;
+  }
+  .store-subnav {
+    gap: 6px;
+  }
 }
 .store-platforms button {
   background: transparent;
-  color: #e5e5e5;
-  border-radius: 0;
+  color: #dbe7f3;
+  font-weight: 600;
+  border-radius: 2px;
 }
 .store-platforms button:hover {
   background: linear-gradient(90deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.05));
@@ -3569,6 +3667,14 @@ select {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--st-bright);
+}
+#showcase-block > .section-head {
+  margin-top: 24px;
+}
+#showcase-block > .section-head h2 {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.025em;
 }
 .section-head > span,
 .section-head > small,
@@ -3733,11 +3839,9 @@ body[data-page='recent'],
 body[data-page='accounts'] {
   background: var(--st-lib);
 }
-body[data-page='library'] main,
-body[data-page='favorites'] main,
-body[data-page='recent'] main,
-body[data-page='accounts'] main {
-  background: radial-gradient(ellipse 90% 360px at 50% 0, #2b303b 0%, transparent 100%), var(--st-lib);
+body:is([data-page='library'], [data-page='favorites'], [data-page='recent'], [data-page='accounts']) #main {
+  background: linear-gradient(180deg, #282c34, var(--st-lib) 470px);
+  scrollbar-color: #4c535f transparent;
 }
 .library-home {
   background: #ffffff0d;
@@ -3823,15 +3927,6 @@ body[data-page='accounts'] main {
 .library-card:hover {
   transform: scale(1.03);
   box-shadow: 0 8px 22px #000c;
-}
-.quick-rail button {
-  background: transparent;
-}
-.quick-rail button strong {
-  color: #dcdedf;
-}
-.quick-rail button small {
-  color: #8b929a;
 }
 /* ---- library game page: hero, play bar with stats, tabs ---- */
 .library-game-actions {
@@ -3926,31 +4021,51 @@ input[type='checkbox'] {
   accent-color: var(--st-blue);
 }
 /* ---- bottom bar: Steam client footer ---- */
+footer {
+  height: var(--client-footer-height);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 220px) minmax(0, 1fr);
+  background: var(--st-header);
+}
 .footer-add {
   justify-self: start;
   background: transparent;
   color: #b8bcbf;
   font-size: 12px;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.01em;
   padding: 4px 8px;
+}
+.footer-add-icon {
+  font-size: 17px;
+  vertical-align: -1px;
+  margin-right: 3px;
 }
 .footer-add:hover {
   color: var(--st-bright);
 }
 .footer-downloads {
   display: flex;
-  flex-direction: column;
   align-items: center;
+  justify-content: center;
+  gap: 8px;
   justify-self: center;
   max-width: 100%;
   line-height: 1.2;
+  text-align: left;
+}
+.footer-download-icon {
+  padding: 0 3px 1px;
+  border-bottom: 1px solid currentColor;
+  font-size: 18px;
+  line-height: 14px;
+  color: #aeb6c0;
 }
 .footer-downloads strong {
-  font-size: 11px;
-  letter-spacing: 0.08em;
+  display: block;
+  font-size: 12px;
   color: #b8bcbf;
 }
 .footer-downloads small {
+  display: block;
   font-size: 10px;
   color: #8b929a;
   max-width: 360px;
@@ -3988,6 +4103,14 @@ footer #scan:hover {
 }
 @media (max-width: 1450px) {
   .footer-right #footer-status {
+    display: none;
+  }
+}
+@media (max-width: 1200px) {
+  .footer-right {
+    gap: 8px;
+  }
+  .footer-right .footer-mode:not(:has(.demo-badge)) {
     display: none;
   }
 }
@@ -4419,7 +4542,7 @@ body[data-page='downloads'] main {
   background: transparent;
   color: #b8bcbf;
   font-size: 12px;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.01em;
   padding: 4px 8px;
 }
 .footer-friends:hover,
@@ -4677,11 +4800,12 @@ button.link:hover {
 }
 /* ---- gamepad mode (ui/bigpicture.js) ---- */
 .bp-enter {
-  margin-left: auto;
-  margin-right: 140px;
-  background: none;
+  flex: 0 0 29px;
+  height: 26px;
+  padding: 0;
+  background: #10151d;
   border: 0;
-  font-size: 18px;
+  font-size: 15px;
   cursor: pointer;
   -webkit-app-region: no-drag;
   opacity: 0.8;

@@ -446,13 +446,20 @@ function renderProfiles() {
     })
     .join('');
 }
-function regionControl() {
-  return `<label class="region">Регион каталога <select id="store-country">${Object.entries(countries)
-    .map(
-      ([k, v]) =>
-        `<option value="${k}" ${k === (state.settings.storeCountry || 'US') ? 'selected' : ''}>${v}</option>`
-    )
-    .join('')}</select></label>`;
+function renderStoreTools() {
+  const isStore = page === 'store';
+  $('#store-tools').hidden = !isStore;
+  $('#breadcrumb').hidden = isStore;
+  if (!isStore) return;
+  const region = $('#store-country');
+  if (!region.options.length)
+    for (const [code, label] of Object.entries(countries)) region.add(new Option(label, code));
+  region.value = state.settings.storeCountry || 'US';
+  document.querySelectorAll('[data-store-platform]').forEach(button => {
+    const selected = storeProvider === button.dataset.storePlatform;
+    button.classList.toggle('active', selected);
+    button.setAttribute('aria-pressed', selected);
+  });
 }
 async function searchCatalog(append = false) {
   const current = query.trim(),
