@@ -425,7 +425,7 @@ function treeRow(g, playing) {
       : g.progress
         ? '<small>Загрузка</small>'
         : source?.kind === 'family'
-          ? '<small class="tree-family">Семья</small>'
+          ? '<small class="tree-family" role="img" aria-label="Семейная библиотека">👪</small>'
           : ''
   }</button>`;
 }

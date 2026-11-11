@@ -166,7 +166,7 @@ test(
       // «Имеющиеся»: own, family and unconfirmed games are all there, with their labels.
       assert.equal(await p.locator('.library-grid .library-card').count(), 3);
       const family = p.locator('.library-card:has-text("Game 0") .pill.source-family');
-      assert.equal(await family.textContent(), 'Семья');
+      assert.equal(await family.textContent(), '👪');
       assert.equal(await family.getAttribute('title'), 'Семейная библиотека · владелец: Мама');
       assert.equal(
         await p.locator('.library-card:has-text("Game 1") .pill.source-unconfirmed').getAttribute('title'),

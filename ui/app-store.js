@@ -597,7 +597,7 @@ function librarySourceLabel(g) {
     const owners = (o.familyOwners || []).map(x => x.name || 'участник семьи');
     return {
       kind: 'family',
-      short: 'Семья',
+      short: '👪',
       text: 'Семейная библиотека' + (owners.length ? ' · владелец: ' + owners.join(', ') : ''),
     };
   }
