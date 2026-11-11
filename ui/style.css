@@ -7769,52 +7769,23 @@ body[data-page='community'] #content {
 .community[hidden] {
   display: none;
 }
-.community-bar {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 8px 16px;
-  background: #1b2838;
-  border-bottom: 1px solid #000;
-}
-.community-history {
-  display: flex;
-  gap: 4px;
-}
-.community-history button {
-  width: 30px;
-  height: 28px;
-  padding: 0;
-  background: #ffffff12;
-  color: #dcdedf;
-  border-radius: 2px;
-}
-.community-history button:disabled {
-  opacity: 0.35;
-}
-.community-tabs {
-  display: flex;
-  gap: 2px;
-}
-.community-tabs button {
-  padding: 6px 14px;
-  background: none;
-  color: #acb2b8;
-  font-size: 13px;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
-}
-.community-tabs button:hover {
-  color: #fff;
-}
-.community-tabs button.active {
-  color: #fff;
-  border-bottom-color: #66c0f4;
+.community {
+  position: relative;
 }
 .community-status {
-  flex: 1;
-  color: #8f98a0;
+  position: absolute;
+  top: 8px;
+  right: 16px;
+  z-index: 2;
+  padding: 4px 10px;
+  background: #000000b3;
+  color: #c7d5e0;
   font-size: 12px;
+  border-radius: 2px;
+  pointer-events: none;
+}
+.community-status:empty {
+  display: none;
 }
 .community-view {
   flex: 1;
@@ -7834,4 +7805,86 @@ body[data-page='community'] #content {
 .client-menu .nav-group.open > button {
   color: #fff;
   background: #3d4450;
+}
+
+/* Right click on a library game (app-gamemenu.js): Steam's context menu. */
+.gm-menu {
+  display: flex;
+  flex-direction: column;
+  min-width: 210px;
+  padding: 4px 0;
+  background: #3d4450;
+  box-shadow: 0 6px 18px #000a;
+}
+#game-menu {
+  position: fixed;
+  z-index: 200;
+}
+#game-menu[hidden] {
+  display: none;
+}
+.gm-menu button {
+  padding: 7px 14px;
+  font-size: 13px;
+  text-align: left;
+  white-space: nowrap;
+  color: #dcdedf;
+  background: none;
+  border: 0;
+  border-radius: 0;
+}
+.gm-menu button:hover:not([disabled]),
+.gm-menu button:focus-visible,
+.gm-sub:hover > .gm-parent {
+  color: #171d25;
+  background: #dcdedf;
+  outline: none;
+}
+.gm-menu button[disabled] {
+  opacity: 0.45;
+}
+.gm-menu .gm-strong {
+  font-weight: 700;
+}
+.gm-menu button.checked::before {
+  content: '✓ ';
+}
+.gm-menu hr {
+  margin: 4px 0;
+  border: 0;
+  border-top: 1px solid #ffffff1f;
+}
+.gm-menu hr:first-child,
+.gm-menu hr:last-child,
+.gm-menu hr + hr {
+  display: none;
+}
+.gm-sub {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+.gm-parent::after {
+  content: '▸';
+  float: right;
+  margin-left: 18px;
+}
+.gm-submenu {
+  display: none;
+  position: absolute;
+  top: -4px;
+  left: 100%;
+}
+.gm-flip .gm-submenu {
+  left: auto;
+  right: 100%;
+}
+.gm-sub:hover > .gm-submenu,
+.gm-sub:focus-within > .gm-submenu {
+  display: flex;
+}
+.gm-empty {
+  padding: 7px 14px;
+  font-size: 12px;
+  color: #8f98a0;
 }

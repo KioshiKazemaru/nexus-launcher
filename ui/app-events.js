@@ -706,7 +706,9 @@ CLICK_BY_ID['check-game-updates'] = async el => {
 };
 for (const id of ['nav-back', 'nav-forward'])
   CLICK_BY_ID[id] = async el => {
-    return goHistory(el.id === 'nav-back' ? -1 : 1);
+    const step = el.id === 'nav-back' ? -1 : 1;
+    if (communityStep(step)) return;
+    return goHistory(step);
   };
 for (const id of ['scan', 'empty-scan'])
   CLICK_BY_ID[id] = async el => {

@@ -8,6 +8,9 @@ const COMMUNITY_PAGES = {
   workshop: { name: 'Мастерская', url: 'https://steamcommunity.com/workshop/' },
   market: { name: 'Торговая площадка', url: 'https://steamcommunity.com/market/' },
 };
+const COMMUNITY_HIDE_CSS =
+  '#global_header, .responsive_header, #responsive_page_menu, .responsive_page_menu_ctn { display: none !important; }' +
+  ' .responsive_page_content { padding-top: 0 !important; }';
 let communitySection = 'workshop',
   communityView = null,
   communityLoaded = '';
@@ -15,17 +18,21 @@ let communitySection = 'workshop',
 function communityCrumb() {
   return `СООБЩЕСТВО <span>/ ${esc(COMMUNITY_PAGES[communitySection].name.toUpperCase())}</span>`;
 }
+// The page has no toolbar of its own: Nexus's «←» «→» step through the Steam pages first.
+function communityStep(step) {
+  const v = communityView;
+  if (page !== 'community' || !v?.__ready) return false;
+  if (step < 0 && v.canGoBack()) v.goBack();
+  else if (step > 0 && v.canGoForward()) v.goForward();
+  else return false;
+  return true;
+}
 function communityButtons() {
+  if (page !== 'community') return;
   const v = communityView;
   const ready = !!v?.__ready;
-  $('#community-back').disabled = !ready || !v.canGoBack();
-  $('#community-forward').disabled = !ready || !v.canGoForward();
-  $('#community-reload').disabled = !ready;
-  for (const b of document.querySelectorAll('[data-community-section]')) {
-    const on = b.dataset.communitySection === communitySection;
-    b.classList.toggle('active', on);
-    b.setAttribute('aria-selected', String(on));
-  }
+  if (ready && v.canGoBack()) $('#nav-back').disabled = false;
+  if (ready && v.canGoForward()) $('#nav-forward').disabled = false;
 }
 function createCommunityView(url) {
   const v = document.createElement('webview');
@@ -33,6 +40,8 @@ function createCommunityView(url) {
   v.setAttribute('src', url);
   v.addEventListener('dom-ready', () => {
     v.__ready = true;
+    // Nexus has its own navigation: hide Steam's site header (logo, МАГАЗИН/СООБЩЕСТВО…, «Установить Steam»).
+    v.insertCSS(COMMUNITY_HIDE_CSS).catch(() => {});
     communityButtons();
   });
   const moved = () => {
@@ -42,7 +51,9 @@ function createCommunityView(url) {
     try {
       path = new URL(v.getURL()).pathname;
     } catch {}
-    const section = Object.keys(COMMUNITY_PAGES).find(k => path.startsWith(new URL(COMMUNITY_PAGES[k].url).pathname));
+    const section = Object.keys(COMMUNITY_PAGES).find(k =>
+      path.startsWith(new URL(COMMUNITY_PAGES[k].url).pathname)
+    );
     if (section && section !== communitySection) {
       communitySection = communityLoaded = section;
       if (page === 'community') $('#breadcrumb').innerHTML = communityCrumb();
@@ -90,15 +101,3 @@ async function openCommunity(section) {
     $('#breadcrumb').innerHTML = communityCrumb();
   } else await setPage('community');
 }
-
-document.addEventListener('click', event => {
-  const tab = event.target.closest('[data-community-section]');
-  if (tab) return openCommunity(tab.dataset.communitySection);
-  const id = event.target.closest('button')?.id;
-  const v = communityView;
-  if (!v?.__ready) return;
-  if (id === 'community-back' && v.canGoBack()) v.goBack();
-  else if (id === 'community-forward' && v.canGoForward()) v.goForward();
-  else if (id === 'community-reload') v.reload();
-  else if (id === 'community-browser') call('openLink', v.getURL()).catch(() => {});
-});
