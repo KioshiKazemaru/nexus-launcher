@@ -430,7 +430,7 @@ function treeRow(g, playing) {
   }</button>`;
 }
 // Pages whose layout hides the library panel (see style.css).
-const TREE_HIDDEN = ['store', 'game', 'wishlist', 'accounts', 'tracking'];
+const TREE_HIDDEN = ['store', 'game', 'wishlist', 'accounts', 'tracking', 'review', 'community'];
 let treeHtml = null;
 function renderLibraryTree() {
   const el = $('#library-tree');
@@ -971,6 +971,8 @@ function render() {
             news: 'БИБЛИОТЕКА <span>/ НОВОСТИ</span>',
             activity: 'СООБЩЕСТВО <span>/ АКТИВНОСТЬ ДРУЗЕЙ</span>',
             profile: 'СООБЩЕСТВО <span>/ ПРОФИЛЬ</span>',
+            review: 'ПРОФИЛЬ <span>/ ИТОГИ NEXUS</span>',
+            community: communityCrumb(),
             friend: 'СООБЩЕСТВО <span>/ ПРОФИЛЬ ДРУГА</span>',
             tracking: 'МАГАЗИН <span>/ СКИДКИ</span>',
             accounts: 'NEXUS <span>/ НАСТРОЙКИ</span>',
@@ -998,6 +1000,10 @@ function render() {
                 ? activityPage()
                 : page === 'profile'
                   ? profilePage()
+                  : page === 'review'
+                    ? reviewPage()
+                  : page === 'community'
+                    ? ''
                   : page === 'friend'
                     ? friendPage()
                     : page === 'accounts'
@@ -1007,6 +1013,7 @@ function render() {
                         : librarySelection && page === 'library'
                           ? libraryGamePage()
                           : library();
+  renderCommunity();
   $('#footer-status').textContent = state.warnings[0] || '';
   renderDownloads();
   requestVisiblePrices();
@@ -1463,7 +1470,7 @@ async function buy(p) {
 // A top-menu drop-down closes once a page is picked, even with the mouse still over it.
 document.addEventListener('click', event => {
   const group = event.target.closest('.nav-group');
-  if (!group || !event.target.closest('[data-page]')) return;
+  if (!group || !event.target.closest('[data-page],[data-open-link]')) return;
   group.classList.add('closed');
   document.activeElement?.blur?.();
 });

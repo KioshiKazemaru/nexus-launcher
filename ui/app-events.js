@@ -982,3 +982,139 @@ $('#search').addEventListener('input', e => {
     if (query.trim()) searchTimer = setTimeout(() => searchCatalog(), 450);
   } else render();
 });
+
+// ---- the top menus, like the Steam client ------------------------------------------
+// «Nexus», «Вид», «Друзья», «Игры», «Справка» and the drop-downs of МАГАЗИН, БИБЛИОТЕКА,
+// СООБЩЕСТВО and the account name. Links (data-open-link) open in the browser.
+const MENU_STATUS_TEXT = { online: 'В сети', away: 'Нет на месте', invisible: 'Невидимка', off: 'Не в сети' };
+// Brings a part of a page into view once the page is drawn.
+function scrollToPart(selector) {
+  requestAnimationFrame(() => $(selector)?.scrollIntoView({ block: 'start', behavior: 'smooth' }));
+}
+const MENU_ACTIONS = {
+  'check-update': async () => {
+    state = await call('checkUpdate');
+    render();
+    const u = state.updater || {};
+    toast(
+      u.status === 'manual' || u.status === 'downloading' || u.status === 'ready'
+        ? `Вышла новая версия Nexus ${u.version || ''}`.trim()
+        : u.status === 'error'
+          ? 'Не удалось проверить обновления: ' + (u.error || 'нет связи с GitHub')
+          : `У вас последняя версия Nexus ${state.version || ''}`.trim()
+    );
+  },
+  'export-backup': el => CLICK_BY_ID['export-backup'](el),
+  'import-backup': el => CLICK_BY_ID['import-backup'](el),
+  diagnostics: el => CLICK_BY_ID['save-diagnostics'](el),
+  logs: el => CLICK_BY_ID['open-logs'](el),
+  quit: () => call('quitApp'),
+  friends: () => call('openFriendsWindow'),
+  // Обсуждения, Мастерская, Торговая площадка: a Nexus window signed in to Steam.
+  community: el => openCommunity(el.dataset.section),
+  'big-picture': () => globalThis.bigPicture?.enter(),
+  'add-game': async () => {
+    state = await call('add');
+    demo = false;
+    await setPage('library');
+  },
+  'hidden-games': async () => {
+    // Hidden games are among «Имеющиеся» (owned), not only the installed ones.
+    showHidden = true;
+    state = demo
+      ? { ...state, settings: { ...state.settings, libraryView: 'owned' } }
+      : await call('libraryView', 'owned');
+    await setPage('library');
+    if (!hiddenCount()) toast('Скрытых игр нет. Скрыть игру можно кнопкой «Скрыть» на её странице в библиотеке.');
+  },
+  recommendations: async () => {
+    await setPage('store');
+    scrollToPart('#recommendations');
+  },
+  charts: async () => {
+    storeList = 'top';
+    await setPage('store');
+    scrollToPart('.store-lists');
+  },
+  collections: async () => {
+    await setPage('library');
+    requestAnimationFrame(() => $('aside .collection-title')?.scrollIntoView({ block: 'start' }));
+  },
+  about: () =>
+    toast(
+      `Nexus ${state.version || ''} — открытый лаунчер для Steam и Epic Games. Лицензия MIT. Nexus не связан с Valve и Epic Games.`
+    ),
+};
+// Check marks on the status, the number of friends online, the account name on the tab.
+function renderClientMenu() {
+  const status = state?.settings?.myStatus || 'online';
+  for (const el of document.querySelectorAll('[data-set-status]')) {
+    const on = el.dataset.setStatus === status;
+    el.classList.toggle('checked', on);
+    el.setAttribute('aria-checked', String(on));
+    el.setAttribute('role', 'menuitemradio');
+  }
+  const list = $('#menu-friends-list');
+  if (list) {
+    const steamAll = [
+      ...new Map((friendsState.data?.steam || []).flatMap(x => x.friends).map(f => [f.id, f])).values(),
+    ];
+    const online = steamAll.filter(f => f.status !== 'offline').length;
+    list.textContent = friendsState.data ? `Список друзей (${online} в сети)` : 'Список друзей';
+  }
+  const persona = $('#nav-persona');
+  if (persona) {
+    const accounts = (state?.accountList || []).filter(a => a.status === 'connected' && a.name);
+    const name = (accounts.find(a => a.provider === 'steam') || accounts[0])?.name;
+    persona.textContent = (name || 'Профиль').toUpperCase();
+    persona.title = name ? `Профиль ${name}` : 'Профиль';
+  }
+}
+document.addEventListener('click', event =>
+  run(async () => {
+    const el = event.target.closest('[data-menu-action],[data-set-status]');
+    if (!el || el.disabled) return;
+    event.preventDefault();
+    // The drop-down closes once something is picked.
+    el.closest('.nav-group')?.classList.add('closed');
+    document.activeElement?.blur?.();
+    if (el.dataset.setStatus) {
+      if (demo) throw Error('В демонстрационном режиме статус не меняется');
+      await call('setStatus', el.dataset.setStatus);
+      state.settings.myStatus = el.dataset.setStatus;
+      renderClientMenu();
+      toast('Ваш статус: ' + MENU_STATUS_TEXT[el.dataset.setStatus]);
+      return;
+    }
+    await MENU_ACTIONS[el.dataset.menuAction]?.(el);
+  })
+);
+
+// The top strip («Nexus», «Вид», «Друзья», «Игры», «Справка») opens on a click, like the
+// Steam client: with one menu open, moving to another switches to it; a pick, a click
+// elsewhere or Esc closes it. The big tabs below keep opening on hover.
+function setClientMenu(group) {
+  for (const g of document.querySelectorAll('.client-menu .nav-group')) {
+    const on = g === group;
+    g.classList.toggle('open', on);
+    g.querySelector(':scope > button')?.setAttribute('aria-expanded', String(on));
+  }
+}
+document.addEventListener('click', event => {
+  const top = event.target.closest('.client-menu .nav-group > button');
+  if (top) {
+    const group = top.parentElement;
+    setClientMenu(group.classList.contains('open') ? null : group);
+    return;
+  }
+  // An item was picked, or the click was outside: close.
+  if (document.querySelector('.client-menu .nav-group.open')) setClientMenu(null);
+});
+document.addEventListener('mouseover', event => {
+  const top = event.target.closest?.('.client-menu .nav-group > button');
+  const open = document.querySelector('.client-menu .nav-group.open');
+  if (top && open && top.parentElement !== open) setClientMenu(top.parentElement);
+});
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && document.querySelector('.client-menu .nav-group.open')) setClientMenu(null);
+});

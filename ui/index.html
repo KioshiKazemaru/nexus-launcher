@@ -4,21 +4,73 @@
 <header class="topbar">
   <div class="app-strip">
     <div class="client-menu">
-      <button class="brand" data-page="store"><img src="assets/nexus.png" alt="">Nexus</button>
       <span class="nav-group">
-        <button class="client-menu-button" data-page="library">Вид</button>
+        <button class="brand" type="button" aria-haspopup="menu" aria-expanded="false"><img src="assets/nexus.png" alt="">Nexus</button>
         <span class="nav-menu">
-          <button data-page="library">Библиотека</button>
-          <button data-page="downloads">Загрузки</button>
-          <button data-page="storage">Хранилище</button>
+          <button data-page="accounts">Войти в другой аккаунт…</button>
+          <button data-page="accounts">Выйти из аккаунта…</button>
+          <hr>
+          <button data-menu-action="check-update">Проверить наличие обновлений Nexus…</button>
+          <button data-menu-action="export-backup">Сохранить резервную копию…</button>
+          <button data-menu-action="import-backup">Восстановить из резервной копии…</button>
+          <hr>
+          <button data-page="accounts">Настройки</button>
+          <button data-menu-action="quit">Выход</button>
         </span>
       </span>
-      <button class="client-menu-button" data-page="activity">Друзья</button>
       <span class="nav-group">
-        <button class="client-menu-button" data-page="recent">Игры</button>
+        <button class="client-menu-button" type="button" aria-haspopup="menu" aria-expanded="false">Вид</button>
         <span class="nav-menu">
+          <button data-page="library">Библиотека</button>
+          <button data-menu-action="hidden-games">Скрытые игры</button>
+          <button data-page="downloads">Загрузки</button>
+          <button data-page="storage">Хранилище</button>
+          <hr>
+          <button data-menu-action="big-picture">Режим Big Picture</button>
+          <hr>
+          <button data-menu-action="friends">Друзья и чат</button>
+          <button data-page="activity">Активность друзей</button>
+          <button data-page="news">Новости обновлений</button>
+        </span>
+      </span>
+      <span class="nav-group">
+        <button class="client-menu-button" type="button" aria-haspopup="menu" aria-expanded="false">Друзья</button>
+        <span class="nav-menu">
+          <button data-menu-action="friends" id="menu-friends-list">Список друзей</button>
+          <button data-open-link="https://steamcommunity.com/my/friends/add">Добавить друга…</button>
+          <button data-open-link="https://steamcommunity.com/my/edit/info">Сменить аватар или имя…</button>
+          <hr>
+          <button data-set-status="online">В сети</button>
+          <button data-set-status="away">Нет на месте</button>
+          <button data-set-status="invisible">Невидимка</button>
+          <button data-set-status="off">Не в сети</button>
+        </span>
+      </span>
+      <span class="nav-group">
+        <button class="client-menu-button" type="button" aria-haspopup="menu" aria-expanded="false">Игры</button>
+        <span class="nav-menu">
+          <button data-page="library">Библиотека игр</button>
           <button data-page="recent">Недавние</button>
           <button data-page="favorites">Избранное</button>
+          <hr>
+          <button data-open-link="https://store.steampowered.com/account/registerkey">Активировать в Steam…</button>
+          <button data-open-link="https://store.steampowered.com/account/redeemwalletcode">Использовать код кошелька Steam…</button>
+          <button data-open-link="https://store.steampowered.com/account/managegiftsandguestpasses">Управление подарками и гостевыми пропусками…</button>
+          <button data-menu-action="add-game">Добавить стороннюю игру в мою библиотеку…</button>
+        </span>
+      </span>
+      <span class="nav-group">
+        <button class="client-menu-button" type="button" aria-haspopup="menu" aria-expanded="false">Справка</button>
+        <span class="nav-menu">
+          <button data-open-link="https://help.steampowered.com/">Служба поддержки Steam</button>
+          <button data-open-link="https://www.epicgames.com/help/">Служба поддержки Epic Games</button>
+          <button data-open-link="https://github.com/KioshiKazemaru/nexus-launcher/issues">Сообщить о проблеме в Nexus</button>
+          <button data-open-link="https://github.com/KioshiKazemaru/nexus-launcher#code-signing-policy">Политика конфиденциальности</button>
+          <hr>
+          <button data-menu-action="diagnostics">Системный отчёт</button>
+          <button data-menu-action="logs">Журнал Nexus</button>
+          <hr>
+          <button data-menu-action="about">О Nexus</button>
         </span>
       </span>
       <span class="alpha" id="app-version"></span>
@@ -29,26 +81,52 @@
   </div>
   <nav aria-label="Разделы Nexus">
     <span class="nav-history"><button id="nav-back" aria-label="Назад" title="Назад" disabled>←</button><button id="nav-forward" aria-label="Вперёд" title="Вперёд" disabled>→</button></span>
-    <button class="nav active" data-page="store" data-nav-pages="store game">МАГАЗИН</button>
+    <span class="nav-group">
+      <button class="nav active" data-page="store" data-nav-pages="store game wishlist">МАГАЗИН</button>
+      <span class="nav-menu">
+        <button data-page="store">Популярное</button>
+        <button data-menu-action="recommendations">Рекомендации</button>
+        <button data-page="wishlist">Список желаемого <span class="menu-count" id="wish-count">0</span></button>
+        <button data-page="tracking">Скидки</button>
+        <button data-menu-action="charts">Чарты</button>
+        <button data-open-link="https://store.steampowered.com/points/shop">Магазин очков Steam</button>
+      </span>
+    </span>
     <span class="nav-group">
       <button class="nav" data-page="library" data-nav-pages="library recent favorites downloads storage">БИБЛИОТЕКА</button>
       <span class="nav-menu">
-        <button data-page="library">Главная</button>
+        <button data-page="library">Главная страница</button>
+        <button data-menu-action="collections">Коллекции</button>
         <button data-page="recent">Недавние</button>
         <button data-page="favorites">Избранное</button>
+        <hr>
         <button data-page="downloads">Загрузки</button>
         <button data-page="storage">Хранилище</button>
       </span>
     </span>
     <span class="nav-group">
-      <button class="nav" data-page="activity" data-nav-pages="activity news friend">СООБЩЕСТВО</button>
+      <button class="nav" data-page="activity" data-nav-pages="activity news friend community">СООБЩЕСТВО</button>
       <span class="nav-menu">
-        <button data-page="activity">Активность друзей</button>
+        <button data-page="activity">Главная страница</button>
         <button data-page="news">Новости</button>
+        <button data-menu-action="community" data-section="discussions">Обсуждения</button>
+        <button data-menu-action="community" data-section="workshop">Мастерская</button>
+        <button data-menu-action="community" data-section="market">Торговая площадка</button>
       </span>
     </span>
-    <button class="nav" data-page="profile">ПРОФИЛЬ</button>
-    <button class="nav" data-page="wishlist">ЖЕЛАЕМОЕ <span id="wish-count">0</span></button>
+    <span class="nav-group">
+      <button class="nav nav-persona" data-page="profile" data-nav-pages="profile review" id="nav-persona">ПРОФИЛЬ</button>
+      <span class="nav-menu">
+        <button data-page="activity">Активность</button>
+        <button data-page="profile">Профиль</button>
+        <button data-menu-action="friends">Друзья</button>
+        <button data-open-link="https://steamcommunity.com/my/groups/">Группы</button>
+        <button data-open-link="https://steamcommunity.com/my/screenshots/">Контент</button>
+        <button data-open-link="https://steamcommunity.com/my/badges/">Значки</button>
+        <button data-open-link="https://steamcommunity.com/my/inventory/">Инвентарь</button>
+        <button data-page="review">Итоги Nexus</button>
+      </span>
+    </span>
     <button class="nav" data-page="tracking">СКИДКИ</button>
     <button class="nav nav-settings" data-page="accounts">АККАУНТЫ</button>
   </nav>
@@ -68,6 +146,14 @@
     <label class="search"><span class="search-icon" aria-hidden="true"></span><input id="search" type="search" placeholder="Найти игру…" aria-label="Поиск игр"><kbd>Ctrl K</kbd></label>
   </div>
   <div id="content"></div>
+  <section id="community" class="community" hidden>
+    <div class="community-bar">
+      <span class="community-history"><button id="community-back" aria-label="Назад" title="Назад" disabled>←</button><button id="community-forward" aria-label="Вперёд" title="Вперёд" disabled>→</button><button id="community-reload" aria-label="Обновить" title="Обновить" disabled>↻</button></span>
+      <div class="community-tabs" role="tablist" aria-label="Разделы сообщества"><button role="tab" data-community-section="discussions">Обсуждения</button><button role="tab" data-community-section="workshop">Мастерская</button><button role="tab" data-community-section="market">Торговая площадка</button></div>
+      <span id="community-status" class="community-status" aria-live="polite"></span>
+      <button class="secondary" id="community-browser">Открыть в браузере</button>
+    </div>
+  </section>
 </main></div>
 <footer>
   <div class="footer-left">
@@ -87,4 +173,4 @@
   </div>
 </footer>
 <div id="store-hover" class="store-hover" role="status"></div><div id="library-hover" class="library-hover" role="status"></div><div id="bigpicture" class="bigpicture" hidden></div><div id="toast" role="status" aria-live="polite"></div><div id="update-popup" class="update-popup" role="dialog" aria-labelledby="update-popup-title" hidden></div><div id="offline-banner" class="offline-banner" hidden>Нет подключения к интернету · показаны сохранённые данные</div>
-<script src="demo.js"></script><script src="app-base.js"></script><script src="app-store.js"></script><script src="app-deals.js"></script><script src="app-library.js"></script><script src="app-social.js"></script><script src="app-events.js"></script><script src="app-boot.js"></script><script src="bigpicture.js"></script></body></html>
+<script src="demo.js"></script><script src="app-base.js"></script><script src="app-store.js"></script><script src="app-deals.js"></script><script src="app-library.js"></script><script src="app-social.js"></script><script src="app-review.js"></script><script src="app-community.js"></script><script src="app-events.js"></script><script src="app-boot.js"></script><script src="bigpicture.js"></script></body></html>

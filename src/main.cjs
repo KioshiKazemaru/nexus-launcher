@@ -80,6 +80,7 @@ const { IntegrationsService } = require('./main/integrations.cjs');
 const { ActionsService } = require('./main/actions.cjs');
 const { Updater } = require('./main/updater.cjs');
 const { Notices } = require('./main/notices.cjs');
+const { guardCommunityViews } = require('./main/community-view.cjs');
 const { RunningGames } = require('./main/running.cjs');
 const { Uninstaller } = require('./main/uninstall.cjs');
 const { SocialWindows } = require('./main/social.cjs');
@@ -244,6 +245,7 @@ function snapshot(full) {
       seenGiveaways: undefined,
       wishlistDismissed: undefined,
       noticeKeys: undefined,
+      playLog: undefined, // «Итоги Nexus» are computed on request (yearReview)
       knownAccounts: undefined,
       // History is long; the window shows the latest 30 entries.
       priceWatches: settings.priceWatches.map(w => ({
@@ -464,9 +466,15 @@ async function start() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      // СООБЩЕСТВО: Steam pages on the page itself, on the terms of community-view.cjs.
+      webviewTag: true,
     },
   });
   main.removeMenu();
+  guardCommunityViews(main.webContents, {
+    partition: () => ctx.accounts.partitionName(ctx.accounts.checkoutTarget('steam').key),
+    log: ctx.log,
+  });
   main.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   main.webContents.on('will-navigate', e => e.preventDefault());
   main.webContents.on('render-process-gone', (_e, d) => ctx.log.error('ui', `renderer gone: ${d.reason}`));

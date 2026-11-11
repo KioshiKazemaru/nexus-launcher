@@ -87,6 +87,8 @@ const channels = [
   'importBackup',
   'saveDiagnostics',
   'openLogs',
+  'quitApp',
+  'yearReview',
   'rendererError',
   'setKey',
   'notifyGiveaways',

@@ -427,6 +427,7 @@ function renderFriends() {
   const online = steamAll.filter(f => f.status !== 'offline').length;
   const unread = Object.values(unreadChats).reduce((n, x) => n + (Number(x) || 0), 0);
   count.textContent = friendsState.data ? `· ${online} в сети` : '';
+  if (typeof renderClientMenu === 'function') renderClientMenu();
   const badge = $('#friends-unread');
   if (badge) {
     badge.hidden = !unread;

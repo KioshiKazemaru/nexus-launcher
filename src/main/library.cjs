@@ -62,6 +62,7 @@ class LibraryService {
     this.state = {}; // account key → sync state
     this.checks = {}; // account key → in-flight sync
     this.games = [];
+    this.licences = new Map(); // account key → { at, ids }: every Steam licence, DLC included
     this.artMisses = new Map();
     this.offerToGame = new Map();
     this.progress = {};
@@ -875,15 +876,8 @@ class LibraryService {
     // 2. All licences, filtered to games.
     let licences = null;
     try {
-      const requested = 'https://store.steampowered.com/dynamicstore/userdata/?v=' + Date.now();
-      const r = await s.fetch(requested, {
-        credentials: 'include',
-        cache: 'no-store',
-        signal: AbortSignal.timeout(9000),
-      });
-      const u = new URL(r.url || requested);
-      if (r.ok && u.origin === 'https://store.steampowered.com' && u.pathname === '/dynamicstore/userdata/')
-        licences = parseSteamStoreLibrary(await r.json(), accountId);
+      const apps = await this.steamUserdata(key);
+      if (apps) licences = parseSteamStoreLibrary({ rgOwnedApps: apps }, accountId);
     } catch (e) {
       errors.push(e.message);
     }
@@ -933,6 +927,41 @@ class LibraryService {
     throw Error(
       'Steam не отдал библиотеку: ' + ([...new Set(errors)].slice(0, 2).join('; ') || 'нет ответа')
     );
+  }
+  // Every licence of a Steam account (games, DLC, soundtracks): the app ids from the
+  // store's dynamicstore/userdata, or null when the store does not answer as signed in.
+  async steamUserdata(key) {
+    const s = this.ctx.accounts.session(key);
+    if (!s) return null;
+    const requested = 'https://store.steampowered.com/dynamicstore/userdata/?v=' + Date.now();
+    const r = await s.fetch(requested, {
+      credentials: 'include',
+      cache: 'no-store',
+      signal: AbortSignal.timeout(9000),
+    });
+    const u = new URL(r.url || requested);
+    if (!r.ok || u.origin !== 'https://store.steampowered.com' || u.pathname !== '/dynamicstore/userdata/')
+      return null;
+    const data = await r.json();
+    const apps = data?.rgOwnedApps;
+    // Signed out, Steam answers with an empty list: that is "unknown", not "owns nothing".
+    if (!Array.isArray(apps) || !apps.length) return null;
+    const ids = apps.filter(id => Number.isInteger(id) && id > 0);
+    this.licences.set(key, { at: Date.now(), ids: new Set(ids.map(String)) });
+    this.ctx.log?.info('licences', `${key}: ${ids.length}`);
+    return ids;
+  }
+  // Steam app ids (DLC included) owned by any connected Steam account — for the store
+  // not to offer a DLC already bought. Read again at most every 10 minutes.
+  async steamLicences() {
+    const all = new Set();
+    for (const a of this.ctx.accounts.connected('steam')) {
+      const old = this.licences.get(a.key);
+      if (!old || Date.now() - old.at > 10 * 60 * 1000)
+        await this.steamUserdata(a.key).catch(e => this.ctx.log?.debug('licences', e.message));
+      for (const id of this.licences.get(a.key)?.ids || []) all.add(id);
+    }
+    return all;
   }
   async steamWindowLicences(key, accountId) {
     const s = this.ctx.accounts.session(key);

@@ -26,6 +26,8 @@ const defaults = () => ({
   noticeKeys: {},
   notifyWishSales: true,
   recent: [],
+  // «Итоги Nexus»: finished game sessions (see year-review.cjs).
+  playLog: [],
   custom: [],
   steamRoot: '',
   autoStart: false,

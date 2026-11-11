@@ -252,6 +252,7 @@ function applyState() {
   updateOffline();
   renderUpdatePopup();
   renderBell();
+  renderClientMenu();
   refreshProfileIfAccountsChanged();
   // Gamepad mode (ui/bigpicture.js) follows the state too.
   globalThis.bigPicture?.refresh();

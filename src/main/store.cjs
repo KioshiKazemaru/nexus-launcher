@@ -277,12 +277,20 @@ class StoreService {
       u.search = new URLSearchParams({ appids: appId, cc: country, l: 'russian' });
       return (await responseJSON(this.ctx.publicFetch, u.href))[appId];
     };
+    // DLC the Steam accounts already have are not offered: the library lists games only,
+    // the account's licences list the DLC too.
+    const licences = await this.ctx.library.steamLicences?.().catch(() => new Set());
+    const bought = id => !!licences?.has(String(id));
     const ids = [];
     for (const g of selected) {
       try {
         const data = await details(String(g.steam));
         if (data?.success)
-          ids.push(...(data.data?.dlc || []).filter(x => /^\d+$/.test(String(x))).slice(0, 3));
+          ids.push(
+            ...(data.data?.dlc || [])
+              .filter(x => /^\d+$/.test(String(x)) && !bought(x))
+              .slice(0, 3)
+          );
       } catch (e) {
         this.ctx.log?.debug('dlc', e.message);
       }

@@ -224,3 +224,49 @@ test(
     }
   }
 );
+
+test(
+  'top strip menus open on a click (not on hover), switch on hover while open, close on a pick, outside or Esc',
+  { skip: !chromium && 'playwright is not installed' },
+  async () => {
+    const browser = await chromium.launch();
+    try {
+      const p = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+      const errors = [];
+      p.on('pageerror', e => errors.push(e.message));
+      await p.addInitScript(mockApi);
+      await p.goto(page);
+      await p.waitForTimeout(300);
+      const view = p.locator('.client-menu .nav-group').nth(1); // Nexus, Вид, Друзья, Игры, Справка
+      const games = p.locator('.client-menu .nav-group').nth(3);
+      const menuOf = g => g.locator('.nav-menu');
+      await view.locator('> button').hover();
+      await p.waitForTimeout(150);
+      assert.ok(await menuOf(view).isHidden(), 'hover alone does not open it');
+      await view.locator('> button').click();
+      assert.ok(await menuOf(view).isVisible(), 'a click opens it');
+      assert.equal(await view.locator('> button').getAttribute('aria-expanded'), 'true');
+      await games.locator('> button').hover();
+      await p.waitForTimeout(100);
+      assert.ok(await menuOf(games).isVisible(), 'moving to another one switches while open');
+      assert.ok(await menuOf(view).isHidden());
+      await p.keyboard.press('Escape');
+      assert.ok(await menuOf(games).isHidden(), 'Esc closes');
+      await view.locator('> button').click();
+      await p.mouse.click(700, 600);
+      assert.ok(await menuOf(view).isHidden(), 'a click elsewhere closes');
+      await view.locator('> button').click();
+      await menuOf(view).locator('[data-page="downloads"]').click();
+      await p.waitForTimeout(150);
+      assert.ok(await menuOf(view).isHidden(), 'a pick closes');
+      assert.equal(await p.evaluate(() => page), 'downloads');
+      // The big tabs still open on hover.
+      await p.hover('button.nav[data-page="store"]');
+      await p.waitForTimeout(150);
+      assert.ok(await p.locator('button.nav[data-page="store"] + .nav-menu').isVisible());
+      assert.deepEqual(errors, []);
+    } finally {
+      await browser.close();
+    }
+  }
+);

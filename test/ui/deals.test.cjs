@@ -164,7 +164,8 @@ test(
       await p.addInitScript(mockApi);
       await p.goto(page);
       await p.waitForTimeout(400);
-      await p.click('button.nav[data-page="wishlist"]');
+      await p.hover('button.nav[data-page="store"]');
+      await p.click('.nav-menu button[data-page="wishlist"]');
       await p.waitForTimeout(150);
       const content = p.locator('#content');
       assert.match(await content.innerText(), /4 игр/);

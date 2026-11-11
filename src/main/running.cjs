@@ -11,6 +11,7 @@
 const path = require('node:path');
 const { dialog } = require('electron');
 const { listProcesses, endProcess } = require('./processes.cjs');
+const { recordSession } = require('../year-review.cjs');
 
 const POLL_MS = 15000;
 const CLOSE_WAIT_MS = 25000;
@@ -95,10 +96,21 @@ class RunningGames {
         this.ctx.gameEvents?.emit('start', { id, name: r.name, provider: r.provider, since: r.since });
       }
     for (const [id, r] of Object.entries(before))
-      if (!next[id])
+      if (!next[id]) {
+        this.logSession(id, r);
         this.ctx.gameEvents?.emit('stop', { id, name: r.name, provider: r.provider, since: r.since });
+      }
     if (changed) this.ctx.hub.publish();
     return next;
+  }
+  // «Итоги Nexus»: the finished session goes to the log.
+  logSession(id, r, now = Date.now()) {
+    const s = this.ctx.settings;
+    if (!s) return;
+    const next = recordSession(s.playLog, { id, name: r.name, provider: r.provider, since: r.since }, now);
+    if (next === s.playLog) return;
+    s.playLog = next;
+    this.ctx.storage?.saveSettings();
   }
   // "Недавние": the game moves to the top of the list.
   remember(id, time) {

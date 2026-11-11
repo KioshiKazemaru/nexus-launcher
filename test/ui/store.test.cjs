@@ -543,7 +543,8 @@ test(
       const current = () => p.evaluate(() => document.body.dataset.page);
       assert.equal(await p.locator('#nav-back').isDisabled(), true);
       await p.click('button.nav[data-page="library"]');
-      await p.click('button.nav[data-page="wishlist"]');
+      await p.hover('button.nav[data-page="store"]');
+      await p.click('.nav-menu button[data-page="wishlist"]');
       await p.click('#nav-back');
       assert.equal(await current(), 'library');
       await p.click('#nav-back');
