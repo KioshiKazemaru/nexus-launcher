@@ -249,6 +249,7 @@ function parseSaleInfo(json) {
           ? p.formatted_original_price.slice(0, 40)
           : null,
       saleEnd: discount && ends.length ? Math.min(...ends) : null,
+      ...(storeAssets(item.assets).image ? { image: storeAssets(item.assets).image } : {}),
     });
   }
   return out;
@@ -261,7 +262,7 @@ async function saleInfo(fetcher, appIds, country = 'US') {
       input_json: JSON.stringify({
         ids: appIds.slice(i, i + 100).map(appid => ({ appid: Number(appid) })),
         context: { language: 'russian', country_code: country },
-        data_request: { include_all_purchase_options: true },
+        data_request: { include_all_purchase_options: true, include_assets: true },
       }),
     });
     const r = await fetcher(u.href, { credentials: 'omit', signal: AbortSignal.timeout(15000) });
@@ -331,6 +332,7 @@ function parseStoreDetails(json, tagNames = new Map()) {
         .filter(Boolean)
         .slice(0, 6),
       capsule: asset(item.assets?.main_capsule_2x) || asset(item.assets?.main_capsule) || '',
+      header: asset(item.assets?.header) || '',
       releaseDate: Number.isFinite(released) && released > 0 ? released * 1000 : null,
     });
   }
@@ -389,12 +391,20 @@ async function storeDetails(fetcher, appIds, country = 'US') {
           include_reviews: true,
           include_release: true,
           include_tag_count: 6,
+          include_all_purchase_options: true,
         },
       }),
     });
     const r = await fetcher(u.href, { credentials: 'omit', signal: AbortSignal.timeout(15000) });
     if (!r.ok) throw Error(`Steam GetItems: HTTP ${r.status}`);
-    for (const [k, v] of parseStoreDetails(await r.json(), names)) result.set(k, v);
+    const json = await r.json();
+    // The end of a discount from the same answer ("до 24 ноября" on the store cards).
+    let sales = new Map();
+    try {
+      sales = parseSaleInfo(json);
+    } catch {}
+    for (const [k, v] of parseStoreDetails(json, names))
+      result.set(k, sales.get(k)?.saleEnd ? { ...v, saleEnd: sales.get(k).saleEnd } : v);
   }
   return result;
 }

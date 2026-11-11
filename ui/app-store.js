@@ -237,7 +237,7 @@ function cheapShelf(pool) {
     )
     .slice(0, 12);
   if (items.length < 3) return '';
-  return `<div class="section-head"><h2>ДО ${esc(money({ amount: limit, currency }).toUpperCase())}</h2><span>Недорогие игры Steam и Epic Games</span></div><div class="sale-rail">${items.map(card).join('')}</div>`;
+  return `<div class="section-head"><h2>ДО ${esc(money({ amount: limit, currency }).toUpperCase())}</h2><span>Недорогие игры Steam и Epic Games</span></div><div class="sale-rail">${items.map(g => card(g)).join('')}</div>`;
 }
 const storeListLabels = {
   featured: 'Актуальное',
@@ -392,7 +392,7 @@ function freeShelf() {
 function dlcShelf() {
   const items = dlcState.get(state.settings.storeCountry || 'US')?.items || [];
   if (!items.length) return '';
-  return `<div class="section-head"><h2>ДОПОЛНЕНИЯ ДЛЯ ВАШИХ ИГР</h2><span>Steam · для игр в библиотеке или на ПК</span></div><div class="dlc-rail">${items.map(card).join('')}</div>`;
+  return `<div class="section-head"><h2>ДОПОЛНЕНИЯ ДЛЯ ВАШИХ ИГР</h2><span>Steam · для игр в библиотеке или на ПК</span></div><div class="dlc-rail">${items.map(g => card(g)).join('')}</div>`;
 }
 async function requestDlc() {
   if (
@@ -564,10 +564,10 @@ function store() {
      : ''
  }
  ${errors.length ? `<div class="notice warning">${errors.map(esc).join(' · ')}. Результаты доступного магазина показаны ниже.</div>` : ''}${searchState.error && searching ? `<div class="notice warning">${esc(searchState.error)}</div>` : ''}
- ${!searching && discounted.length ? `<div class="section-head"><h2>СКИДКИ И ПРЕДЛОЖЕНИЯ</h2><button class="ghost" id="show-sales">Все скидки</button></div><div class="sale-rail">${discounted.map(card).join('')}</div>` : ''}
+ ${!searching && discounted.length ? `<div class="section-head"><h2>СКИДКИ И ПРЕДЛОЖЕНИЯ</h2><button class="ghost" id="show-sales">Все скидки</button></div><div class="sale-rail">${discounted.map(g => card(g)).join('')}</div>` : ''}
  ${!searching ? freeShelf() + dlcShelf() + categoryTiles(pool) + storeLists() + cheapShelf(pool) : ''}
  ${!searching ? `<div class="section-head" id="store-catalog"><h2>${storeTag ? 'МЕТКА: ' + esc(storeTag.toUpperCase()) : 'ВСЕ ИГРЫ НА ВИТРИНЕ'}</h2>${storeTag ? '<button class="ghost" data-store-tag-clear>✕ Сбросить метку</button>' : `<small>${items.length} ${plural(items.length, 'игра', 'игры', 'игр')} · Steam выбирается первым</small>`}</div>` : ''}
- ${priceControls()}<div class="grid">${items.map(card).join('')}</div>
+ ${priceControls()}<div class="grid">${items.map(g => card(g)).join('')}</div>
  ${!items.length && !searchState.loading && !(home?.loading && !searching) ? '<div class="empty"><h2>Нет подходящих игр</h2><p>Измените поиск, диапазон цены или выбранный магазин. Если подборки недоступны, нажмите «Обновить витрину».</p></div>' : ''}
  ${searching && Object.values(searchState.providers || {}).some(p => p.ok && p.total > (searchState.start || 0) + 24) ? `<div class="load-more"><button class="secondary" id="more-results" ${searchState.loading ? 'disabled' : ''}>Показать ещё</button></div>` : ''}
  <p class="footnote">Цены относятся к выбранному региону. Поиск, сравнение и карточки остаются в Nexus; покупку подтверждает официальный магазин.</p>`;

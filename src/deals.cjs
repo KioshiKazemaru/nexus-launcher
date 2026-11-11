@@ -67,6 +67,7 @@ async function steamDeals(fetcher, country, start = 0, sort = 'popular') {
         ...(s.price ? { price: s.price } : {}),
         ...(s.originalPrice ? { originalPrice: s.originalPrice } : {}),
         ...(s.saleEnd ? { saleEnd: s.saleEnd } : {}),
+        ...(s.image ? { image: s.image } : {}),
       };
     });
   } catch {}

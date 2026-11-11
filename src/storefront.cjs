@@ -73,6 +73,8 @@ async function withSteamDetails(fetcher, games, country) {
     if (!d) return g;
     return {
       ...g,
+      // The search lists only a 231×87 capsule, cropped and blurry in the cards.
+      image: d.header || g.image,
       desc: g.desc || d.description,
       tags: g.tags?.length && g.tags[0] !== 'Дополнение' ? g.tags : d.tags.length ? d.tags : g.tags,
       reviews: d.reviews,
@@ -82,6 +84,8 @@ async function withSteamDetails(fetcher, games, country) {
         o === steam
           ? {
               ...o,
+              image: d.header || o.image,
+              ...(d.saleEnd && o.discount > 0 && !o.saleEnd ? { saleEnd: d.saleEnd } : {}),
               description: o.description || d.description,
               tags: d.tags,
               screenshots: o.screenshots?.length ? o.screenshots : d.screenshots,

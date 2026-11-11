@@ -7444,3 +7444,17 @@ body[data-page='friend'] .layout > aside {
 .deals-block.watches > button {
   margin-bottom: 12px;
 }
+
+/* ---- 0.14.2: store rails ---------------------------------------------- */
+/* Rail covers keep the Steam header proportions (460×215) instead of a fixed
+   height that cropped the logos; tags stay on one line so cards line up. */
+.sale-rail .card-art.real-cover,
+.dlc-rail .card-art.real-cover {
+  height: auto;
+  aspect-ratio: 460/215;
+}
+.sale-rail .card-tags {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

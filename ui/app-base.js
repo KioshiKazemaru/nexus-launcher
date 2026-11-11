@@ -349,9 +349,11 @@ function safeImage(value) {
     return '';
   }
 }
+// Saved store lists may still hold the search's 231×87 capsule: its double-size file is sharper.
+const sharpCapsule = url => url.replace(/\/capsule_231x87\.jpg(?=\?|$)/,'/capsule_231x87_2x.jpg');
 function artwork(g) {
   return (
-    safeImage(g.image) ||
+    sharpCapsule(safeImage(g.image) || '') ||
     (g.steam
       ? `https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/${g.steam}/header.jpg`
       : '') ||

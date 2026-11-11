@@ -269,6 +269,37 @@ test('Steam: the price and the end of a discount from the store purchase options
   assert.throws(() => parseSaleInfo({}), /Steam/);
 });
 
+test('Steam store cards: the full header instead of the small search capsule', () => {
+  const { parseSaleInfo } = require('../src/steam-library.cjs');
+  const { parseSteamSearch } = require('../src/providers.cjs');
+  const sales = parseSaleInfo({
+    response: {
+      store_items: [
+        {
+          appid: 5175310,
+          assets: { asset_url_format: 'steam/apps/5175310/${FILENAME}?t=1', header: 'abc/header.jpg' },
+          best_purchase_option: { final_price_in_cents: '100', discount_pct: 35 },
+        },
+        {
+          appid: 6,
+          assets: { asset_url_format: 'https://evil.example/${FILENAME}', header: 'h.jpg' },
+          best_purchase_option: { final_price_in_cents: '100', discount_pct: 0 },
+        },
+      ],
+    },
+  });
+  assert.equal(
+    sales.get('5175310').image,
+    'https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/5175310/abc/header.jpg?t=1'
+  );
+  assert.equal(sales.get('6').image, undefined, 'an outside address is ignored');
+  const capsule = 'https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/5/f0/capsule_231x87.jpg?t=2';
+  const r = parseSteamSearch({
+    results_html: `<a class="search_result_row" href="https://store.steampowered.com/app/5/X/"><div class="search_capsule"><img src="${capsule}"></div><span class="title">X</span></a>`,
+  });
+  assert.equal(r.offers[0].image, capsule.replace('capsule_231x87.jpg', 'capsule_231x87_2x.jpg'));
+});
+
 test('Epic: the end of a discount from the price rules, only for a sale', () => {
   const { parseEpicSearch } = require('../src/providers.cjs');
   const element = (discountPrice, rules) => ({

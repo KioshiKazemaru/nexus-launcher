@@ -70,7 +70,10 @@ function parseSteamSearch(data, country = 'US') {
     if (!id) return;
     const name = el.find('.title').text().trim();
     if (!name) return;
-    const img = imageUrl(el.find('.search_capsule img').attr('src'));
+    // The double-size file of the same capsule is sharper in the store cards.
+    const img = imageUrl(
+      (el.find('.search_capsule img').attr('src') || '').replace(/\/capsule_231x87\.jpg(?=\?|$)/,'/capsule_231x87_2x.jpg')
+    );
     const amount =
       el.find('.discount_final_price').text().trim() ||
       el.find('.search_price').clone().children().remove().end().text().trim();

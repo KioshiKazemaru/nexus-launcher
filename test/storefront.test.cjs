@@ -135,7 +135,7 @@ test('store front: Steam details fill the games; a details failure keeps the sto
       desc: '',
       tags: [],
       storeOffers: [
-        { provider: 'steam', appId: '10' },
+        { provider: 'steam', appId: '10', discount: 35, image: 'small.jpg' },
         { provider: 'epic', appId: 'a' },
       ],
     },
@@ -156,6 +156,8 @@ test('store front: Steam details fill the games; a details failure keeps the sto
               success: 1,
               basic_info: { short_description: 'Описание' },
               tagids: [19],
+              assets: { asset_url_format: 'steam/apps/10/${FILENAME}', header: 'h1/header.jpg' },
+              best_purchase_option: { final_price_in_cents: '650', discount_pct: 35, active_discounts: [{ discount_end_date: 1795456800 }] },
               reviews: {
                 summary_filtered: {
                   review_count: 5,
@@ -175,6 +177,10 @@ test('store front: Steam details fill the games; a details failure keeps the sto
   assert.deepEqual(a.tags, ['Экшен']);
   assert.equal(a.reviews.label, 'Положительные');
   assert.equal(a.storeOffers[0].description, 'Описание');
+  const header = 'https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/10/h1/header.jpg';
+  assert.equal(a.image, header, 'the full header, not the search capsule');
+  assert.equal(a.storeOffers[0].image, header);
+  assert.equal(a.storeOffers[0].saleEnd, 1795456800000, 'the end of the discount from the same request');
   assert.deepEqual(a.storeOffers[1], { provider: 'epic', appId: 'a' }, 'other stores are untouched');
   assert.equal(b, games[1], 'Epic-only games are unchanged');
   assert.equal(requested.filter(u => /GetItems/.test(u)).length, 1, 'one request for all games');

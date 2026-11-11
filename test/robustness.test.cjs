@@ -227,3 +227,29 @@ test('recommendations: the last selection is answered at once while a changed li
   await new Promise(r => setImmediate(r));
   assert.deepEqual(await store.recommendations({ country: 'US' }), { items: ['new'] });
 });
+
+test('recommendations: Steam limiting every search is an error, not "nothing to suggest"', async () => {
+  const { StoreService } = require('../src/main/store.cjs');
+  const store = Object.create(StoreService.prototype);
+  Object.assign(store, {
+    ctx: {
+      log: { warn() {}, debug() {}, info() {} },
+      settings: { hidden: [] },
+      publicFetch: async url => {
+        if (/GetTagList/.test(url))
+          return { ok: true, json: async () => ({ response: { tags: [{ tagid: 19, name: 'Экшен' }] } }) };
+        if (/GetItems/.test(url))
+          return {
+            ok: true,
+            json: async () => ({ response: { store_items: [{ appid: 10, success: 1, tagids: [19] }] } }),
+          };
+        return { ok: false, status: 429, text: async () => '', json: async () => ({}) };
+      },
+    },
+    recCache: { tags: {}, epicSteam: {} },
+    saveRecCache() {},
+    mapEpicToSteam: async () => {},
+  });
+  const owned = [{ id: 'steam:10', provider: 'steam', name: 'A', steamIds: ['10'], minutes: 6000, installed: true }];
+  await assert.rejects(() => store.computeRecommendations(owned, 'US'), /ограничил запросы/);
+});

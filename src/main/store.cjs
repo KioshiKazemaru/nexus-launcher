@@ -476,14 +476,24 @@ class StoreService {
       .slice(0, 6);
     const queries = [...top.map(id => [id]), ...(top.length > 1 ? [[top[0], top[1]]] : [])];
     const offers = new Map();
+    const failures = [];
     await eachLimited(queries, 3, async ids => {
       try {
         for (const o of (await searchSteamByTags(this.ctx.publicFetch, ids, country, 30)).offers)
           if (!offers.has(o.appId)) offers.set(o.appId, o);
       } catch (e) {
+        failures.push(e.message);
         this.ctx.log?.debug('recommend', `search: ${e.message}`);
       }
     });
+    // Every search failed (Steam limits frequent requests with HTTP 429): that is not
+    // "nothing to suggest". An error keeps the last selection and is not cached.
+    if (queries.length && failures.length === queries.length)
+      throw Error(
+        failures.some(m => /HTTP 429/.test(m))
+          ? 'Steam временно ограничил запросы. Подборка обновится через несколько минут — нажмите ↻.'
+          : 'Поиск Steam сейчас недоступен. Попробуйте позже — нажмите ↻.'
+      );
     const index = recommend.ownedIndex(owned);
     const fresh = [...offers.values()].filter(o => !recommend.isOwned(index, o));
     if (!fresh.length) return { items: [], profile: profile.top, basedOn, checkedAt: Date.now() };
