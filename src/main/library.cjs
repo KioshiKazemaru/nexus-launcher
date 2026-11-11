@@ -835,7 +835,7 @@ class LibraryService {
         };
         this.rebuild();
         // A signed-in account: its store wishlist joins "Желаемое" too.
-        this.ctx.store?.wishlistSoon();
+        this.ctx.store?.wishlistSoon(`${provider}:${accountId}`);
         if (provider === 'epic')
           this.enrichEpic(key, accountId, epoch).catch(e => this.ctx.log?.warn('epic-meta', e.message));
         else if (offers.some(o => /^Steam #/.test(o.name) || !o.playtime))

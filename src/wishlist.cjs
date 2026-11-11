@@ -31,7 +31,9 @@ function steamWishlistGames(appIds, names = new Map()) {
     id: `steam:${appId}`,
     steam: appId,
     name: names.get(appId)?.name || `Steam #${appId}`,
-    image: steamImage(appId),
+    // New games keep their images under a hashed folder: the store's own paths.
+    image: names.get(appId)?.image || steamImage(appId),
+    ...(names.get(appId)?.portrait ? { portrait: names.get(appId).portrait } : {}),
     tags: [],
     desc: '',
   }));

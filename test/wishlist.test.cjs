@@ -20,6 +20,31 @@ test('Steam wishlist is ordered by priority; empty is allowed, broken is not', (
     tags: [],
     desc: '',
   });
+  // A new game: its images live under a hashed folder the store names.
+  const hashed = 'https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/20/abc123/header.jpg';
+  const tall =
+    'https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/20/abc123/library_600x900.jpg';
+  const [g] = w.steamWishlistGames(['20'], new Map([['20', { name: 'New', image: hashed, portrait: tall }]]));
+  assert.equal(g.image, hashed);
+  assert.equal(g.portrait, tall);
+});
+
+test('wishlists: a cover found later replaces the missing one of a saved entry', async () => {
+  const { StoreService } = require('../src/main/store.cjs');
+  const { LruMap } = require('../src/main/hub.cjs');
+  const store = Object.create(StoreService.prototype);
+  store.index = new LruMap(10);
+  store.catalogVersion = 0;
+  const plain = 'https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/20/header.jpg';
+  const hashed = 'https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/20/abc/header.jpg';
+  store.ctx = {
+    settings: { wishlist: ['steam:20'], wishlistFrom: {}, wishlistDismissed: {}, savedGames: {} },
+    storage: { saveSettings() {} },
+  };
+  store.index.set('steam:20', { id: 'steam:20', name: 'New', steam: '20', image: plain });
+  assert.equal(store.wishTarget({ id: 'steam:20', name: 'New', steam: '20', image: hashed }), 'steam:20');
+  assert.equal(store.index.get('steam:20').image, hashed);
+  assert.equal(store.ctx.settings.savedGames['steam:20'].image, hashed);
 });
 
 test('Epic wishlist keeps valid offers with store links and safe images only', () => {

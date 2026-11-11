@@ -159,6 +159,60 @@ test('wishlists: an Epic store page that is not signed in asks for «Войти 
   assert.match(other.errors[0], /HTTP 500/);
 });
 
+test('wishlists: a Steam account that signs in right after a sync is read at once', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 1_800_000_000_000 });
+  const store = wishStore({}, { steam: [10], epic: [] });
+  let syncs = 0;
+  const real = store.syncWishlists.bind(store);
+  store.syncWishlists = () => (syncs++, real());
+  store.wishRead = new Set(['epic:E1']);
+  store.wishStatus = { at: Date.now() - 60000 }; // a sync a minute ago
+  store.wishlistSoon('epic:E1'); // already read: waits for the 10 minutes
+  assert.equal(store.wishTimer, undefined);
+  store.wishlistSoon('steam:S1'); // not read yet: now
+  assert.ok(store.wishTimer);
+  t.mock.timers.tick(5000);
+  await new Promise(r => setImmediate(r));
+  await store.wishRunning;
+  assert.equal(syncs, 1);
+  assert.ok(store.wishRead.has('steam:S1'));
+});
+
+test('wishlists: a Steam account whose sign-in expired is read as a public wishlist', async () => {
+  const store = wishStore(
+    {
+      wishlist: ['steam:10'],
+      knownAccounts: { 'steam:0': { id: '76561198000000002', name: 'Old' } },
+    },
+    { steam: [], epic: [] }
+  );
+  delete store.steamWishlist; // the real one
+  store.ctx.accounts.connected = () => [];
+  store.ctx.accounts.session = () => assert.fail('no session without a sign-in');
+  let wish = [
+    { appid: 10, priority: 1 },
+    { appid: 20, priority: 0 },
+  ];
+  store.ctx.publicFetch = async url => {
+    if (url.includes('IWishlistService')) {
+      const u = new URL(url);
+      assert.equal(u.searchParams.get('steamid'), '76561198000000002');
+      assert.equal(u.searchParams.get('access_token'), null);
+      return response({ response: wish.length ? { items: wish } : {} });
+    }
+    return response({ response: { store_items: [] } });
+  };
+  const report = await store.syncWishlists();
+  assert.deepEqual(report.errors, []);
+  assert.deepEqual(store.ctx.settings.wishlist, ['steam:10', 'steam:20']);
+  assert.deepEqual(store.ctx.settings.wishlistFrom['steam:20'], ['steam:76561198000000002']);
+  // A private wishlist answers like an empty one: the games stay, the reason is shown.
+  wish = [];
+  const closed = await store.syncWishlists();
+  assert.match(closed.errors[0], /Steam \(Old\): нет входа в Steam, а список желаемого закрыт/);
+  assert.deepEqual(store.ctx.settings.wishlist, ['steam:10', 'steam:20']);
+});
+
 test('Epic store sign-in: a one-time code of the account, back to the store wishlist', async () => {
   const store = wishStore({}, { steam: [], epic: [] });
   store.ctx.accounts.tokens = { accessToken: async id => (assert.equal(id, 'E1'), 'tok') };

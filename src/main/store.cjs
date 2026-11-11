@@ -818,7 +818,16 @@ class StoreService {
   wishTarget(g) {
     const s = this.ctx.settings;
     if (!this.index.has(g.id)) this.index.set(g.id, g);
-    if (s.wishlist.includes(g.id) || s.wishlistDismissed[g.id]) return g.id;
+    if (s.wishlist.includes(g.id) || s.wishlistDismissed[g.id]) {
+      // A cover found later (Steam's hashed image path) replaces the one that is missing.
+      const old = this.index.get(g.id);
+      if (g.image && old && old.image !== g.image && s.wishlist.includes(g.id)) {
+        const fixed = { ...old, image: g.image, portrait: old.portrait || g.portrait };
+        this.index.set(g.id, fixed);
+        this.save(fixed);
+      }
+      return g.id;
+    }
     const key = normalize(g.name);
     const same = s.wishlist
       .map(id => this.index.get(id) || s.savedGames[id])
@@ -883,16 +892,28 @@ class StoreService {
     if (added || removed) this.catalogVersion++;
     return { added, removed };
   }
-  async steamWishlist(account) {
-    const s = this.ctx.accounts.session(account.key);
+  // signedIn: false for a Steam account whose Nexus sign-in expired; its wishlist is
+  // read as a public one by its SteamID.
+  async steamWishlist(account, signedIn = true) {
+    const s = signedIn ? this.ctx.accounts.session(account.key) : null;
     // A private wishlist needs the session token; a public one works without it.
-    const token = await steamLib
-      .cachedSessionToken((url, o) => s.fetch(url, o), account.id)
-      .catch(e => {
-        this.ctx.log.debug('wishlist', e.message);
-        return '';
-      });
+    const token = signedIn
+      ? await steamLib
+          .cachedSessionToken((url, o) => s.fetch(url, o), account.id)
+          .catch(e => {
+            this.ctx.log.debug('wishlist', e.message);
+            return '';
+          })
+      : '';
     const appIds = await wishlist.fetchSteamWishlist(this.ctx.publicFetch, account.id, token);
+    // Without the token a private wishlist looks empty: that is not "everything was
+    // removed", the games stay.
+    if (!token && !appIds.length)
+      throw Error(
+        signedIn
+          ? 'Steam не отдал список желаемого'
+          : 'нет входа в Steam, а список желаемого закрыт настройками приватности. Войдите в Steam в «Аккаунтах»'
+      );
     const names = await steamLib
       .storeItems(this.ctx.publicFetch, appIds, this.country())
       .catch(() => new Map());
@@ -930,8 +951,16 @@ class StoreService {
     this.ctx.hub.publish();
     this.wishRunning = (async () => {
       const report = { steam: 0, epic: 0, removed: 0, errors: [], storeSignIn: [] };
+      const readOk = new Set();
+      const steam = this.ctx.accounts.connected('steam');
+      // Steam accounts known from an earlier sign-in that is not active now.
+      const known = Object.entries(this.ctx.settings.knownAccounts || {})
+        .filter(([key, a]) => key.startsWith('steam:') && /^7656119\d{10}$/.test(a?.id || ''))
+        .filter(([, a]) => !steam.some(c => c.id === a.id))
+        .map(([key, a]) => ({ key, id: a.id, name: a.name || '' }));
       const accounts = [
-        ...this.ctx.accounts.connected('steam').map(a => ['steam', a, () => this.steamWishlist(a)]),
+        ...steam.map(a => ['steam', a, () => this.steamWishlist(a)]),
+        ...known.map(a => ['steam', a, () => this.steamWishlist(a, false)]),
         ...this.ctx.accounts.connected('epic').map(a => ['epic', a, () => this.epicWishlist(a)]),
       ];
       for (const [provider, account, read] of accounts) {
@@ -939,6 +968,7 @@ class StoreService {
           const games = await read();
           const ids = games.map(g => this.wishTarget(g));
           const r = this.applyWishlist(`${provider}:${account.id}`, ids);
+          readOk.add(`${provider}:${account.id}`);
           report[provider] += r.added;
           report.removed += r.removed;
         } catch (e) {
@@ -952,6 +982,7 @@ class StoreService {
           if (list.includes('legacy'))
             this.ctx.settings.wishlistFrom[id] = [...new Set(list.map(o => (o === 'legacy' ? 'nexus' : o)))];
       this.ctx.storage.saveSettings();
+      this.wishRead = readOk;
       this.wishStatus = {
         running: false,
         at: Date.now(),
@@ -973,10 +1004,16 @@ class StoreService {
   }
   // After a sign-in or a library refresh: one sync for several accounts, at most
   // every 10 minutes (the button and the 3-hour timer sync at once).
-  wishlistSoon() {
-    if (Date.now() - (this.wishStatus?.at || 0) < 600000 || this.wishTimer) return;
-    this.wishTimer = setTimeout(() => {
+  // origin: the account that just signed in ('steam:<SteamID>'); an account whose list
+  // the last sync did not read is synced at once, whatever the 10 minutes.
+  wishlistSoon(origin = '') {
+    const unread = origin && !this.wishRead?.has(origin);
+    if (this.wishTimer || (!unread && Date.now() - (this.wishStatus?.at || 0) < 600000)) return;
+    this.wishTimer = setTimeout(async () => {
       this.wishTimer = null;
+      // A sync already running did not include the account that just signed in.
+      await this.wishRunning?.catch(() => {});
+      if (unread && this.wishRead?.has(origin)) return;
       this.syncWishlists().catch(e => this.ctx.log?.warn('wishlist', e.message));
     }, 5000);
     this.wishTimer.unref?.();
