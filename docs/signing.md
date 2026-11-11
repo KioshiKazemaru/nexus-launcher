@@ -6,7 +6,7 @@ SignPath Foundation бесплатно подписывает open source про
 
 ## Что нужно сделать владельцу
 
-1. **Лицензия.** SignPath Foundation принимает только проекты под открытой лицензией (OSI: MIT, Apache-2.0, GPL-3.0 и т. п.). Сейчас в `package.json` стоит `"license": "UNLICENSED"`, а файла `LICENSE` нет. Выбор лицензии за владельцем проекта.
+1. **Лицензия** — готово: проект под MIT (`LICENSE`), в README есть раздел «Code signing policy» с ролями команды и политикой конфиденциальности, как требует SignPath Foundation. Включите двухфакторную защиту GitHub: https://github.com/settings/security
 2. **Заявка** на https://signpath.org (раздел для open source). SignPath проверяет проект: публичный репозиторий, сборка в CI, понятное описание. Учтите: README честно пишет, что вход в Epic использует учётные данные Epic Launcher, опубликованные Legendary. При проверке это может вызвать вопросы.
 3. **После одобрения** в SignPath:
    - проект с доверенной системой сборки GitHub (Trusted Build System → GitHub.com);
