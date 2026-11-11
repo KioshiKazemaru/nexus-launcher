@@ -242,20 +242,49 @@ class PresenceService {
     this.ctx.tray?.update();
   }
   // ---- friends -----------------------------------------------------------------
+  // The name of a Steam game a friend plays: Steam sends only its app id.
+  // From the library, the Steam store (any game, playtests too) or Steam's chat
+  // servers (not signed in while the Steam client runs). A miss is retried later.
   async appName(client, appId) {
     if (!appId) return '';
-    if (this.appNames.has(appId)) return this.appNames.get(appId);
-    const known = (this.ctx.library?.games || []).find(g =>
-      g.offers?.some(o => o.provider === 'steam' && String(o.appId) === String(appId))
-    );
-    let name = known?.name || '';
-    if (!name)
+    await this.appNamesFor(client, [appId]);
+    return this.appNames.get(Number(appId)) || '';
+  }
+  async appNamesFor(client, ids) {
+    const fresh = id => this.appNames.has(id) || Date.now() - (this.appNameMiss?.get(id) || 0) < 600000;
+    const want = [
+      ...new Set(ids.map(Number).filter(id => Number.isSafeInteger(id) && id > 0 && id < 2 ** 32)),
+    ].filter(id => !fresh(id));
+    if (!want.length) return;
+    const found = new Map();
+    for (const g of this.ctx.library?.games || [])
+      for (const o of g.offers || [])
+        if (o.provider === 'steam' && want.includes(Number(o.appId))) found.set(Number(o.appId), g.name);
+    let left = want.filter(id => !found.has(id));
+    if (left.length)
       try {
-        const r = await client.getProductInfo([appId], [], false);
-        name = r?.apps?.[appId]?.appinfo?.common?.name || '';
+        const items = await require('../steam-library.cjs').dlcItems(
+          (url, o) => this.ctx.publicFetch(url, o),
+          left.map(String),
+          this.ctx.settings?.storeCountry || 'US'
+        );
+        for (const x of items) found.set(Number(x.appId), x.name);
+      } catch (e) {
+        this.ctx.log.debug?.('presence', `app names: ${e.message}`);
+      }
+    left = left.filter(id => !found.has(id));
+    for (const id of left)
+      try {
+        const r = await client?.getProductInfo?.([id], [], false);
+        const name = r?.apps?.[id]?.appinfo?.common?.name;
+        if (name) found.set(id, name);
       } catch {}
-    this.appNames.set(appId, String(name).slice(0, 120));
-    return this.appNames.get(appId);
+    this.appNameMiss ||= new Map();
+    for (const id of want) {
+      const name = String(found.get(id) || '').slice(0, 120);
+      if (name) this.appNames.set(id, name);
+      else this.appNameMiss.set(id, Date.now());
+    }
   }
   async steamUser(account, client, sid, user) {
     const id = sid?.getSteamID64?.() || String(sid || '');

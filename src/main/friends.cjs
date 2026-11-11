@@ -477,6 +477,13 @@ class FriendsService {
       }
       // Only an app id comes for a friend in game: the name from the library or the Steam client.
       const client = this.ctx.presence?.clients?.get(String(account.id));
+      // One store request for all the games friends play now, not one per friend.
+      await this.ctx.presence
+        ?.appNamesFor?.(
+          client,
+          friends.filter(x => x.gameId && !x.game).map(x => x.gameId)
+        )
+        .catch(() => {});
       for (const x of friends)
         if (x.gameId && !x.game)
           x.game = (await this.ctx.presence?.appName(client, Number(x.gameId)).catch(() => '')) || '';
