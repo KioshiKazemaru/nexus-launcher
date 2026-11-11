@@ -1,21 +1,21 @@
 'use strict';
 // Automatic updates through electron-updater (GitHub Releases). Only active in a
 // packaged, installed build. electron-updater verifies the downloaded installer
-// against the release's SHA-512 and, on Windows, the publisher signature of the
-// currently installed version.
-//   Windows: the NSIS installer (latest.yml).
+// against the release's SHA-512.
 //   Linux:   the AppImage or the .deb package, whichever is installed (latest-linux.yml);
 //            the .deb asks for the administrator password when it installs.
-//   macOS:   macOS installs only updates signed by an Apple developer, and this build
-//            is not signed. Nexus finds the new version (latest-mac.yml) and offers its
-//            release page; the user installs it by hand.
+//   Windows: the installed version accepts only an installer signed by the publisher
+//            "Nexus", and the builds are not code-signed. Nexus finds the new version
+//            (latest.yml) and offers its release page; the user installs it by hand.
+//   macOS:   the same: macOS installs only updates signed by an Apple developer
+//            (latest-mac.yml).
 
 const RELEASES = 'https://github.com/KioshiKazemaru/nexus-launcher/releases';
 
 class Updater {
   constructor(ctx, platform = process.platform) {
     this.ctx = ctx;
-    this.manual = platform === 'darwin';
+    this.manual = platform === 'darwin' || platform === 'win32';
     this.state = { status: 'idle', version: null, error: '', manual: this.manual };
     this.updater = null;
   }
@@ -51,11 +51,14 @@ class Updater {
     this.set({ status: this.manual ? 'manual' : 'downloading', version: v });
   }
   // A build without an update source is not an error: a local build (no app-update.yml)
-  // or Linux started outside the AppImage and the .deb package.
+  // or Linux started outside the AppImage and the .deb package. An installer the system
+  // refuses for its missing signature is offered for download instead.
   failed(e) {
     const message = String(e?.message || e);
     this.ctx.log?.warn('update', message);
     if (/app-update\.yml|APPIMAGE env/.test(message)) this.set({ status: 'unsupported', error: '' });
+    else if (/not signed by the application owner/.test(message) && this.state.version)
+      this.set({ status: 'manual', manual: true, error: '' });
     else this.set({ status: 'error', error: message.slice(0, 200) });
   }
   set(patch) {

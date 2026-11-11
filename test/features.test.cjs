@@ -373,7 +373,7 @@ test('installing an update saves sign-in sessions before quitting', async () => 
   assert.deepEqual(order, ['sessions', 'quit', 'install']);
 });
 
-test('macOS finds an update and offers its release page instead of installing it', async () => {
+test('macOS and Windows find an update and offer its release page instead of installing it', async () => {
   const { Updater } = require('../src/main/updater.cjs');
   const ctx = { hub: { publish() {} }, log: { warn() {} } };
   const mac = new Updater(ctx, 'darwin');
@@ -387,12 +387,19 @@ test('macOS finds an update and offers its release page instead of installing it
   mac.found('1.0.0/../../evil');
   assert.equal(mac.state.version, null);
 
-  for (const platform of ['win32', 'linux']) {
-    const u = new Updater(ctx, platform);
-    u.found('0.13.1');
-    assert.equal(u.state.status, 'downloading', platform);
-    assert.equal(u.state.manual, false);
-  }
+  const win = new Updater(ctx, 'win32');
+  win.found('0.13.4');
+  assert.equal(win.state.status, 'manual');
+  assert.equal(win.releaseUrl(), 'https://github.com/KioshiKazemaru/nexus-launcher/releases/tag/v0.13.4');
+
+  const linux = new Updater(ctx, 'linux');
+  linux.found('0.13.1');
+  assert.equal(linux.state.status, 'downloading');
+  assert.equal(linux.state.manual, false);
+  // An installer refused for its missing signature: offered for download.
+  linux.failed(Error('New version 0.13.1 is not signed by the application owner: publisherNames: Nexus'));
+  assert.equal(linux.state.status, 'manual');
+  assert.equal(linux.releaseUrl(), 'https://github.com/KioshiKazemaru/nexus-launcher/releases/tag/v0.13.1');
 });
 
 test('Linux outside the AppImage and the .deb package has no update source, not an error', () => {

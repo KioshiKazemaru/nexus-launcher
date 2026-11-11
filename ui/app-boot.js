@@ -245,6 +245,7 @@ function applyState() {
           (state.accountList || []).find(a => a.key === el.dataset.accountMessage)?.message || '')
     );
   updateOffline();
+  renderUpdatePopup();
   // Gamepad mode (ui/bigpicture.js) follows the state too.
   globalThis.bigPicture?.refresh();
 
@@ -317,6 +318,40 @@ if (api?.onStateChanged)
     state = absorbState(next);
     scheduleApply();
   });
+// A newer version to download by hand (Windows, macOS): a small window in the corner
+// until it is downloaded or postponed; "Позже" hides it until the next version.
+const UPDATE_LATER = 'nexus.updateLater';
+function updateLater() {
+  try {
+    return localStorage.getItem(UPDATE_LATER) || '';
+  } catch {
+    return '';
+  }
+}
+function renderUpdatePopup() {
+  const box = $('#update-popup');
+  const u = state?.updater || {};
+  const show = u.status === 'manual' && !!u.version && updateLater() !== u.version && !demo;
+  if (box.hidden === !show && box.dataset.version === (u.version || '')) return;
+  box.dataset.version = u.version || '';
+  box.innerHTML = show
+    ? `<strong id="update-popup-title">Вышла новая версия Nexus ${esc(u.version)}</strong><p>У вас ${esc(state.version || '')}. Скачайте установщик и установите поверх: библиотека, аккаунты и настройки сохранятся.</p><div><button class="primary" data-update-popup="download">Скачать ↗</button><button class="secondary" data-update-popup="later">Позже</button></div>`
+    : '';
+  box.hidden = !show;
+}
+$('#update-popup').addEventListener('click', event =>
+  run(async () => {
+    const act = event.target.closest('[data-update-popup]')?.dataset.updatePopup;
+    if (!act) return;
+    try {
+      localStorage.setItem(UPDATE_LATER, state.updater?.version || '');
+    } catch {
+      /* the window simply shows again next time */
+    }
+    $('#update-popup').hidden = true;
+    if (act === 'download') await call('openUpdatePage');
+  })
+);
 // Offline: banner, and a refresh as soon as the network is back.
 function updateOffline() {
   const offline = navigator.onLine === false || state?.online === false;
@@ -386,6 +421,7 @@ new MutationObserver(() => {
   lastFreeAt = state.free?.checkedAt || 0;
   updateOffline();
   render();
+  renderUpdatePopup();
 })().catch(e => {
   $('#content').innerHTML =
     `<div class="notice warning">Не удалось загрузить приложение: ${esc(e.message)}</div>`;

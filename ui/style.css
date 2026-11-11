@@ -974,6 +974,37 @@ dialog::backdrop {
   opacity: 1;
   transform: translateY(0);
 }
+.update-popup {
+  position: fixed;
+  right: 26px;
+  bottom: 58px;
+  width: 340px;
+  max-width: calc(100vw - 32px);
+  padding: 16px 18px;
+  border-radius: 6px;
+  background: #1f2c3b;
+  border: 1px solid #5684ae;
+  color: #ebf5ff;
+  box-shadow: 0 10px 40px #0008;
+  z-index: 39;
+}
+.update-popup[hidden] {
+  display: none;
+}
+.update-popup strong {
+  display: block;
+  font-size: 14px;
+  margin-bottom: 6px;
+}
+.update-popup p {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: #acc3da;
+}
+.update-popup div {
+  display: flex;
+  gap: 8px;
+}
 .demo-badge {
   color: #dcbd78;
 }

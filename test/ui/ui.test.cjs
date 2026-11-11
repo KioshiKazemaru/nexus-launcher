@@ -500,7 +500,7 @@ test(
 );
 
 test(
-  'macOS: a new version is offered as a download, not installed',
+  'Windows and macOS: a new version is offered as a download, not installed',
   {
     skip: !chromium && 'playwright is not installed',
   },
@@ -525,12 +525,37 @@ test(
       });
       await p.waitForTimeout(150);
       const card = p.locator('.settings-card', { has: p.locator('#auto-update') });
-      assert.match(await card.innerText(), /Вышла версия 0\.13\.1.*вручную/s);
+      assert.match(await card.innerText(), /Вышла версия 0\.13\.1.*Скачайте установщик/s);
       assert.match(await card.innerText(), /Проверять обновления автоматически/);
       assert.equal(await p.locator('#install-update').count(), 0);
+      const updateCalls = () =>
+        p.evaluate(() => window.__calls.filter(c => c[0] === 'openUpdatePage').length);
+      // The small window in the corner: "Позже" hides it until the next version.
+      const popup = p.locator('#update-popup');
+      assert.ok(await popup.isVisible());
+      assert.match(await popup.innerText(), /Вышла новая версия Nexus 0\.13\.1/);
+      await p.click('[data-update-popup="later"]');
+      assert.ok(await popup.isHidden());
+      assert.equal(await updateCalls(), 0);
+      await p.evaluate(async () => {
+        const s = await window.nexus.state();
+        window.__push({ ...s, updater: { status: 'manual', version: '0.13.1', manual: true } });
+      });
+      await p.waitForTimeout(150);
+      assert.ok(await popup.isHidden());
+      await p.evaluate(async () => {
+        const s = await window.nexus.state();
+        window.__push({ ...s, updater: { status: 'manual', version: '0.13.2', manual: true } });
+      });
+      await p.waitForTimeout(150);
+      assert.match(await popup.innerText(), /0\.13\.2/);
+      await p.click('[data-update-popup="download"]');
+      await p.waitForTimeout(100);
+      assert.equal(await updateCalls(), 1);
+      assert.ok(await popup.isHidden());
       await p.click('#open-update');
       await p.waitForTimeout(100);
-      assert.ok(await p.evaluate(() => window.__calls.some(c => c[0] === 'openUpdatePage')));
+      assert.equal(await updateCalls(), 2);
       assert.deepEqual(errors, []);
     } finally {
       await browser.close();
