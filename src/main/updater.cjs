@@ -1,13 +1,22 @@
 'use strict';
-// Automatic updates through electron-updater (GitHub Releases, NSIS build).
-// Only active in a packaged, installed build. electron-updater verifies the
-// downloaded installer against the release's SHA-512 and, on Windows, the
-// publisher signature of the currently installed version.
+// Automatic updates through electron-updater (GitHub Releases). Only active in a
+// packaged, installed build. electron-updater verifies the downloaded installer
+// against the release's SHA-512 and, on Windows, the publisher signature of the
+// currently installed version.
+//   Windows: the NSIS installer (latest.yml).
+//   Linux:   the AppImage or the .deb package, whichever is installed (latest-linux.yml);
+//            the .deb asks for the administrator password when it installs.
+//   macOS:   macOS installs only updates signed by an Apple developer, and this build
+//            is not signed. Nexus finds the new version (latest-mac.yml) and offers its
+//            release page; the user installs it by hand.
+
+const RELEASES = 'https://github.com/KioshiKazemaru/nexus-launcher/releases';
 
 class Updater {
-  constructor(ctx) {
+  constructor(ctx, platform = process.platform) {
     this.ctx = ctx;
-    this.state = { status: 'idle', version: null, error: '' };
+    this.manual = platform === 'darwin';
+    this.state = { status: 'idle', version: null, error: '', manual: this.manual };
     this.updater = null;
   }
   available() {
@@ -19,12 +28,10 @@ class Updater {
     if (!app.isPackaged) return (this.updater = false);
     try {
       const { autoUpdater } = require('electron-updater');
-      autoUpdater.autoDownload = true;
-      autoUpdater.autoInstallOnAppQuit = true;
+      autoUpdater.autoDownload = !this.manual;
+      autoUpdater.autoInstallOnAppQuit = !this.manual;
       autoUpdater.on('checking-for-update', () => this.set({ status: 'checking', error: '' }));
-      autoUpdater.on('update-available', info =>
-        this.set({ status: 'downloading', version: info?.version || null })
-      );
+      autoUpdater.on('update-available', info => this.found(info?.version));
       autoUpdater.on('update-not-available', () => this.set({ status: 'current' }));
       autoUpdater.on('download-progress', p =>
         this.set({ status: 'downloading', percent: Math.round(p?.percent || 0) })
@@ -32,18 +39,24 @@ class Updater {
       autoUpdater.on('update-downloaded', info =>
         this.set({ status: 'ready', version: info?.version || null })
       );
-      // A local build has no update source (app-update.yml): not an error.
-      autoUpdater.on('error', e => {
-        const message = String(e?.message || e);
-        this.ctx.log?.warn('update', message);
-        if (/app-update\.yml/.test(message)) this.set({ status: 'unsupported', error: '' });
-        else this.set({ status: 'error', error: message.slice(0, 200) });
-      });
+      autoUpdater.on('error', e => this.failed(e));
       this.updater = autoUpdater;
     } catch {
       this.updater = false;
     }
     return this.updater;
+  }
+  found(version) {
+    const v = /^\d+\.\d+\.\d+$/.test(String(version)) ? String(version) : null;
+    this.set({ status: this.manual ? 'manual' : 'downloading', version: v });
+  }
+  // A build without an update source is not an error: a local build (no app-update.yml)
+  // or Linux started outside the AppImage and the .deb package.
+  failed(e) {
+    const message = String(e?.message || e);
+    this.ctx.log?.warn('update', message);
+    if (/app-update\.yml|APPIMAGE env/.test(message)) this.set({ status: 'unsupported', error: '' });
+    else this.set({ status: 'error', error: message.slice(0, 200) });
   }
   set(patch) {
     this.state = { ...this.state, ...patch };
@@ -61,6 +74,14 @@ class Updater {
       this.set({ status: 'error', error: e.message });
     }
     return this.state;
+  }
+  // The release page of the new version (macOS: the update is installed by hand).
+  releaseUrl() {
+    const v = this.state.version;
+    return v ? `${RELEASES}/tag/v${v}` : `${RELEASES}/latest`;
+  }
+  openRelease() {
+    return require('electron').shell.openExternal(this.releaseUrl());
   }
   async install() {
     const u = this.load();

@@ -372,3 +372,34 @@ test('installing an update saves sign-in sessions before quitting', async () => 
   await u.install();
   assert.deepEqual(order, ['sessions', 'quit', 'install']);
 });
+
+test('macOS finds an update and offers its release page instead of installing it', async () => {
+  const { Updater } = require('../src/main/updater.cjs');
+  const ctx = { hub: { publish() {} }, log: { warn() {} } };
+  const mac = new Updater(ctx, 'darwin');
+  assert.equal(mac.state.manual, true);
+  assert.equal(mac.releaseUrl(), 'https://github.com/KioshiKazemaru/nexus-launcher/releases/latest');
+  mac.found('0.13.1');
+  assert.equal(mac.state.status, 'manual');
+  assert.equal(mac.releaseUrl(), 'https://github.com/KioshiKazemaru/nexus-launcher/releases/tag/v0.13.1');
+  await assert.rejects(mac.install(), /не загружено/);
+  // Only a version number gets into the link.
+  mac.found('1.0.0/../../evil');
+  assert.equal(mac.state.version, null);
+
+  for (const platform of ['win32', 'linux']) {
+    const u = new Updater(ctx, platform);
+    u.found('0.13.1');
+    assert.equal(u.state.status, 'downloading', platform);
+    assert.equal(u.state.manual, false);
+  }
+});
+
+test('Linux outside the AppImage and the .deb package has no update source, not an error', () => {
+  const { Updater } = require('../src/main/updater.cjs');
+  const u = new Updater({ hub: { publish() {} }, log: { warn() {} } }, 'linux');
+  u.failed(Error('APPIMAGE env is not defined, current application is not an AppImage'));
+  assert.equal(u.state.status, 'unsupported');
+  u.failed(Error('net::ERR_INTERNET_DISCONNECTED'));
+  assert.equal(u.state.status, 'error');
+});

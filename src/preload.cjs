@@ -63,6 +63,7 @@ const channels = [
   'openProfile',
   'checkUpdate',
   'installUpdate',
+  'openUpdatePage',
   'getArtwork',
   'searchCatalog',
   'homeCatalog',

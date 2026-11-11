@@ -499,6 +499,45 @@ test(
   }
 );
 
+test(
+  'macOS: a new version is offered as a download, not installed',
+  {
+    skip: !chromium && 'playwright is not installed',
+  },
+  async () => {
+    const browser = await chromium.launch();
+    try {
+      const p = await browser.newPage();
+      const errors = [];
+      p.on('pageerror', e => errors.push(e.message));
+      await p.addInitScript(mockApi);
+      await p.goto(page);
+      await p.waitForTimeout(400);
+      await p.click('button.nav[data-page="accounts"]');
+      // A whole state from the main process, as on a Mac that found 0.13.1.
+      await p.evaluate(async () => {
+        const s = await window.nexus.state();
+        window.__push({
+          ...s,
+          platform: 'darwin',
+          updater: { status: 'manual', version: '0.13.1', manual: true },
+        });
+      });
+      await p.waitForTimeout(150);
+      const card = p.locator('.settings-card', { has: p.locator('#auto-update') });
+      assert.match(await card.innerText(), /Вышла версия 0\.13\.1.*вручную/s);
+      assert.match(await card.innerText(), /Проверять обновления автоматически/);
+      assert.equal(await p.locator('#install-update').count(), 0);
+      await p.click('#open-update');
+      await p.waitForTimeout(100);
+      assert.ok(await p.evaluate(() => window.__calls.some(c => c[0] === 'openUpdatePage')));
+      assert.deepEqual(errors, []);
+    } finally {
+      await browser.close();
+    }
+  }
+);
+
 test('demo mode without the native API', { skip: !chromium && 'playwright is not installed' }, async () => {
   const browser = await chromium.launch();
   try {

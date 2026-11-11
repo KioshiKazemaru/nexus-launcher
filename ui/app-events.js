@@ -601,6 +601,9 @@ CLICK_BY_ID['check-update'] = async el => {
 CLICK_BY_ID['install-update'] = async el => {
   await call('installUpdate');
 };
+CLICK_BY_ID['open-update'] = async el => {
+  await call('openUpdatePage');
+};
 CLICK_BY_ID['show-sales'] = async el => {
   priceFilter.sale = true;
   render();

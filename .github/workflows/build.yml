@@ -1,5 +1,6 @@
 # Lint, tests and test installers on Windows, macOS and Linux.
-# Started by hand or by a push to main; nothing is published.
+# Started by hand or by a push to main; nothing is published. The macOS and Linux
+# installers of a release are taken from this run's artifacts.
 name: build
 
 on:
@@ -17,19 +18,26 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # latest*.yml: what the installed Nexus reads to find an update; it goes into
+          # the release next to the installers.
           - os: windows-latest
             dist: npm run dist
-            files: dist/*.exe
+            files: |
+              dist/*.exe
+              dist/*.blockmap
+              dist/latest.yml
           - os: macos-latest
             dist: npm run dist:mac
             files: |
               dist/*.dmg
               dist/*.zip
+              dist/latest-mac.yml
           - os: ubuntu-latest
             dist: npm run dist:linux
             files: |
               dist/*.AppImage
               dist/*.deb
+              dist/latest-linux.yml
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     steps:
