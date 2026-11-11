@@ -114,16 +114,6 @@ function money(p) {
       : 'Цена недоступна';
   }
 }
-function tracking() {
-  const watches = (state.settings.priceWatches || []).filter(w =>
-    w.name.toLowerCase().includes(query.toLowerCase())
-  );
-  return `<div class="section-head"><h1>Отслеживание скидок</h1><button class="secondary" id="check-prices">↻ Проверить цены</button></div><p class="subheading">При запуске и каждый час, пока Nexus открыт. Изменения сохраняются между запусками.</p>${
-    watches.length
-      ? watches.map(watchCard).join('')
-      : '<div class="empty"><h2>Выбери игру в магазине</h2><p>В карточке выбери Steam или Epic и нажми «Следить за ценой». Можно отслеживать оба предложения отдельно.</p></div>'
-  }<p class="footnote">Уведомления появляются в системе и сохраняются здесь. После закрытия Nexus проверки прекращаются. Регион каждого отслеживания фиксируется при добавлении; недоступная цена не считается скидкой.</p>`;
-}
 // One watched price: the current price, the last check, the alert, the history and the target.
 function watchCard(w) {
   const checked = w.checkedAt
@@ -229,7 +219,7 @@ function salePrice(offer) {
   const price = displayPrice(offer);
   if (price) {
     const original = displayOriginal(offer, price);
-    return `<span class="price-value">${esc(price)}</span>${original ? `<del>${esc(original)}</del>` : ''}${offer.discount > 0 ? `<b class="sale-percent">−${offer.discount}%</b>` : ''}`;
+    return `<span class="price-value">${esc(price)}</span>${original ? `<del>${esc(original)}</del>` : ''}${offer.discount > 0 ? `<b class="sale-percent">−${offer.discount}%</b>` : ''}${saleEndTag(offer)}`;
   }
   return `<span class="price-pending" title="${esc(offer?.priceError || '')}">${offer?.priceStatus === 'error' ? 'Цена недоступна' : offer?.priceStatus === 'unavailable' ? esc(offer.priceError || 'Нет цены в регионе') : 'Загрузка цены…'}</span>`;
 }
@@ -381,7 +371,8 @@ function ownershipBadge(g) {
     ? `<div class="owned-badge">✓ Уже в библиотеке: ${ps.map(p => names[p]).join(' · ')}</div>`
     : '';
 }
-function card(g) {
+// extra: a line under the prices (where a wishlist entry came from).
+function card(g, extra = '') {
   g = game(g.id) || g;
   return `<article class="game-card" data-price-game="${esc(g.id)}" data-preview="${esc(g.id)}"><button class="heart ${has('wishlist', g.id) ? 'saved' : ''}" data-wish="${esc(g.id)}" aria-label="${has('wishlist', g.id) ? 'Убрать из' : 'Добавить в'} желаемое: ${esc(g.name)}">${has('wishlist', g.id) ? '♥' : '♡'}</button><button class="card-open" data-detail="${esc(g.id)}"><div class="card-art real-cover">${artTag(g)}</div><div class="card-info"><strong title="${esc(g.name)}">${esc(g.name)}</strong><div class="card-tags">${(g.tags || []).slice(0, 3).map(esc).join(' · ') || reviewLine(g, true)}</div><div class="card-prices">${
     priceOffers(g)
@@ -389,7 +380,7 @@ function card(g) {
         o => `<div class="card-price-row"><span>${names[o.provider]}</span><div>${salePrice(o)}</div></div>`
       )
       .join('') || '<span class="price-pending">Добавлена вручную</span>'
-  }</div>${ownershipBadge(g) || bestBadge(g)}</div></button></article>`;
+  }</div>${ownershipBadge(g) || bestBadge(g)}${extra}</div></button></article>`;
 }
 // ---- running games and friends --------------------------------------------
 // The running game of a store (for "В игре: …"); a manually added game counts for Steam.

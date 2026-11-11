@@ -158,6 +158,7 @@ test('Epic lists use the filters of the Epic store; "date not announced" (2099) 
   const now = Date.UTC(2026, 9, 16);
   assert.deepEqual(epicBrowseVariables('new', 'KZ', now), {
     country: 'KZ',
+    start: 0,
     count: 40,
     sortBy: 'releaseDate',
     sortDir: 'DESC',

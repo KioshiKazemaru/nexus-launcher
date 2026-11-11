@@ -241,6 +241,7 @@ function snapshot(full) {
       custom: undefined,
       savedGames: undefined,
       seenGiveaways: undefined,
+      wishlistDismissed: undefined,
       knownAccounts: undefined,
       // History is long; the window shows the latest 30 entries.
       priceWatches: settings.priceWatches.map(w => ({
@@ -259,6 +260,7 @@ function snapshot(full) {
     accountList: accounts.list(),
     integrations: integrations.status(),
     free: store.free,
+    wishlistSync: store.wishStatus || null,
     updater: ctx.updater.state,
     online: ctx.online(),
     version: app.getVersion(),
@@ -404,8 +406,11 @@ async function start() {
   ctx.windows = new StoreWindows({
     getMain: () => main,
     onAuthActivity: key => key.startsWith('steam:') && ctx.accounts.scheduleAuth(key),
-    onClosed: (key, _provider, purpose) =>
-      ctx.accounts.windowClosed(key, purpose).catch(e => ctx.log.warn('window', e.message)),
+    onClosed: (key, _provider, purpose) => {
+      ctx.accounts.windowClosed(key, purpose).catch(e => ctx.log.warn('window', e.message));
+      // Signed in to the Epic store for the wishlist: read it now.
+      if (purpose === 'wishlist') ctx.store.syncWishlists().catch(e => ctx.log.warn('wishlist', e.message));
+    },
   });
   ctx.integrations = new IntegrationsService(ctx);
   ctx.accounts = new AccountsService(ctx);
@@ -509,6 +514,11 @@ async function start() {
   setInterval(
     whenOnline('watch', () => ctx.store.watcher.check()),
     3600000
+  ).unref();
+  // Store wishlists: after sign-in (library.cjs asks for it) and every 3 hours.
+  setInterval(
+    whenOnline('wishlist', () => ctx.store.syncWishlists()),
+    3 * 3600000
   ).unref();
   setInterval(
     whenOnline('accounts', () => ctx.accounts.refreshAll()),

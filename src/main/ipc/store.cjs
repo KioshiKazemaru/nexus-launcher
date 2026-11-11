@@ -76,6 +76,25 @@ function registerStoreIpc(register, ctx) {
     return { opened: true, account: target.account?.name || null };
   });
   register('freeGames', () => store.freeGames(true));
+  register('syncWishlists', async () => ({
+    report: await store.syncWishlists(),
+    state: ctx.hub.reply(),
+  }));
+  register('deals', p => store.deals(p || {}), { quiet: true });
+  // «Войти в магазин Epic»: the official store window, signed in with a one-time code.
+  register('epicStoreSignIn', async key => {
+    const target = accounts.checkoutTarget('epic', optionalAccount(key));
+    if (!target.account) throw Error('Сначала подключите аккаунт Epic Games');
+    const url = await store.epicStoreSignInUrl(target.account);
+    ctx.windows.open({
+      key: target.key,
+      provider: 'epic',
+      session: target.session,
+      url,
+      purpose: 'wishlist',
+    });
+    return { opened: true };
+  });
   register('importWishlists', async () => ({
     report: await store.importWishlists(),
     state: ctx.hub.reply(),

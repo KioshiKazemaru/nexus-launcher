@@ -222,6 +222,55 @@ async function storeItems(fetcher, appIds, country = 'US') {
   return result;
 }
 
+// --- discounts --------------------------------------------------------------
+
+// The price of the main purchase option and when its discount ends, as the Steam
+// store shows them ("Скидка действует до 18 ноября"). Map appid → sale.
+function parseSaleInfo(json) {
+  const items = json?.response?.store_items;
+  if (!Array.isArray(items)) throw Error('Steam не вернул цены');
+  const out = new Map();
+  for (const item of items) {
+    const p = item?.best_purchase_option;
+    if (!/^\d+$/.test(String(item?.appid)) || !p) continue;
+    const final = Number(p.final_price_in_cents),
+      original = Number(p.original_price_in_cents);
+    const discount = Number(p.discount_pct) || 0;
+    const ends = (Array.isArray(p.active_discounts) ? p.active_discounts : [])
+      .map(d => Number(d?.discount_end_date) * 1000)
+      .filter(t => Number.isFinite(t) && t > 0);
+    out.set(String(item.appid), {
+      discount: Math.max(0, Math.min(100, discount)),
+      amount: Number.isFinite(final) ? final / 100 : null,
+      originalAmount: Number.isFinite(original) ? original / 100 : null,
+      price: typeof p.formatted_final_price === 'string' ? p.formatted_final_price.slice(0, 40) : null,
+      originalPrice:
+        discount && typeof p.formatted_original_price === 'string'
+          ? p.formatted_original_price.slice(0, 40)
+          : null,
+      saleEnd: discount && ends.length ? Math.min(...ends) : null,
+    });
+  }
+  return out;
+}
+async function saleInfo(fetcher, appIds, country = 'US') {
+  const result = new Map();
+  for (let i = 0; i < appIds.length; i += 100) {
+    const u = new URL('https://api.steampowered.com/IStoreBrowseService/GetItems/v1/');
+    u.search = new URLSearchParams({
+      input_json: JSON.stringify({
+        ids: appIds.slice(i, i + 100).map(appid => ({ appid: Number(appid) })),
+        context: { language: 'russian', country_code: country },
+        data_request: { include_all_purchase_options: true },
+      }),
+    });
+    const r = await fetcher(u.href, { credentials: 'omit', signal: AbortSignal.timeout(15000) });
+    if (!r.ok) throw Error(`Steam GetItems: HTTP ${r.status}`);
+    for (const [k, v] of parseSaleInfo(await r.json())) result.set(k, v);
+  }
+  return result;
+}
+
 // --- store front details (description, tags, reviews, screenshots) -------
 
 // What the Steam store shows next to a featured game. One GetItems request
@@ -520,6 +569,8 @@ module.exports = {
   fetchOwnedWithToken,
   parseStoreItems,
   storeItems,
+  parseSaleInfo,
+  saleInfo,
   parseStoreDetails,
   storeDetails,
   findSteamApp,

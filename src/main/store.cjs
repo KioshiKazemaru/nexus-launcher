@@ -24,6 +24,7 @@ const { storeUrl } = require('../core.cjs');
 const { fetchFreeGames, newGiveaways, giveawayKey } = require('../free-games.cjs');
 const wishlist = require('../wishlist.cjs');
 const steamLib = require('../steam-library.cjs');
+const dealsApi = require('../deals.cjs');
 const { LruMap } = require('./hub.cjs');
 const { bestOffer } = require('../compare.cjs');
 const recommend = require('../recommend.cjs');
@@ -710,7 +711,9 @@ class StoreService {
     const g = this.index.get(id) || this.ctx.library.games.find(x => x.id === id);
     if (g) this.save(g);
     const s = this.ctx.settings;
-    s[list] = s[list].includes(id) ? s[list].filter(x => x !== id) : [...s[list], id];
+    const adding = !s[list].includes(id);
+    if (list === 'wishlist') this.toggleWish(id, adding);
+    s[list] = adding ? [...s[list], id] : s[list].filter(x => x !== id);
     this.ctx.storage.saveSettings();
   }
   // account: optional account key ("steam:1", "epic:<id>"). A copy owned by
@@ -781,54 +784,265 @@ class StoreService {
   }
 
   // ---- wishlists ---------------------------------------------------------
+  //
+  // "Желаемое" = the wishlists of the connected Steam and Epic accounts + the games
+  // added in Nexus. settings.wishlistFrom remembers where each entry came from
+  // ('nexus', 'steam:<SteamID>', 'epic:<account id>'):
+  //   - a game removed from a store wishlist leaves Nexus too, unless it also came
+  //     from elsewhere (another account, or added in Nexus);
+  //   - a game the user removes in Nexus is not brought back by the next sync while
+  //     it stays in the store wishlist (settings.wishlistDismissed);
+  //   - an account that could not be read keeps its games.
 
-  async importWishlists() {
-    const report = { steam: 0, epic: 0, errors: [] };
-    const add = g => {
-      if (!this.index.has(g.id)) this.index.set(g.id, g);
+  wishOrigins(id) {
+    const s = this.ctx.settings;
+    return s.wishlistFrom[id] || (s.wishlist.includes(id) ? ['nexus'] : []);
+  }
+  // In Nexus: the heart of a card. Removing a game that is on a store wishlist hides
+  // it from Nexus (the store wishlist itself is not changed).
+  toggleWish(id, add) {
+    const s = this.ctx.settings;
+    if (add) {
+      // Back in Nexus: the store lists it was hidden from count again.
+      const stores = [...this.wishOrigins(id), ...(s.wishlistDismissed[id] || [])];
+      s.wishlistFrom[id] = [...new Set(['nexus', ...stores.filter(o => o !== 'legacy')])];
+      delete s.wishlistDismissed[id];
+      return;
+    }
+    const stores = this.wishOrigins(id).filter(o => o !== 'nexus' && o !== 'legacy');
+    if (stores.length) s.wishlistDismissed[id] = stores;
+    delete s.wishlistFrom[id];
+  }
+  // The wishlist entry of a store game: the game itself, or an entry of the same
+  // title from the other store (one card with both prices instead of two).
+  wishTarget(g) {
+    const s = this.ctx.settings;
+    if (!this.index.has(g.id)) this.index.set(g.id, g);
+    if (s.wishlist.includes(g.id) || s.wishlistDismissed[g.id]) return g.id;
+    const key = normalize(g.name);
+    const same = s.wishlist
+      .map(id => this.index.get(id) || s.savedGames[id])
+      .find(x => x && x.id !== g.id && normalize(x.name) === key);
+    if (!same) {
       this.save(this.index.get(g.id));
-      if (!this.ctx.settings.wishlist.includes(g.id)) {
-        this.ctx.settings.wishlist.push(g.id);
-        return 1;
+      return g.id;
+    }
+    // A Steam wishlist entry knows only its app id: its Steam offer is spelled out, or
+    // the card would show only the Epic price.
+    const offersOf = x =>
+      x.storeOffers?.length
+        ? x.storeOffers
+        : x.steam
+          ? [{ provider: 'steam', appId: x.steam, url: `https://store.steampowered.com/app/${x.steam}/` }]
+          : [];
+    const offers = [...offersOf(same)];
+    const incoming = offersOf(g);
+    for (const o of incoming) if (!offers.some(x => x.provider === o.provider)) offers.push(o);
+    const merged = { ...same, steam: same.steam || g.steam, storeOffers: offers };
+    this.index.set(same.id, merged);
+    this.save(merged);
+    return same.id;
+  }
+  // One store wishlist read successfully: its games are exactly `ids`.
+  applyWishlist(origin, ids) {
+    const s = this.ctx.settings;
+    // Entries from before origins were kept: 'legacy' until a store list claims them.
+    for (const id of s.wishlist) s.wishlistFrom[id] ||= ['legacy'];
+    const now = new Set(ids);
+    let added = 0,
+      removed = 0;
+    for (const [id, list] of Object.entries(s.wishlistFrom)) {
+      if (!list.includes(origin) || now.has(id)) continue;
+      const rest = list.filter(o => o !== origin);
+      if (rest.length) s.wishlistFrom[id] = rest;
+      else {
+        delete s.wishlistFrom[id];
+        s.wishlist = s.wishlist.filter(x => x !== id);
+        removed++;
       }
-      return 0;
-    };
-    for (const account of this.ctx.accounts.connected('steam')) {
-      try {
-        const s = this.ctx.accounts.session(account.key);
-        // A private wishlist needs the session token; a public one works without it.
-        const token = await steamLib
-          .cachedSessionToken((url, o) => s.fetch(url, o), account.id)
-          .catch(e => {
-            this.ctx.log.debug('wishlist', e.message);
-            return '';
-          });
-        const appIds = await wishlist.fetchSteamWishlist(this.ctx.publicFetch, account.id, token);
-        const names = await steamLib
-          .storeItems(this.ctx.publicFetch, appIds, this.country())
-          .catch(() => new Map());
-        for (const g of wishlist.steamWishlistGames(appIds, names)) {
-          const known = catalog.find(c => c.steam === g.steam);
-          report.steam += add(known || g);
+    }
+    for (const [id, list] of Object.entries(s.wishlistDismissed)) {
+      if (!list.includes(origin) || now.has(id)) continue;
+      const rest = list.filter(o => o !== origin);
+      if (rest.length) s.wishlistDismissed[id] = rest;
+      else delete s.wishlistDismissed[id];
+    }
+    for (const id of ids) {
+      if (s.wishlistDismissed[id]) {
+        if (!s.wishlistDismissed[id].includes(origin)) s.wishlistDismissed[id].push(origin);
+        continue;
+      }
+      const list = (s.wishlistFrom[id] || []).filter(o => o !== 'legacy');
+      if (!list.includes(origin)) list.push(origin);
+      s.wishlistFrom[id] = list;
+      if (!s.wishlist.includes(id)) {
+        s.wishlist.push(id);
+        added++;
+      }
+    }
+    if (added || removed) this.catalogVersion++;
+    return { added, removed };
+  }
+  async steamWishlist(account) {
+    const s = this.ctx.accounts.session(account.key);
+    // A private wishlist needs the session token; a public one works without it.
+    const token = await steamLib
+      .cachedSessionToken((url, o) => s.fetch(url, o), account.id)
+      .catch(e => {
+        this.ctx.log.debug('wishlist', e.message);
+        return '';
+      });
+    const appIds = await wishlist.fetchSteamWishlist(this.ctx.publicFetch, account.id, token);
+    const names = await steamLib
+      .storeItems(this.ctx.publicFetch, appIds, this.country())
+      .catch(() => new Map());
+    return wishlist.steamWishlistGames(appIds, names).map(g => catalog.find(c => c.steam === g.steam) || g);
+  }
+  async epicWishlist(account) {
+    const result = await this.ctx.epicStorePage(account.key).run(wishlist.EPIC_WISHLIST_PROBE);
+    // The account is signed in to Nexus, not to the store site. The store asks for a
+    // security check a person passes: the window shows «Войти в магазин Epic».
+    if (wishlist.epicNotSignedIn(result)) {
+      const e = Error('нужно войти в магазин Epic: нажмите «Войти в магазин Epic»');
+      e.storeSignIn = true;
+      throw e;
+    }
+    return wishlist.parseEpicWishlist(result, imageUrl);
+  }
+  // The Epic store site signed in with a one-time code of the connected account, as
+  // Epic Games Launcher opens its store: no password, only Epic's own security check.
+  async epicStoreSignInUrl(account) {
+    const { gameLoginCode } = require('../epic-games-api.cjs');
+    const token = await this.ctx.accounts.tokens.accessToken(account.id);
+    const code = await gameLoginCode(this.ctx.publicFetch, token);
+    const u = new URL('https://www.epicgames.com/id/exchange');
+    u.search = new URLSearchParams({
+      exchangeCode: code,
+      redirectUrl: 'https://store.epicgames.com/ru/wishlist',
+    });
+    return u.href;
+  }
+  // Reads the wishlists of all connected accounts. report: games added and removed
+  // per store, and the accounts that could not be read.
+  async syncWishlists() {
+    if (this.wishRunning) return this.wishRunning;
+    this.wishStatus = { ...this.wishStatus, running: true };
+    this.ctx.hub.publish();
+    this.wishRunning = (async () => {
+      const report = { steam: 0, epic: 0, removed: 0, errors: [], storeSignIn: [] };
+      const accounts = [
+        ...this.ctx.accounts.connected('steam').map(a => ['steam', a, () => this.steamWishlist(a)]),
+        ...this.ctx.accounts.connected('epic').map(a => ['epic', a, () => this.epicWishlist(a)]),
+      ];
+      for (const [provider, account, read] of accounts) {
+        try {
+          const games = await read();
+          const ids = games.map(g => this.wishTarget(g));
+          const r = this.applyWishlist(`${provider}:${account.id}`, ids);
+          report[provider] += r.added;
+          report.removed += r.removed;
+        } catch (e) {
+          report.errors.push(`${providerNames[provider]} (${account.name}): ${e.message}`);
+          if (e.storeSignIn) report.storeSignIn.push({ key: account.key, name: account.name });
         }
-      } catch (e) {
-        report.errors.push(`Steam (${account.name}): ${e.message}`);
       }
+      // Every account read: what no store claimed was added in Nexus.
+      if (!report.errors.length)
+        for (const [id, list] of Object.entries(this.ctx.settings.wishlistFrom))
+          if (list.includes('legacy'))
+            this.ctx.settings.wishlistFrom[id] = [...new Set(list.map(o => (o === 'legacy' ? 'nexus' : o)))];
+      this.ctx.storage.saveSettings();
+      this.wishStatus = {
+        running: false,
+        at: Date.now(),
+        errors: report.errors,
+        storeSignIn: report.storeSignIn,
+        accounts: accounts.length,
+      };
+      this.ctx.hub.publish();
+      this.initialPrices().catch(e => this.ctx.log?.warn('prices', e.message));
+      return report;
+    })().finally(() => {
+      this.wishRunning = null;
+    });
+    return this.wishRunning;
+  }
+  // The old button «Импортировать желаемое» does the same.
+  importWishlists() {
+    return this.syncWishlists();
+  }
+  // After a sign-in or a library refresh: one sync for several accounts, at most
+  // every 10 minutes (the button and the 3-hour timer sync at once).
+  wishlistSoon() {
+    if (Date.now() - (this.wishStatus?.at || 0) < 600000 || this.wishTimer) return;
+    this.wishTimer = setTimeout(() => {
+      this.wishTimer = null;
+      this.syncWishlists().catch(e => this.ctx.log?.warn('wishlist', e.message));
+    }, 5000);
+    this.wishTimer.unref?.();
+  }
+
+  // ---- discounts ------------------------------------------------------------
+
+  // A page of the games on sale. provider 'all' interleaves Steam and Epic; each store
+  // has its own position (cursor) in its list, null when it has no more.
+  async deals({ provider = 'all', sort = 'popular', steamStart = 0, epicStart = 0 } = {}) {
+    if (!['all', 'steam', 'epic'].includes(provider)) throw Error('Неизвестный магазин');
+    const country = this.country();
+    const key = JSON.stringify([provider, sort, steamStart, epicStart, country]);
+    this.dealsCache ||= new LruMap(40);
+    const old = this.dealsCache.get(key);
+    if (old && Date.now() - old.checkedAt < 600000) return old;
+    const want = (p, start) => (provider === 'all' || provider === p) && start !== null;
+    const [steam, epic] = await Promise.allSettled([
+      want('steam', steamStart) ? dealsApi.steamDeals(this.ctx.publicFetch, country, steamStart, sort) : null,
+      want('epic', epicStart) ? dealsApi.epicDeals(this.epicFetch, country, epicStart, sort) : null,
+    ]);
+    const errors = [];
+    const empty = { offers: [], total: 0, next: null };
+    const part = (r, name) => {
+      if (r.status === 'fulfilled') return r.value || empty;
+      errors.push(`${name}: ${/HTTP \d+/.exec(r.reason?.message)?.[0] || r.reason?.message || 'нет ответа'}`);
+      return empty;
+    };
+    const s = part(steam, 'Steam'),
+      e = part(epic, 'Epic Games');
+    const ordered = [];
+    for (let i = 0; i < Math.max(s.offers.length, e.offers.length); i++) {
+      if (s.offers[i]) ordered.push(s.offers[i]);
+      if (e.offers[i]) ordered.push(e.offers[i]);
     }
-    // Each Epic account has its own web session; its wishlist is read there.
-    for (const account of this.ctx.accounts.connected('epic')) {
-      try {
-        const result = await this.ctx.epicStorePage(account.key).run(wishlist.EPIC_WISHLIST_PROBE);
-        for (const g of wishlist.parseEpicWishlist(result, imageUrl)) report.epic += add(g);
-      } catch (e) {
-        report.errors.push(
-          `Epic (${account.name}): ${e.message} — войдите в магазин Epic этим аккаунтом через «Купить»`
-        );
-      }
-    }
-    this.ctx.storage.saveSettings();
-    this.initialPrices().catch(e => this.ctx.log?.warn('prices', e.message));
-    return report;
+    // Each offer is its own card: the same game may be on sale in one store only.
+    const items = ordered.map(o => {
+      const id = o.provider === 'steam' ? `steam:${o.appId}` : `epic:${o.appId}`;
+      const previous = this.index.get(id);
+      const g = {
+        ...previous,
+        id,
+        name: o.name,
+        ...(o.provider === 'steam' ? { steam: o.appId } : {}),
+        image: o.image || previous?.image || '',
+        tags: previous?.tags?.length ? previous.tags : o.tags || [],
+        desc: previous?.desc || o.desc || '',
+        storeOffers: [
+          o,
+          ...(previous?.storeOffers || []).filter(x => x.provider !== o.provider && x.country === country),
+        ],
+        pricesUpdatedAt: Date.now(),
+      };
+      this.index.set(id, g);
+      return g;
+    });
+    const answer = {
+      items,
+      country,
+      totals: { steam: s.total, epic: e.total },
+      next: { steamStart: s.next, epicStart: e.next },
+      errors,
+      checkedAt: Date.now(),
+    };
+    if (!errors.length) this.dealsCache.set(key, answer);
+    return answer;
   }
 
   // Data for the window: base catalog, saved games and recently priced games.

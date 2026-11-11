@@ -18,6 +18,9 @@ const defaults = () => ({
   preferred: {},
   favorites: [],
   wishlist: [],
+  // Where each wishlist entry came from and what was removed in Nexus (main/store.cjs).
+  wishlistFrom: {},
+  wishlistDismissed: {},
   recent: [],
   custom: [],
   steamRoot: '',

@@ -84,7 +84,15 @@ async function fetchGameOffers(fetcher, game, country, onOffer) {
         const u = new URL('https://store.steampowered.com/api/appdetails');
         u.search = new URLSearchParams({ appids: String(steam), cc: country, l: 'russian' });
         try {
-          return steamOffer((await responseJSON(fetcher, u.href))[steam], { ...game, steam }, country);
+          const offer = steamOffer((await responseJSON(fetcher, u.href))[steam], { ...game, steam }, country);
+          // appdetails has no end of the discount; the store's purchase options do.
+          if (offer.discount > 0)
+            try {
+              const { saleInfo } = require('./steam-library.cjs');
+              const end = (await saleInfo(fetcher, [String(steam)], country)).get(String(steam))?.saleEnd;
+              if (end) offer.saleEnd = end;
+            } catch {}
+          return offer;
         } catch (e) {
           return {
             provider: 'steam',

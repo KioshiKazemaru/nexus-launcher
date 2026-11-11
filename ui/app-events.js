@@ -290,7 +290,27 @@ const CLICK_BY_DATA = [
   [
     el => el.dataset.wish,
     async el => {
-      return toggle('wishlist', el.dataset.wish);
+      return toggleWish(el.dataset.wish);
+    },
+  ],
+  [
+    el => el.dataset.epicStoreSignin,
+    async el => {
+      await call('epicStoreSignIn', el.dataset.epicStoreSignin);
+    },
+  ],
+  [
+    el => el.dataset.wishFilter,
+    async el => {
+      wishFilter = el.dataset.wishFilter;
+      render();
+    },
+  ],
+  [
+    el => el.dataset.dealsProvider,
+    async el => {
+      dealsProvider = el.dataset.dealsProvider;
+      render();
     },
   ],
   [
@@ -556,7 +576,7 @@ CLICK_BY_ID['library-favorite'] = async el => {
   await toggle('favorites', librarySelection);
 };
 CLICK_BY_ID['library-wish'] = async el => {
-  await toggle('wishlist', librarySelection);
+  await toggleWish(librarySelection);
 };
 CLICK_BY_ID['sync-libraries'] = async el => {
   el.disabled = true;
@@ -581,18 +601,25 @@ CLICK_BY_ID['library-more'] = async el => {
   libraryLimit += LIBRARY_PAGE;
   render();
 };
-CLICK_BY_ID['import-wishlists'] = async el => {
+// «↻ Синхронизировать» in «Желаемое» and in «Аккаунтах».
+async function syncWishlists(el) {
   el.disabled = true;
   try {
-    const r = await call('importWishlists');
+    const r = await call('syncWishlists');
     state = r.state;
     render();
+    const { steam, epic, removed, errors } = r.report;
     toast(
-      `Добавлено в желаемое: Steam ${r.report.steam}, Epic ${r.report.epic}${r.report.errors.length ? '. ' + r.report.errors.join('; ') : ''}`
+      `Желаемое синхронизировано: новых из Steam ${steam}, из Epic ${epic}${removed ? `, убрано ${removed}` : ''}${errors.length ? '. ' + errors.join('; ') : ''}`
     );
   } finally {
     el.disabled = false;
   }
+}
+CLICK_BY_ID['import-wishlists'] = syncWishlists;
+CLICK_BY_ID['sync-wishlists'] = syncWishlists;
+CLICK_BY_ID['deals-more'] = async el => {
+  await requestSaleList(true);
 };
 CLICK_BY_ID['check-update'] = async el => {
   state = await call('checkUpdate');
@@ -721,7 +748,7 @@ CLICK_BY_ID['buy-selected'] = async el => {
   await buy(selectedProvider);
 };
 CLICK_BY_ID['detail-wish'] = async el => {
-  await toggle('wishlist', detailId);
+  await toggleWish(detailId);
   renderDetail();
 };
 CLICK_BY_ID['favorite'] = async el => {
@@ -821,6 +848,16 @@ document.addEventListener('change', event =>
     if (el.id === 'show-hidden') {
       showHidden = el.checked;
       libraryLimit = LIBRARY_PAGE;
+      render();
+      return;
+    }
+    if (el.id === 'wish-sort') {
+      wishSort = el.value;
+      render();
+      return;
+    }
+    if (el.id === 'deals-sort') {
+      dealsSort = el.value;
       render();
       return;
     }

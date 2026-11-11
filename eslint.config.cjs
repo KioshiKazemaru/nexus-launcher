@@ -48,6 +48,7 @@ const espree = require('espree');
 const WINDOW_PARTS = [
   'app-base.js',
   'app-store.js',
+  'app-deals.js',
   'app-library.js',
   'app-social.js',
   'app-events.js',

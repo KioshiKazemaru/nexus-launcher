@@ -791,7 +791,7 @@ function epicAccountCard(connected) {
 }
 // Wishlists and giveaways, then Steam collections.
 function importCards(steamConnected, epicConnected) {
-  return `<section class="settings-card"><h3>Списки желаемого и раздачи</h3><p>Перенести списки желаемого подключённых аккаунтов Steam и Epic в «Желаемое» Nexus. Повторный импорт добавляет только новые игры.</p><div class="account-actions"><button class="secondary" id="import-wishlists" ${steamConnected || epicConnected ? '' : 'disabled'}>Импортировать желаемое</button></div><label class="check"><input type="checkbox" id="notify-giveaways" ${state.settings.notifyGiveaways !== false ? 'checked' : ''}> Уведомлять о новых бесплатных играх Epic</label></section>
+  return `<section class="settings-card"><h3>Списки желаемого и раздачи</h3><p>Списки желаемого подключённых аккаунтов Steam и Epic попадают в «Желаемое» Nexus сами: после входа и каждые 3 часа. Игра, убранная из списка в магазине, исчезает и из Nexus.</p><div class="account-actions"><button class="secondary" id="import-wishlists" ${steamConnected || epicConnected ? '' : 'disabled'}>↻ Синхронизировать сейчас</button></div><label class="check"><input type="checkbox" id="notify-giveaways" ${state.settings.notifyGiveaways !== false ? 'checked' : ''}> Уведомлять о новых бесплатных играх Epic</label></section>
 <section class="settings-card"><h3>Коллекции Steam</h3><p>Перенести коллекции, скрытые и избранные игры из клиента Steam (для подключённых аккаунтов). Динамические коллекции Steam — это правила фильтрации, они не переносятся.</p><div class="account-actions"><button class="secondary" id="import-collections" ${steamConnected ? '' : 'disabled'}>Импортировать коллекции Steam</button></div></section>`;
 }
 function backupCard() {
@@ -986,7 +986,7 @@ function render() {
                     : page === 'accounts'
                       ? accounts() + epicImportPanel()
                       : page === 'tracking'
-                        ? tracking()
+                        ? dealsPage()
                         : librarySelection && page === 'library'
                           ? libraryGamePage()
                           : library();

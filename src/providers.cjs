@@ -220,6 +220,15 @@ function epicTags(tags) {
       .map(t => EPIC_TAGS[t.name] || t.name.slice(0, 50));
   return [...new Set([...pick('genre'), ...pick('feature')])].slice(0, 6);
 }
+// When the discount ends: the earliest end of the price rules Epic applied (a sale only).
+function epicSaleEnd(p, total) {
+  if (!(total?.originalPrice > total?.discountPrice)) return {};
+  const ends = (p?.lineOffers || [])
+    .flatMap(l => l?.appliedRules || [])
+    .map(r => Date.parse(r?.endDate || ''))
+    .filter(t => Number.isFinite(t) && t > 0);
+  return ends.length ? { saleEnd: Math.min(...ends) } : {};
+}
 function parseEpicSearch(data) {
   const result = data?.data?.Catalog?.searchStore;
   // GraphQL may return usable elements together with errors for single fields.
@@ -276,12 +285,13 @@ function parseEpicSearch(data) {
       price: price?.fmtPrice?.discountPrice || null,
       originalPrice: price?.fmtPrice?.originalPrice || null,
       currency: price?.currencyCode || null,
+      ...epicSaleEnd(x.price, price),
       url: /^[a-z0-9][a-z0-9-]{0,180}$/i.test(slug) ? `https://store.epicgames.com/p/${slug}` : null,
     });
   }
   return { offers, total: result.paging?.total || offers.length };
 }
-const EPIC_QUERY = `query NexusSearch($keywords:String,$country:String!,$start:Int!,$count:Int!){Catalog{searchStore(keywords:$keywords,country:$country,locale:"ru",start:$start,count:$count){elements{id namespace title description productSlug effectiveDate releaseDate keyImages{type url} tags{id name groupName} categories{path} items{id namespace} offerMappings{pageSlug pageType} catalogNs{mappings(pageType:"productHome"){pageSlug pageType}} price(country:$country){totalPrice{currencyCode originalPrice discountPrice currencyInfo{decimals} fmtPrice(locale:"ru"){originalPrice discountPrice}}}} paging{count total}}}}`;
+const EPIC_QUERY = `query NexusSearch($keywords:String,$country:String!,$start:Int!,$count:Int!){Catalog{searchStore(keywords:$keywords,country:$country,locale:"ru",start:$start,count:$count){elements{id namespace title description productSlug effectiveDate releaseDate keyImages{type url} tags{id name groupName} categories{path} items{id namespace} offerMappings{pageSlug pageType} catalogNs{mappings(pageType:"productHome"){pageSlug pageType}} price(country:$country){totalPrice{currencyCode originalPrice discountPrice currencyInfo{decimals} fmtPrice(locale:"ru"){originalPrice discountPrice}} lineOffers{appliedRules{endDate}}}} paging{count total}}}}`;
 function combineOffers(offers) {
   const groups = new Map();
   for (const offer of offers) {
@@ -407,11 +417,11 @@ async function searchSteamByTags(fetcher, tagIds, country, count = 30) {
 //   coming  announced games, soonest first ("Скоро появится"; no "date not announced")
 //   sales   discounted games ("Скидки")
 //   free    free-to-play games that are out
-const EPIC_BROWSE_QUERY = `query NexusBrowse($country:String!,$count:Int!,$sortBy:String,$sortDir:String,$releaseDate:String,$onSale:Boolean,$freeGame:Boolean){Catalog{searchStore(country:$country,locale:"ru",start:0,count:$count,category:"games/edition/base",sortBy:$sortBy,sortDir:$sortDir,releaseDate:$releaseDate,onSale:$onSale,freeGame:$freeGame){elements{id namespace title description productSlug effectiveDate releaseDate keyImages{type url} tags{id name groupName} categories{path} items{id namespace} offerMappings{pageSlug pageType} catalogNs{mappings(pageType:"productHome"){pageSlug pageType}} price(country:$country){totalPrice{currencyCode originalPrice discountPrice currencyInfo{decimals} fmtPrice(locale:"ru"){originalPrice discountPrice}}}} paging{count total}}}}`;
+const EPIC_BROWSE_QUERY = `query NexusBrowse($country:String!,$start:Int!,$count:Int!,$sortBy:String,$sortDir:String,$releaseDate:String,$onSale:Boolean,$freeGame:Boolean){Catalog{searchStore(country:$country,locale:"ru",start:$start,count:$count,category:"games/edition/base",sortBy:$sortBy,sortDir:$sortDir,releaseDate:$releaseDate,onSale:$onSale,freeGame:$freeGame){elements{id namespace title description productSlug effectiveDate releaseDate keyImages{type url} tags{id name groupName} categories{path} items{id namespace} offerMappings{pageSlug pageType} catalogNs{mappings(pageType:"productHome"){pageSlug pageType}} price(country:$country){totalPrice{currencyCode originalPrice discountPrice currencyInfo{decimals} fmtPrice(locale:"ru"){originalPrice discountPrice}} lineOffers{appliedRules{endDate}}}} paging{count total}}}}`;
 function epicBrowseVariables(kind, country, now = Date.now()) {
   const iso = t => new Date(t).toISOString();
   const tba = `${EPIC_TBA_YEAR}-01-01T00:00:00.000Z`;
-  const base = { country, count: 40 };
+  const base = { country, start: 0, count: 40 };
   if (kind === 'new')
     return { ...base, sortBy: 'releaseDate', sortDir: 'DESC', releaseDate: `[,${iso(now)}]` };
   if (kind === 'coming')
@@ -478,6 +488,7 @@ module.exports = {
   searchSteamByTags,
   browseEpic,
   epicBrowseVariables,
+  EPIC_BROWSE_QUERY,
   searchEpic,
   searchStores,
 };

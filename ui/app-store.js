@@ -756,15 +756,7 @@ function library() {
   let list = filteredLibrary();
   if (page === 'favorites') list = list.filter(g => has('favorites', g.id));
   if (page === 'recent') list = recentGames(list).slice(0, 60);
-  if (page === 'wishlist') {
-    const wished = state.catalog.filter(g => has('wishlist', g.id)).map(g => game(g.id) || g);
-    return `${notice()}<div class="section-head"><h1>Желаемое</h1><span>${wished.length} игр</span></div><div class="grid">${wished
-      .filter(g => !query || g.name.toLowerCase().includes(query.toLowerCase()))
-      .map(card)
-      .join(
-        ''
-      )}</div>${!wished.length ? '<div class="empty"><h2>Сохраняйте игры из магазина</h2><p>Нажмите сердечко на карточке, чтобы добавить игру в желаемое.</p></div>' : ''}`;
-  }
+  if (page === 'wishlist') return wishlistPage();
   const recent = recentGames(list).slice(0, 8),
     quick = list.slice(0, 5);
   return `${notice()}<div class="library-heading"><h1>${page === 'favorites' ? 'Избранное' : page === 'recent' ? 'Недавние игры' : collectionName() || 'Библиотека'}</h1><div class="library-view" role="group" aria-label="Состав библиотеки"><button data-library-view="installed" class="${libraryMode() === 'installed' ? 'active' : ''}">↓ Скачанные</button><button data-library-view="owned" class="${libraryMode() === 'owned' ? 'active' : ''}">▦ Имеющиеся</button></div><button class="ghost" id="sync-libraries">↻ Обновить аккаунты</button></div>${libraryTools()}<div id="library-status">${libraryStatus()}</div>

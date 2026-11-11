@@ -50,6 +50,10 @@ const EPIC_WISHLIST_PROBE = `(async()=>{
  return {items:list.map(x=>({offerId:x.offerId,namespace:x.namespace,title:x.offer?.title,slug:x.offer?.catalogNs?.mappings?.[0]?.pageSlug||x.offer?.productSlug,images:(x.offer?.keyImages||[]).map(i=>({type:i.type,url:i.url}))}))};
 })()`;
 
+// The store page is not signed in (its GraphQL answers "notLoggedIn").
+function epicNotSignedIn(result) {
+  return /notLoggedIn|not.?logged.?in|unauthori[sz]ed|HTTP 401/i.test(String(result?.error || ''));
+}
 function parseEpicWishlist(result, imageUrl) {
   if (!result || result.error)
     throw Error('Epic не открыл список желаемого: ' + (result?.error || 'нет ответа'));
@@ -85,5 +89,6 @@ module.exports = {
   fetchSteamWishlist,
   steamWishlistGames,
   EPIC_WISHLIST_PROBE,
+  epicNotSignedIn,
   parseEpicWishlist,
 };
