@@ -79,6 +79,7 @@ const { StoreService } = require('./main/store.cjs');
 const { IntegrationsService } = require('./main/integrations.cjs');
 const { ActionsService } = require('./main/actions.cjs');
 const { Updater } = require('./main/updater.cjs');
+const { Notices } = require('./main/notices.cjs');
 const { RunningGames } = require('./main/running.cjs');
 const { Uninstaller } = require('./main/uninstall.cjs');
 const { SocialWindows } = require('./main/social.cjs');
@@ -242,6 +243,7 @@ function snapshot(full) {
       savedGames: undefined,
       seenGiveaways: undefined,
       wishlistDismissed: undefined,
+      noticeKeys: undefined,
       knownAccounts: undefined,
       // History is long; the window shows the latest 30 entries.
       priceWatches: settings.priceWatches.map(w => ({
@@ -416,6 +418,12 @@ async function start() {
   ctx.accounts = new AccountsService(ctx);
   ctx.library = new LibraryService(ctx);
   ctx.store = new StoreService(ctx);
+  // The bell; its system notification opens the page the notice is about.
+  ctx.notices = new Notices(ctx, (title, body, n) =>
+    ctx.store.notify(title, body, () =>
+      ctx.showPage({ sale: 'wishlist', giveaway: 'store', update: 'accounts' }[n?.kind] || 'store')
+    )
+  );
   ctx.actions = new ActionsService(ctx);
   ctx.updater = new Updater(ctx);
   ctx.running = new RunningGames(ctx);

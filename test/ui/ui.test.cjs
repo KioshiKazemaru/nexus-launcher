@@ -545,10 +545,19 @@ test(
       assert.ok(await popup.isHidden());
       await p.evaluate(async () => {
         const s = await window.nexus.state();
-        window.__push({ ...s, updater: { status: 'manual', version: '0.13.2', manual: true } });
+        window.__push({
+          ...s,
+          updater: { status: 'manual', version: '0.13.2', manual: true, notes: ['Колокольчик', '<b>x</b>'] },
+        });
       });
       await p.waitForTimeout(150);
       assert.match(await popup.innerText(), /0\.13\.2/);
+      // «Что нового» from the release, as text.
+      assert.match(await popup.innerText(), /Что нового\s+Колокольчик\s+<b>x<\/b>/i);
+      assert.match(
+        await p.locator('.settings-card', { has: p.locator('#auto-update') }).innerText(),
+        /Что нового в 0\.13\.2/i
+      );
       await p.click('[data-update-popup="download"]');
       await p.waitForTimeout(100);
       assert.equal(await updateCalls(), 1);

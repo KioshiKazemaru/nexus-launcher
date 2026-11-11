@@ -21,6 +21,10 @@ const defaults = () => ({
   // Where each wishlist entry came from and what was removed in Nexus (main/store.cjs).
   wishlistFrom: {},
   wishlistDismissed: {},
+  // The bell: notices and what was already announced (main/notices.cjs).
+  notices: [],
+  noticeKeys: {},
+  notifyWishSales: true,
   recent: [],
   custom: [],
   steamRoot: '',

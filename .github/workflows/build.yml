@@ -55,6 +55,38 @@ jobs:
       - run: ${{ matrix.dist }}
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      # Windows code signing through SignPath (docs/signing.md). Only once the SignPath
+      # project is set up (repository variables SIGNPATH_* and the secret
+      # SIGNPATH_API_TOKEN), and not for pull requests: they get no secrets.
+      - name: Upload the unsigned installer for signing
+        id: unsigned
+        if: matrix.os == 'windows-latest' && vars.SIGNPATH_ORGANIZATION_ID != '' && github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexus-unsigned
+          path: dist/*.exe
+          if-no-files-found: error
+      - name: Sign the installer
+        if: steps.unsigned.outcome == 'success'
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: dist-signed
+      # The signed installer replaces the unsigned one; latest.yml names its new SHA-512
+      # and size. The block map belongs to the unsigned bytes: without it the update is
+      # downloaded whole.
+      - name: Put the signed installer in place
+        if: steps.unsigned.outcome == 'success'
+        shell: bash
+        run: |
+          cp dist-signed/*.exe dist/
+          rm -f dist/*.blockmap
+          node scripts/rehash-latest.cjs dist/latest.yml
       - uses: actions/upload-artifact@v4
         with:
           name: nexus-${{ matrix.os }}

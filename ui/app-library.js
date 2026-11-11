@@ -761,7 +761,14 @@ function updatesCard() {
         ? `<button class="primary" id="open-update" ${typeof u.progress === 'number' ? 'disabled' : ''}>Скачать и установить</button>`
         : '<button class="secondary" id="check-update">Проверить</button>';
   const auto = u.manual ? 'Проверять обновления автоматически' : 'Загружать обновления автоматически';
-  return `<section class="settings-card"><div class="settings-row"><div><h3>Обновления · Nexus ${esc(state.version || '')}</h3><p>${text}</p></div><div class="account-actions">${action}</div></div><label class="check"><input type="checkbox" id="auto-update" ${state.settings.autoUpdate !== false ? 'checked' : ''}> ${auto}</label></section>`;
+  return `<section class="settings-card"><div class="settings-row"><div><h3>Обновления · Nexus ${esc(state.version || '')}</h3><p>${text}</p>${
+    u.status === 'manual' && Array.isArray(u.notes) && u.notes.length
+      ? `<div class="update-notes"><small>Что нового в ${esc(u.version || '')}</small><ul>${u.notes
+          .slice(0, 4)
+          .map(n => `<li>${esc(n)}</li>`)
+          .join('')}</ul></div>`
+      : ''
+  }</div><div class="account-actions">${action}</div></div><label class="check"><input type="checkbox" id="auto-update" ${state.settings.autoUpdate !== false ? 'checked' : ''}> ${auto}</label></section>`;
 }
 function accounts() {
   const list = state.accountList || [];
@@ -796,7 +803,7 @@ function epicAccountCard(connected) {
 }
 // Wishlists and giveaways, then Steam collections.
 function importCards(steamConnected, epicConnected) {
-  return `<section class="settings-card"><h3>Списки желаемого и раздачи</h3><p>Списки желаемого подключённых аккаунтов Steam и Epic попадают в «Желаемое» Nexus сами: после входа и каждые 3 часа. Игра, убранная из списка в магазине, исчезает и из Nexus.</p><div class="account-actions"><button class="secondary" id="import-wishlists" ${steamConnected || epicConnected ? '' : 'disabled'}>↻ Синхронизировать сейчас</button></div><label class="check"><input type="checkbox" id="notify-giveaways" ${state.settings.notifyGiveaways !== false ? 'checked' : ''}> Уведомлять о новых бесплатных играх Epic</label></section>
+  return `<section class="settings-card"><h3>Списки желаемого и раздачи</h3><p>Списки желаемого подключённых аккаунтов Steam и Epic попадают в «Желаемое» Nexus сами: после входа и каждые 3 часа. Игра, убранная из списка в магазине, исчезает и из Nexus.</p><div class="account-actions"><button class="secondary" id="import-wishlists" ${steamConnected || epicConnected ? '' : 'disabled'}>↻ Синхронизировать сейчас</button></div><label class="check"><input type="checkbox" id="notify-giveaways" ${state.settings.notifyGiveaways !== false ? 'checked' : ''}> Уведомлять о новых бесплатных играх Epic</label><label class="check"><input type="checkbox" id="notify-wish-sales" ${state.settings.notifyWishSales !== false ? 'checked' : ''}> Уведомлять о скидках на игры из желаемого</label></section>
 <section class="settings-card"><h3>Коллекции Steam</h3><p>Перенести коллекции, скрытые и избранные игры из клиента Steam (для подключённых аккаунтов). Динамические коллекции Steam — это правила фильтрации, они не переносятся.</p><div class="account-actions"><button class="secondary" id="import-collections" ${steamConnected ? '' : 'disabled'}>Импортировать коллекции Steam</button></div></section>`;
 }
 function backupCard() {

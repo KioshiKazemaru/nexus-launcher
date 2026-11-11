@@ -868,6 +868,7 @@ document.addEventListener('change', event =>
       return;
     }
     if (el.id === 'notify-giveaways') state = await call('notifyGiveaways', el.checked);
+    if (el.id === 'notify-wish-sales') state = await call('notifyWishSales', el.checked);
     if (el.id === 'auto-update') state = await call('autoUpdate', el.checked);
     if (el.dataset.installTag && installDlg?.opts) {
       installDlg.tags[el.checked ? 'add' : 'delete'](el.dataset.installTag);

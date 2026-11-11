@@ -195,19 +195,35 @@ function newsShelf() {
     )
     .join('')}</div>`;
 }
-let profileState = { loading: false, data: null, error: '' };
+// The profile is loaded for a set of connected accounts (accounts): when the set changes
+// (a sign-in that finished after the profile was opened, a new account) it loads again.
+let profileState = { loading: false, data: null, error: '', accounts: '' };
+function connectedAccountKeys() {
+  return (state?.accountList || [])
+    .filter(a => a.status === 'connected')
+    .map(a => a.key)
+    .sort()
+    .join(',');
+}
 async function loadProfile(force = false) {
   if (!api?.profile || demo || profileState.loading) return;
-  profileState = { ...profileState, loading: true };
+  const accounts = connectedAccountKeys();
+  profileState = { ...profileState, loading: true, accounts };
+  if (page === 'profile') render();
   try {
     const data = await call('profile', { force });
     profileState = data?.stats
-      ? { loading: false, data, error: '' }
-      : { loading: false, data: null, error: 'Профиль недоступен' };
+      ? { loading: false, data, error: '', accounts }
+      : { loading: false, data: null, error: 'Профиль недоступен', accounts };
   } catch (e) {
-    profileState = { loading: false, data: profileState.data, error: e.message };
+    profileState = { loading: false, data: profileState.data, error: e.message, accounts };
   }
   if (page === 'profile') render();
+}
+// After a state update: the profile of other accounts than the shown one is reloaded.
+function refreshProfileIfAccountsChanged() {
+  if (page !== 'profile' || profileState.loading || (!profileState.data && !profileState.error)) return;
+  if (profileState.accounts !== connectedAccountKeys()) loadProfile(true);
 }
 // ---- building blocks of the Steam-style profile pages (mine, Epic, a friend's) ------
 // Hours from minutes: one decimal under ten hours.
@@ -527,7 +543,11 @@ function epicProfileMain(e) {
   );
 }
 function profilePage() {
-  if (!profileState.data && !profileState.loading && !profileState.error) loadProfile();
+  if (
+    !profileState.loading &&
+    ((!profileState.data && !profileState.error) || profileState.accounts !== connectedAccountKeys())
+  )
+    setTimeout(() => loadProfile(!!(profileState.data || profileState.error)));
   const d = profileState.data;
   if (!d)
     return `${notice()}<div class="empty"><h2>${esc(profileState.error || 'Загружаем профиль…')}</h2></div>`;
@@ -579,7 +599,7 @@ function profileEmptyPage(d) {
   const pc = found
     ? `<p>На компьютере найдено ${found} ${plural(found, 'игра', 'игры', 'игр')}. Они показаны в «Скачанных» с пометкой «Найдено на ПК» и не входят в статистику: без аккаунта Nexus не знает, ваши ли это игры или игры из Семейной библиотеки Steam.</p>`
     : '';
-  return `${notice()}<div class="section-head"><h1>Профиль</h1></div><div class="empty profile-empty"><h2>Подключите аккаунт Steam или Epic Games</h2><p>Профиль покажет ваши игры, часы и достижения после входа в аккаунт.</p>${pc}<button class="primary" data-page="accounts">Подключить аккаунт</button></div>`;
+  return `${notice()}<div class="section-head"><h1>Профиль</h1><button class="secondary" id="profile-refresh" ${profileState.loading ? 'disabled' : ''}>↻ Обновить</button></div><div class="empty profile-empty"><h2>Подключите аккаунт Steam или Epic Games</h2><p>Профиль покажет ваши игры, часы и достижения после входа в аккаунт.</p>${pc}<button class="primary" data-page="accounts">Подключить аккаунт</button></div>`;
 }
 function profileAccountCard(a) {
   const steam = a.provider === 'steam';
@@ -1074,7 +1094,7 @@ document.addEventListener('click', event =>
       render();
       toast('Комментарий удалён.');
     } else if (el.id === 'profile-refresh') {
-      profileState = { loading: false, data: profileState.data, error: '' };
+      profileState = { ...profileState, loading: false, error: '' };
       loadProfile(true);
     }
   })
