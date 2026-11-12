@@ -194,39 +194,3 @@ test('«Что нового»: the headlines of the release description', async 
   await u.loadNotes('0.13.6');
   assert.deepEqual(u.state.notes, []);
 });
-
-test("after code signing, latest.yml gets the signed installer's SHA-512 and size", () => {
-  const crypto = require('node:crypto');
-  const { rehash } = require('../scripts/rehash-latest.cjs');
-  const yml = [
-    'version: 0.14.0',
-    'files:',
-    '  - url: Nexus-Setup-0.14.0.exe',
-    '    sha512: OLD==',
-    '    size: 10',
-    'path: Nexus-Setup-0.14.0.exe',
-    'sha512: OLD==',
-    "releaseDate: '2026-11-11T10:01:27.536Z'",
-    '',
-  ].join('\n');
-  const signed = Buffer.from('signed installer');
-  const sha = crypto.createHash('sha512').update(signed).digest('base64');
-  const out = rehash(yml, name => {
-    assert.equal(name, 'Nexus-Setup-0.14.0.exe');
-    return signed;
-  });
-  assert.equal(
-    out,
-    [
-      'version: 0.14.0',
-      'files:',
-      '  - url: Nexus-Setup-0.14.0.exe',
-      `    sha512: ${sha}`,
-      `    size: ${signed.length}`,
-      'path: Nexus-Setup-0.14.0.exe',
-      `sha512: ${sha}`,
-      "releaseDate: '2026-11-11T10:01:27.536Z'",
-      '',
-    ].join('\n')
-  );
-});

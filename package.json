@@ -60,13 +60,6 @@
         }
       ],
       "icon": "ui/assets/nexus.ico",
-      "signtoolOptions": {
-        "publisherName": "Nexus",
-        "signingHashAlgorithms": [
-          "sha256"
-        ],
-        "rfc3161TimeStampServer": "http://timestamp.digicert.com"
-      },
       "artifactName": "Nexus-Setup-${version}.${ext}"
     },
     "nsis": {

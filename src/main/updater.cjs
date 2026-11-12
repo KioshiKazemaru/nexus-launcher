@@ -4,8 +4,8 @@
 // against the release's SHA-512.
 //   Linux:   the AppImage or the .deb package, whichever is installed (latest-linux.yml);
 //            the .deb asks for the administrator password when it installs.
-//   Windows: the installed version accepts only an installer signed by the publisher
-//            "Nexus", and the builds are not code-signed. Nexus finds the new version
+//   Windows: the builds are not code-signed (and versions up to 0.15.6 accept only
+//            an installer signed by the publisher "Nexus"). Nexus finds the new version
 //            (latest.yml) and offers it; "Скачать" downloads the installer from the
 //            release, checks it against the SHA-512 in latest.yml and starts it.
 //   macOS:   macOS installs only updates signed by an Apple developer: "Скачать"
