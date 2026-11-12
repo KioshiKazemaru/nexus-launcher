@@ -1,7 +1,7 @@
 {
   "name": "nexus-launcher",
   "productName": "Nexus Launcher",
-  "version": "0.16.0",
+  "version": "0.16.1",
   "private": true,
   "description": "Unified Steam and Epic library for Windows, macOS and Linux",
   "main": "src/main.cjs",
