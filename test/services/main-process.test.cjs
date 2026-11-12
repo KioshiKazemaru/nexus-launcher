@@ -247,7 +247,9 @@ test('launch options, status and overlay settings are saved; bad values are refu
   );
   assert.equal(await call('setStatus', 'away'), 'away');
   await assert.rejects(call('setStatus', 'busy'), /Неизвестный статус/);
-  await assert.rejects(call('openLink', 'https://evil.test/'), /недоступна/);
+  // Web pages open in the Nexus browser; anything else is refused.
+  await assert.rejects(call('openLink', 'javascript:alert(1)'), /недоступна/);
+  await assert.rejects(call('openLink', 'file:///C:/Windows/win.ini'), /недоступна/);
   await call('setStatus', 'online');
 });
 

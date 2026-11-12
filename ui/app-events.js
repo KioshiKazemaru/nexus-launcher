@@ -574,7 +574,7 @@ CLICK_BY_ID['report-problem'] = async el => {
   const r = await call('reportProblem');
   if (r)
     toast(
-      `Отчёт ${r.file} сохранён, открыта форма на GitHub. Просмотрите файл и прикрепите его к сообщению.`
+      `Отчёт ${r.file} сохранён в папку «${r.folder}». Форма GitHub открыта в браузере Nexus — прикрепите к ней этот файл.`
     );
 };
 CLICK_BY_ID['open-logs'] = async el => {

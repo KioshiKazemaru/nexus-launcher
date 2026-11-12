@@ -1,0 +1,253 @@
+:root {
+  --bg: #171a21;
+  --bar: #1e2329;
+  --tab: #262c35;
+  --tab-active: #323a45;
+  --text: #dfe3e8;
+  --muted: #8f98a3;
+  --accent: #1a9fff;
+  --ok: #5ba32b;
+  --warn: #d9a13b;
+  color-scheme: dark;
+}
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font:
+    13px/1.3 'Segoe UI',
+    system-ui,
+    -apple-system,
+    sans-serif;
+  overflow: hidden;
+  user-select: none;
+}
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.strip {
+  height: 36px;
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  padding: 0 150px 0 8px; /* the window buttons on the right */
+  -webkit-app-region: drag;
+}
+body.mac .strip {
+  padding: 0 8px 0 82px; /* the window buttons on the left */
+}
+.brand-mark {
+  align-self: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  margin-right: 4px;
+}
+#tabs {
+  display: flex;
+  gap: 2px;
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+}
+.tab {
+  -webkit-app-region: no-drag;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  min-width: 60px;
+  max-width: 220px;
+  flex: 1 1 200px;
+  padding: 0 6px 0 10px;
+  border: 0;
+  border-radius: 8px 8px 0 0;
+  background: var(--tab);
+  color: var(--muted);
+  text-align: left;
+}
+.tab.active {
+  background: var(--bar);
+  color: var(--text);
+}
+.tab img,
+.tab .dot {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+.tab .dot {
+  border-radius: 50%;
+  background: #3a424d;
+}
+.tab .dot.loading {
+  border: 2px solid var(--accent);
+  border-right-color: transparent;
+  background: none;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.tab .title {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tab .close {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--muted);
+  line-height: 1;
+}
+.tab .close:hover {
+  background: #ffffff1f;
+  color: var(--text);
+}
+button.icon {
+  -webkit-app-region: no-drag;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  font-size: 16px;
+  flex: none;
+}
+button.icon:hover:not(:disabled) {
+  background: #ffffff14;
+}
+button.icon:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.strip button.icon {
+  align-self: center;
+}
+.nav {
+  height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 8px;
+  background: var(--bar);
+}
+.address {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  margin-left: 6px;
+  padding: 0 10px;
+  border-radius: 15px;
+  background: var(--bg);
+  border: 1px solid transparent;
+}
+.address:focus-within {
+  border-color: var(--accent);
+}
+.address input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  user-select: text;
+}
+.lock {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+.lock.secure {
+  background: var(--ok);
+}
+.lock.insecure {
+  background: var(--warn);
+}
+.signed {
+  flex: none;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: #1a9fff26;
+  color: var(--accent);
+}
+.downloads {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: var(--bar);
+  border-top: 1px solid #ffffff10;
+  overflow-x: auto;
+}
+.download {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px 4px 10px;
+  border-radius: 6px;
+  background: var(--tab);
+  white-space: nowrap;
+}
+.download .name {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.download small {
+  color: var(--muted);
+}
+.download button,
+.downloads > button {
+  border: 0;
+  border-radius: 4px;
+  padding: 3px 8px;
+  background: #ffffff14;
+}
+.download button:hover,
+.downloads > button:hover {
+  background: #ffffff26;
+}
+.downloads > button {
+  margin-left: auto;
+  background: none;
+  color: var(--muted);
+}
+.crashed {
+  padding: 6px 12px;
+  background: #5c2a1f;
+  color: var(--text);
+}
+.crashed button {
+  margin-left: 8px;
+  border: 0;
+  border-radius: 4px;
+  padding: 3px 10px;
+  background: #ffffff26;
+}

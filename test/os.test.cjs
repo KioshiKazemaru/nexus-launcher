@@ -364,6 +364,8 @@ test('Linux Epic games: Heroic opens them (and installs missing ones); without H
     settings: { launchOptions: {} },
     library: { expectChange: () => changes.push(1) },
     log: { warn() {}, info() {} },
+    // Heroic's site opens in the Nexus browser; recorded with the heroic:// links.
+    openUrl: u => T.opened.push(u),
   });
   const opened = () => T.opened.filter(u => u.startsWith('heroic:') || u.includes('heroicgameslauncher'));
   T.opened.length = 0;

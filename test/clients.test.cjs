@@ -11,7 +11,14 @@ const { ClientInstaller, CLIENTS, commandExecutable, regDefault } = require('../
 const T = electron.__test;
 function installer(extra = {}) {
   const toasts = [];
-  const ctx = { log: { info() {}, warn() {} }, toast: m => toasts.push(m), hub: { publish() {} }, ...extra };
+  // Web pages (the client's site) open in the Nexus browser: recorded with the program links.
+  const ctx = {
+    log: { info() {}, warn() {} },
+    toast: m => toasts.push(m),
+    hub: { publish() {} },
+    openUrl: u => T.opened.push(u),
+    ...extra,
+  };
   return { c: new ClientInstaller(ctx), toasts };
 }
 

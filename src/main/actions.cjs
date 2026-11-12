@@ -177,7 +177,7 @@ class ActionsService {
         detail:
           'Epic Games Launcher для Linux не существует. Heroic — бесплатный лаунчер для игр Epic: установите его (Flatpak, AppImage или пакет дистрибутива), войдите в аккаунт Epic и повторите. Игры, установленные в Heroic, Nexus найдёт сам.',
       });
-      if (response === 0) await shell.openExternal('https://heroicgameslauncher.com/');
+      if (response === 0) this.ctx.openUrl('https://heroicgameslauncher.com/');
       return 'canceled';
     }
     try {
@@ -531,14 +531,13 @@ class ActionsService {
     return { file: path.basename(filePath), path: filePath };
   }
   // «Сообщить о проблеме»: the report is saved where the user chooses (nothing is sent),
-  // its folder opens, and so does the GitHub form with the version and system filled in.
-  // The user looks the file over and attaches it to the form.
+  // then the GitHub form opens in the Nexus browser with the version and system filled
+  // in. The user looks the file over and attaches it there («Прикрепить файлы»).
   async reportProblem(main) {
     const saved = await this.saveDiagnostics(main);
     if (!saved) return null;
-    shell.showItemInFolder(saved.path);
-    await shell.openExternal(issueFormUrl(app.getVersion(), process.platform, os.release()));
-    return { file: saved.file };
+    this.ctx.openUrl(issueFormUrl(app.getVersion(), process.platform, os.release()));
+    return { file: saved.file, folder: path.basename(path.dirname(saved.path)) };
   }
 }
 

@@ -51,19 +51,8 @@ function registerAppIpc(register, ctx, { onlineAgain }) {
     ctx.mainWindow()?.setFullScreen(on === true);
     return true;
   });
-  register('openLink', url => {
-    const u = new URL(String(url || ''));
-    const ok =
-      u.protocol === 'https:' &&
-      (/(^|\.)(steampowered\.com|steamcommunity\.com|steamstatic\.com|epicgames\.com)$/.test(u.hostname) ||
-        // The Nexus repository itself («Справка»: issues, privacy policy).
-        (u.hostname === 'github.com' &&
-          !u.username &&
-          !u.password &&
-          /^\/KioshiKazemaru\/nexus-launcher(\/|$)/.test(u.pathname)));
-    if (!ok) throw Error('Ссылка недоступна');
-    return shell.openExternal(u.href);
-  });
+  // Links of the window (menus, store and game pages): in the Nexus browser.
+  register('openLink', url => ctx.openUrl(url));
   register(
     'autoUpdate',
     save(enabled => (settings.autoUpdate = bool(enabled)))

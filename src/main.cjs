@@ -85,6 +85,7 @@ const { guardCommunityViews } = require('./main/community-view.cjs');
 const { RunningGames } = require('./main/running.cjs');
 const { Uninstaller } = require('./main/uninstall.cjs');
 const { SocialWindows } = require('./main/social.cjs');
+const { NexusBrowser } = require('./main/browser.cjs');
 const { ChatService } = require('./main/chat.cjs');
 const { EpicInstaller } = require('./main/epic-install.cjs');
 const { SteamInstaller } = require('./main/steam-install.cjs');
@@ -442,6 +443,9 @@ function createServices() {
   ctx.disk = new DiskInfo(ctx);
   ctx.friends = new FriendsService(ctx);
   ctx.social = new SocialWindows(ctx, { icon });
+  // Web links open here, in a Nexus window with tabs, not in the system browser.
+  ctx.browser = new NexusBrowser(ctx, { icon });
+  ctx.openUrl = url => ctx.browser.open(url);
   ctx.chat = new ChatService(ctx);
   ctx.presence = new PresenceService(ctx);
   ctx.news = new NewsService(ctx);
@@ -479,6 +483,7 @@ function createMainWindow() {
   });
   main.removeMenu();
   guardCommunityViews(main.webContents, {
+    openUrl: url => ctx.openUrl(url),
     partition: () => ctx.accounts.partitionName(ctx.accounts.checkoutTarget('steam').key),
     log: ctx.log,
   });

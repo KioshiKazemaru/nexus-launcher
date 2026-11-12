@@ -118,9 +118,8 @@ function registerLibraryIpc(register, ctx) {
       return shell.openPath(folder);
     }
     if (/^\d{1,20}$/.test(id))
-      return shell.openExternal(`https://steamcommunity.com/sharedfiles/filedetails/?id=${id}`);
-    if (/^\d{1,10}$/.test(appId))
-      return shell.openExternal(`https://steamcommunity.com/app/${appId}/workshop/`);
+      return ctx.openUrl(`https://steamcommunity.com/sharedfiles/filedetails/?id=${id}`);
+    if (/^\d{1,10}$/.test(appId)) return ctx.openUrl(`https://steamcommunity.com/app/${appId}/workshop/`);
     throw Error('Некорректный предмет Мастерской');
   });
 }

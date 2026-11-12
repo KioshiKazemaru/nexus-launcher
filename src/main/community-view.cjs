@@ -6,7 +6,6 @@
 //   - the guest never gets the Nexus preload, Node or the main window's session —
 //     its session is the Steam account's own partition, set here, not by the page;
 //   - other sites and new windows open in the browser.
-const { shell } = require('electron');
 
 const COMMUNITY = {
   discussions: 'https://steamcommunity.com/discussions/',
@@ -23,15 +22,15 @@ function steamUrl(value) {
     return null;
   }
 }
-function openOutside(value) {
-  try {
-    const u = new URL(String(value || ''));
-    if (u.protocol === 'https:' || u.protocol === 'http:') shell.openExternal(u.href);
-  } catch {}
-}
 
 // mainContents: the Nexus window's webContents. partition(): the Steam account's partition.
-function guardCommunityViews(mainContents, { partition, log } = {}) {
+// openUrl(url): other sites, in the Nexus browser.
+function guardCommunityViews(mainContents, { partition, log, openUrl = () => {} } = {}) {
+  const openOutside = url => {
+    try {
+      openUrl(url);
+    } catch {}
+  };
   mainContents.on('will-attach-webview', (event, prefs, params) => {
     if (!steamUrl(params.src)) {
       event.preventDefault();

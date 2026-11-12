@@ -149,7 +149,7 @@ class Updater {
     return v ? `${RELEASES}/tag/v${v}` : `${RELEASES}/latest`;
   }
   openRelease() {
-    return require('electron').shell.openExternal(this.releaseUrl());
+    return this.ctx.openUrl(this.releaseUrl());
   }
   // The installer for this system in the release: the .exe on Windows, the disk image
   // for this processor on macOS.

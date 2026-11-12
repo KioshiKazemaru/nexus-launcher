@@ -193,7 +193,7 @@ class ClientInstaller {
             ? 'Установите Steam из репозитория дистрибутива, Flatpak или с сайта Steam, войдите в аккаунт и повторите.'
             : `Установите ${c.name} с официального сайта, войдите в аккаунт и повторите.`,
       });
-      if (response === 0) await shell.openExternal(c.site);
+      if (response === 0) this.ctx.openUrl(c.site);
       else if (response === 1) {
         await shell.openExternal(uri);
         return 'opened';
@@ -214,7 +214,7 @@ class ClientInstaller {
       detail: `Nexus спросит, в какую папку установить, скачает официальный установщик с серверов ${provider === 'epic' ? 'Epic Games' : 'Valve'} (${c.size}), проверит его цифровую подпись и установит — Windows попросит разрешение администратора.\n\nПосле установки ${c.name} откроется: войдите в аккаунт, и выбранная игра откроется в нём автоматически.`,
     });
     if (response === 1) {
-      await shell.openExternal(c.site);
+      this.ctx.openUrl(c.site);
       return 'canceled';
     }
     if (response !== 0) return 'canceled';
