@@ -1,11 +1,13 @@
 # Lint, tests, test installers and one start of the built app on Windows, macOS and Linux.
-# Started by hand or by a push to main; nothing is published. The macOS and Linux
-# installers of a release are taken from this run's artifacts.
+# Started by hand, by a push to main or by a version tag. Only a tag (v0.15.7) publishes:
+# the job "release" makes the GitHub release from the three builds. Elsewhere it only
+# checks that the notes and all 11 files of a release are there.
 name: build
 
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
 
@@ -104,3 +106,26 @@ jobs:
           name: nexus-${{ matrix.os }}
           path: ${{ matrix.files }}
           if-no-files-found: error
+
+  release:
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      # Checks the tag against package.json, takes the notes from README
+      # ("## Что нового в X") plus docs/release-footer.md and picks the 11 files.
+      - run: node scripts/release.cjs artifacts release "${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}"
+      - name: Publish the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          cd release
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag             --title "Nexus Launcher ${TAG#v}" -F notes.md $(ls | grep -v '^notes.md$')
