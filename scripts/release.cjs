@@ -1,7 +1,7 @@
 'use strict';
 // Release from CI (.github/workflows/build.yml, job "release"): checks that the tag
-// matches package.json, writes the notes (README "## Что нового в X" + the code
-// signing footer, docs/release-footer.md) and lists the 11 files of a release.
+// matches package.json, writes the notes (README "## Что нового в X") and lists
+// the files of a release.
 //   node scripts/release.cjs <artifacts dir> <out dir> [tag]
 // Without a tag (a dry run on a branch) the version from package.json is used.
 
@@ -10,14 +10,14 @@ const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..');
 
-function releaseNotes(readme, footer, version) {
+function releaseNotes(readme, version) {
   const lines = readme.split('\n');
   const start = lines.findIndex(l => l.trim() === `## Что нового в ${version}`);
   if (start < 0) throw Error(`README has no "## Что нового в ${version}"`);
   let end = lines.findIndex((l, i) => i > start && /^## /.test(l));
   if (end < 0) end = lines.length;
   const body = lines.slice(start, end).join('\n').trim();
-  return `${body}\n\n${footer.trim()}\n`;
+  return `${body}\n`;
 }
 
 // The files a release carries, named by version: installers, the update block map
@@ -51,11 +51,7 @@ function walk(dir) {
 function prepare(artifacts, out, tag) {
   const version = require(path.join(ROOT, 'package.json')).version;
   if (tag && tag !== `v${version}`) throw Error(`tag ${tag} does not match package.json ${version}`);
-  const notes = releaseNotes(
-    fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8'),
-    fs.readFileSync(path.join(ROOT, 'docs', 'release-footer.md'), 'utf8'),
-    version
-  );
+  const notes = releaseNotes(fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8'), version);
   const found = new Map(walk(artifacts).map(p => [path.basename(p), p]));
   const want = releaseFiles(version);
   const missing = want.filter(f => !found.has(f));
