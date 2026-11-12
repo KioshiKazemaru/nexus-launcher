@@ -172,6 +172,7 @@ function restoreBackup(settings, data, size = 0) {
     'notifyGiveaways',
     'notifyWishSales',
     'autoUpdate',
+    'betaUpdates',
     'autoStart',
     'diagnostics',
     'epicDirectLaunch',

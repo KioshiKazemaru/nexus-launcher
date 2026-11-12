@@ -19,7 +19,11 @@ function registerAppIpc(register, ctx, { onlineAgain }) {
     result: await actions.importBackup(ctx.mainWindow()),
     state: ctx.hub.reply(),
   }));
-  register('saveDiagnostics', () => actions.saveDiagnostics(ctx.mainWindow()));
+  register('saveDiagnostics', async () => {
+    const r = await actions.saveDiagnostics(ctx.mainWindow());
+    return r && { file: r.file };
+  });
+  register('reportProblem', () => actions.reportProblem(ctx.mainWindow()));
   register('openLogs', () => shell.openPath(path.join(app.getPath('userData'), 'logs')));
   // «Очистить кэш»: the pictures Chromium keeps on disk (sign-ins and settings stay).
   register('clearCache', async () => {
@@ -63,6 +67,13 @@ function registerAppIpc(register, ctx, { onlineAgain }) {
   register(
     'autoUpdate',
     save(enabled => (settings.autoUpdate = bool(enabled)))
+  );
+  register(
+    'betaUpdates',
+    save(enabled => {
+      settings.betaUpdates = bool(enabled);
+      ctx.updater.setBeta(settings.betaUpdates);
+    })
   );
   register(
     'checkUpdate',

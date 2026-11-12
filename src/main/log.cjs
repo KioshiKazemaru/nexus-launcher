@@ -104,4 +104,21 @@ class Log {
   }
 }
 
-module.exports = { Log, redact };
+// The user's folder names the person (C:\Users\Имя, /Users/name, /home/name): a report
+// shows it as ~. The home folder itself first, then any other user folder.
+function hideUserPaths(text, home = '') {
+  let out = String(text);
+  if (home && home.length > 3) {
+    // As written, with forward slashes, and with doubled backslashes (inside JSON).
+    const variants = new Set([home, home.replace(/\\/g, '/'), home.replace(/\\/g, '\\\\')]);
+    for (const v of variants) out = out.split(v).join('~');
+  }
+  return out
+    .replace(
+      /\b([A-Za-z]:(?:\\{1,2}|\/))(Users|Documents and Settings)(\\{1,2}|\/)[^\\/\r\n"'<>|:*?]+/gi,
+      '$1$2$3~'
+    )
+    .replace(/(^|[\s"'(=])\/(Users|home)\/[^/\s"'<>]+/g, '$1/$2/~');
+}
+
+module.exports = { Log, redact, hideUserPaths };

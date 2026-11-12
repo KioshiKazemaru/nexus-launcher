@@ -22,8 +22,11 @@ function releaseNotes(readme, footer, version) {
 
 // The files a release carries, named by version: installers, the update block map
 // and the latest*.yml the installed Nexus reads to find an update.
+// A beta (1.2.3-beta.4) also carries the beta*.yml that installed betas read.
 function releaseFiles(version) {
+  const beta = version.includes('-') ? ['beta.yml', 'beta-mac.yml', 'beta-linux.yml'] : [];
   return [
+    ...beta,
     `Nexus-Setup-${version}.exe`,
     `Nexus-Setup-${version}.exe.blockmap`,
     'latest.yml',

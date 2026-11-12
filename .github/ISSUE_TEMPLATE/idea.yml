@@ -1,0 +1,11 @@
+name: Идея
+description: Чего не хватает в Nexus
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: Что хотелось бы
+      description: Что вы хотите сделать в Nexus и зачем
+    validations:
+      required: true

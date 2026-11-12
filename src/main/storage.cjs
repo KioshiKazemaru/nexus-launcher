@@ -43,6 +43,7 @@ const defaults = () => ({
   seenGiveaways: [],
   notifyGiveaways: true,
   autoUpdate: true,
+  betaUpdates: false,
   hidden: [],
   collections: [],
   customPlaytime: {},

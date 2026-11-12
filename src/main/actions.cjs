@@ -19,7 +19,7 @@ const { parseVdf } = require('../core.cjs');
 const platforms = require('../platforms/index.cjs');
 const collections = require('../collections.cjs');
 const { createBackup, restoreBackup, backupCustomGames, MAX_BYTES } = require('../backup.cjs');
-const { redact } = require('./log.cjs');
+const { redact, hideUserPaths } = require('./log.cjs');
 const { EpicPlayService } = require('./epic-play.cjs');
 const { ClientInstaller } = require('./clients.cjs');
 const launchOptions = require('../launch-options.cjs');
@@ -515,8 +515,8 @@ class ActionsService {
       '== Журнал (последние 500 строк) ==',
       ...this.ctx.log.tail(500),
     ];
-    // Account ids are shortened; tokens are already masked by the log.
-    return redact(lines.join('\n'))
+    // Account ids are shortened, user folders hidden; tokens are already masked by the log.
+    return hideUserPaths(redact(lines.join('\n')), os.homedir())
       .replace(/\b(7656119\d{6})\d{4}\b/g, '$1····')
       .replace(/\b([a-f0-9]{6})[a-f0-9]{26}\b/gi, '$1····');
   }
@@ -528,8 +528,30 @@ class ActionsService {
     });
     if (canceled || !filePath) return null;
     await fsp.writeFile(filePath, this.diagnosticsText(), 'utf8');
-    return { file: path.basename(filePath) };
+    return { file: path.basename(filePath), path: filePath };
+  }
+  // «Сообщить о проблеме»: the report is saved where the user chooses (nothing is sent),
+  // its folder opens, and so does the GitHub form with the version and system filled in.
+  // The user looks the file over and attaches it to the form.
+  async reportProblem(main) {
+    const saved = await this.saveDiagnostics(main);
+    if (!saved) return null;
+    shell.showItemInFolder(saved.path);
+    await shell.openExternal(issueFormUrl(app.getVersion(), process.platform, os.release()));
+    return { file: saved.file };
   }
 }
 
-module.exports = { ActionsService };
+const ISSUES = 'https://github.com/KioshiKazemaru/nexus-launcher/issues/new';
+// The bug form (.github/ISSUE_TEMPLATE/bug.yml) with version and system prefilled.
+function issueFormUrl(version, platform, release) {
+  const system = { win32: 'Windows', darwin: 'macOS', linux: 'Linux' }[platform] || platform;
+  const q = new URLSearchParams({
+    template: 'bug.yml',
+    version: String(version),
+    os: `${system} ${release}`,
+  });
+  return `${ISSUES}?${q}`;
+}
+
+module.exports = { ActionsService, issueFormUrl };

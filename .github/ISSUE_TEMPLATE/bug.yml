@@ -1,0 +1,55 @@
+name: Проблема в Nexus
+description: Что-то не работает или работает не так
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Сообщение публичное. Не пишите сюда пароли, коды Steam Guard и почту.
+        В Nexus: «Справка» → «Сообщить о проблеме в Nexus» сохраняет отчёт с журналом (токены, ключи и имя пользователя в нём скрыты). Просмотрите файл и перетащите его в поле «Отчёт».
+  - type: textarea
+    id: what
+    attributes:
+      label: Что случилось
+      description: Что вы делали, что ожидали и что произошло вместо этого. Текст ошибки и снимок экрана очень помогают.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Как повторить
+      placeholder: |
+        1. Открыть «Библиотеку»
+        2. Нажать «Играть» у …
+  - type: input
+    id: version
+    attributes:
+      label: Версия Nexus
+      description: «Справка» → «О Nexus»
+      placeholder: 0.15.6
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Система
+      placeholder: Windows 11, macOS 15, Ubuntu 24.04…
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Где
+      options:
+        - Магазин и цены
+        - Библиотека и запуск игр
+        - Загрузка и установка игр
+        - Аккаунты и вход
+        - Друзья и чат
+        - Обновление Nexus
+        - Другое
+  - type: textarea
+    id: report
+    attributes:
+      label: Отчёт
+      description: Файл отчёта из Nexus (перетащите сюда)

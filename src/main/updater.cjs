@@ -39,6 +39,8 @@ function releaseHeadlines(body) {
     .filter(Boolean)
     .slice(0, 4);
 }
+// 1.2.3 or a beta 1.2.3-beta.4.
+const VERSION = /^\d+\.\d+\.\d+(-[0-9A-Za-z]+(\.[0-9A-Za-z]+)*)?$/;
 // A file of a release: a plain name, no folders.
 const FILE_NAME = /^Nexus[\w.-]*\.(exe|dmg)$/;
 const SHA512 = /^[A-Za-z0-9+/]{86}==$/;
@@ -65,6 +67,9 @@ class Updater {
       const { autoUpdater } = require('electron-updater');
       autoUpdater.autoDownload = !this.manual;
       autoUpdater.autoInstallOnAppQuit = !this.manual;
+      // «Получать бета-версии»: pre-releases on GitHub (v0.16.0-beta.1). Off: only releases
+      // marked latest; a beta already installed stays until the next release is newer.
+      autoUpdater.allowPrerelease = this.ctx.settings?.betaUpdates === true;
       autoUpdater.on('checking-for-update', () => this.set({ status: 'checking', error: '' }));
       autoUpdater.on('update-available', info => this.found(info?.version, info?.files));
       autoUpdater.on('update-not-available', () => this.set({ status: 'current' }));
@@ -82,7 +87,7 @@ class Updater {
     return this.updater;
   }
   found(version, files = []) {
-    const v = /^\d+\.\d+\.\d+$/.test(String(version)) ? String(version) : null;
+    const v = VERSION.test(String(version)) ? String(version) : null;
     this.files = Array.isArray(files) ? files : [];
     this.set({ status: this.manual ? 'manual' : 'downloading', version: v, notes: [] });
     // Only with the real updater (tests and local builds ask nothing of GitHub).
@@ -116,6 +121,10 @@ class Updater {
     else if (/not signed by the application owner/.test(message) && this.state.version)
       this.set({ status: 'manual', manual: true, error: '' });
     else this.set({ status: 'error', error: message.slice(0, 200) });
+  }
+  // The switch changes the next check; checked right away so the choice shows at once.
+  setBeta(enabled) {
+    if (this.updater) this.updater.allowPrerelease = enabled === true;
   }
   set(patch) {
     this.state = { ...this.state, ...patch };

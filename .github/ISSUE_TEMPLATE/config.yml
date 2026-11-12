@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Проблема с аккаунтом, покупкой или игрой в Steam
+    url: https://help.steampowered.com/
+    about: Возвраты, блокировки, Steam Guard — это решает поддержка Steam
+  - name: Проблема с аккаунтом или покупкой в Epic Games
+    url: https://www.epicgames.com/help/
+    about: Возвраты, вход, бесплатные игры — это решает поддержка Epic Games

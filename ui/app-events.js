@@ -569,6 +569,14 @@ CLICK_BY_ID['save-diagnostics'] = async el => {
   const r = await call('saveDiagnostics');
   if (r) toast('Диагностика сохранена: ' + r.file + '. Токены и ключи в ней скрыты.');
 };
+// The report is saved by the user, then GitHub's form opens: nothing leaves the computer by itself.
+CLICK_BY_ID['report-problem'] = async el => {
+  const r = await call('reportProblem');
+  if (r)
+    toast(
+      `Отчёт ${r.file} сохранён, открыта форма на GitHub. Просмотрите файл и прикрепите его к сообщению.`
+    );
+};
 CLICK_BY_ID['open-logs'] = async el => {
   await call('openLogs');
 };
@@ -902,6 +910,10 @@ const CHANGE_BY_ID = {
   'notify-giveaways': async el => (state = await call('notifyGiveaways', el.checked)),
   'notify-wish-sales': async el => (state = await call('notifyWishSales', el.checked)),
   'auto-update': async el => (state = await call('autoUpdate', el.checked)),
+  'beta-updates': async el => {
+    state = await call('betaUpdates', el.checked);
+    toast(el.checked ? 'Nexus будет предлагать и бета-версии' : 'Только обычные версии Nexus');
+  },
   'download-limit': async el => {
     if (!el.checkValidity()) throw Error('Укажите скорость от 0 до 10000 МБ/с');
     state = await call('downloadSettings', { downloadLimit: Math.round(Number(el.value || 0) * 1024) });
@@ -1017,6 +1029,7 @@ const MENU_ACTIONS = {
   'export-backup': el => CLICK_BY_ID['export-backup'](el),
   'import-backup': el => CLICK_BY_ID['import-backup'](el),
   diagnostics: el => CLICK_BY_ID['save-diagnostics'](el),
+  report: el => CLICK_BY_ID['report-problem'](el),
   logs: el => CLICK_BY_ID['open-logs'](el),
   quit: () => call('quitApp'),
   friends: () => call('openFriendsWindow'),

@@ -28,18 +28,21 @@ jobs:
               dist/*.exe
               dist/*.blockmap
               dist/latest.yml
+              dist/beta.yml
           - os: macos-latest
             dist: npm run dist:mac
             files: |
               dist/*.dmg
               dist/*.zip
               dist/latest-mac.yml
+              dist/beta-mac.yml
           - os: ubuntu-latest
             dist: npm run dist:linux
             files: |
               dist/*.AppImage
               dist/*.deb
               dist/latest-linux.yml
+              dist/beta-linux.yml
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     steps:
@@ -126,6 +129,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
+        # v0.16.0-beta.1: a pre-release, offered only with «Получать бета-версии».
         run: |
+          case "$TAG" in *-*) PRE=--prerelease ;; *) PRE= ;; esac
           cd release
-          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag             --title "Nexus Launcher ${TAG#v}" -F notes.md $(ls | grep -v '^notes.md$')
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag             --title "Nexus Launcher ${TAG#v}" -F notes.md $PRE $(ls | grep -v '^notes.md$')
