@@ -39,7 +39,13 @@ test('settings migrate from v1, writes are debounced and atomic, vault is encryp
     s.saveVault({ keys: {} });
     assert.equal(fs.existsSync(path.join(dir, 'sessions.bin')), false);
     const plain = new Storage(dir, fakeSafe(false));
-    assert.throws(() => plain.saveVault({ keys: { itad: 'x' } }), /недоступно/);
+    assert.throws(() => plain.saveVault({ keys: { itad: 'x' } }), /Сохранение входа и ключей отключено/);
+    for (const [platform, re] of [
+      ['win32', /Windows недоступно/],
+      ['darwin', /Связка ключей macOS/],
+      ['linux', /GNOME Keyring/],
+    ])
+      assert.throws(() => new Storage(dir, fakeSafe(false), platform).saveVault({ keys: { itad: 'x' } }), re);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
