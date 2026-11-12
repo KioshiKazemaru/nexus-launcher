@@ -524,6 +524,40 @@ function recommendationsShelf() {
     })
     .join('')}</div></section>`;
 }
+// Top of the store while searching: the heading, counts per store and failures.
+function storeSearchTop(items) {
+  const providers = Object.entries(searchState.providers || {});
+  const counts = providers
+    .filter(([, p]) => p.ok)
+    .map(([p, r]) => names[p] + ': ' + r.total)
+    .join(' · ');
+  const errors = providers.filter(([, p]) => !p.ok).map(([, p]) => p.error);
+  return `<div class="section-head"><h2>Результаты поиска · «${esc(query)}»</h2><button class="ghost" id="retry-search">↻ Обновить</button></div><div class="search-status">${searchState.loading ? 'Загрузка…' : items.length + ' карточек'} · ${counts}</div>
+ ${errors.length ? `<div class="notice warning">${errors.map(esc).join(' · ')}. Результаты доступного магазина показаны ниже.</div>` : ''}${searchState.error ? `<div class="notice warning">${esc(searchState.error)}</div>` : ''}`;
+}
+// Top of the store without a search: showcase, shelves and the catalog heading.
+function storeHomeTop(home, pool, items) {
+  const discounted = storePlatform([
+    ...new Map([...(home?.promotions || []), ...storePool()].map(g => [g.id, game(g.id) || g])).values(),
+  ]).filter(g => priceOffers(g).some(o => o.discount > 0));
+  // Only failures are worth a line; successful counts were technical noise.
+  const failed = Object.entries(home?.providers || {}).filter(([, v]) => !v.ok);
+  const loading = home?.loading
+    ? '<div class="store-loading">Загружаем подборки Steam и Epic Games…</div>'
+    : '';
+  const catalogNote = storeTag
+    ? '<button class="ghost" data-store-tag-clear>✕ Сбросить метку</button>'
+    : `<small>${items.length} ${plural(items.length, 'игра', 'игры', 'игр')} · Steam выбирается первым</small>`;
+  return `${(showcase() || loading) + recommendationsShelf()}
+ ${home?.error ? `<div class="notice warning">${esc(home.error)}</div>` : ''}${
+   failed.length
+     ? `<div class="notice warning">${failed.map(([, v]) => esc(v.error)).join(' · ')}. Показаны предложения доступного магазина.</div>`
+     : ''
+ }
+ ${discounted.length ? `<div class="section-head"><h2>СКИДКИ И ПРЕДЛОЖЕНИЯ</h2><button class="ghost" id="show-sales">Все скидки</button></div><div class="sale-rail">${discounted.map(g => card(g)).join('')}</div>` : ''}
+ ${freeShelf() + dlcShelf() + categoryTiles(pool) + storeLists() + cheapShelf(pool)}
+ <div class="section-head" id="store-catalog"><h2>${storeTag ? 'МЕТКА: ' + esc(storeTag.toUpperCase()) : 'ВСЕ ИГРЫ НА ВИТРИНЕ'}</h2>${catalogNote}</div>`;
+}
 function store() {
   const searching = !!query.trim();
   const pool = searching ? [] : allStoreGames();
@@ -534,42 +568,16 @@ function store() {
       ? pool.filter(g => g.tags?.includes(storeTag))
       : pool;
   const items = filterPrices(storePlatform(source.map(g => game(g.id) || g)));
-  const errors = searching
-    ? Object.values(searchState.providers || {})
-        .filter(p => !p.ok)
-        .map(p => p.error)
-    : [];
   const home = homeState.get(state.settings.storeCountry || 'US');
-  const discounted = storePlatform([
-    ...new Map([...(home?.promotions || []), ...storePool()].map(g => [g.id, game(g.id) || g])).values(),
-  ]).filter(g => priceOffers(g).some(o => o.discount > 0));
-  // Only failures are worth a line; successful counts were technical noise.
-  const failed = Object.entries(home?.providers || {}).filter(([, v]) => !v.ok);
+  const empty = !items.length && !searchState.loading && !(home?.loading && !searching);
+  const more =
+    searching &&
+    Object.values(searchState.providers || {}).some(p => p.ok && p.total > (searchState.start || 0) + 24);
   return `${notice()}
- ${
-   !searching
-     ? (showcase() ||
-         (home?.loading ? '<div class="store-loading">Загружаем подборки Steam и Epic Games…</div>' : '')) +
-       recommendationsShelf()
-     : `<div class="section-head"><h2>Результаты поиска · «${esc(query)}»</h2><button class="ghost" id="retry-search">↻ Обновить</button></div><div class="search-status">${searchState.loading ? 'Загрузка…' : items.length + ' карточек'} · ${Object.entries(
-         searchState.providers || {}
-       )
-         .filter(([, p]) => p.ok)
-         .map(([p, r]) => names[p] + ': ' + r.total)
-         .join(' · ')}</div>`
- }
- ${!searching && home?.error ? `<div class="notice warning">${esc(home.error)}</div>` : ''}${
-   !searching && failed.length
-     ? `<div class="notice warning">${failed.map(([, v]) => esc(v.error)).join(' · ')}. Показаны предложения доступного магазина.</div>`
-     : ''
- }
- ${errors.length ? `<div class="notice warning">${errors.map(esc).join(' · ')}. Результаты доступного магазина показаны ниже.</div>` : ''}${searchState.error && searching ? `<div class="notice warning">${esc(searchState.error)}</div>` : ''}
- ${!searching && discounted.length ? `<div class="section-head"><h2>СКИДКИ И ПРЕДЛОЖЕНИЯ</h2><button class="ghost" id="show-sales">Все скидки</button></div><div class="sale-rail">${discounted.map(g => card(g)).join('')}</div>` : ''}
- ${!searching ? freeShelf() + dlcShelf() + categoryTiles(pool) + storeLists() + cheapShelf(pool) : ''}
- ${!searching ? `<div class="section-head" id="store-catalog"><h2>${storeTag ? 'МЕТКА: ' + esc(storeTag.toUpperCase()) : 'ВСЕ ИГРЫ НА ВИТРИНЕ'}</h2>${storeTag ? '<button class="ghost" data-store-tag-clear>✕ Сбросить метку</button>' : `<small>${items.length} ${plural(items.length, 'игра', 'игры', 'игр')} · Steam выбирается первым</small>`}</div>` : ''}
+ ${searching ? storeSearchTop(items) : storeHomeTop(home, pool, items)}
  ${priceControls()}<div class="grid">${items.map(g => card(g)).join('')}</div>
- ${!items.length && !searchState.loading && !(home?.loading && !searching) ? '<div class="empty"><h2>Нет подходящих игр</h2><p>Измените поиск, диапазон цены или выбранный магазин. Если подборки недоступны, нажмите «Обновить витрину».</p></div>' : ''}
- ${searching && Object.values(searchState.providers || {}).some(p => p.ok && p.total > (searchState.start || 0) + 24) ? `<div class="load-more"><button class="secondary" id="more-results" ${searchState.loading ? 'disabled' : ''}>Показать ещё</button></div>` : ''}
+ ${empty ? '<div class="empty"><h2>Нет подходящих игр</h2><p>Измените поиск, диапазон цены или выбранный магазин. Если подборки недоступны, нажмите «Обновить витрину».</p></div>' : ''}
+ ${more ? `<div class="load-more"><button class="secondary" id="more-results" ${searchState.loading ? 'disabled' : ''}>Показать ещё</button></div>` : ''}
  <p class="footnote">Цены относятся к выбранному региону. Поиск, сравнение и карточки остаются в Nexus; покупку подтверждает официальный магазин.</p>`;
 }
 function libraryMode() {

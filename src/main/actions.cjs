@@ -47,49 +47,9 @@ class ActionsService {
     // One copy at a time: a running game is closed with "Закрыть", not started again.
     if (this.ctx.running?.isRunning(id))
       throw Error('Игра уже запущена — её можно закрыть кнопкой «Закрыть»');
-    let how = 'launcher';
     const extra = launchOptions.optionsFor(this.ctx.settings, id);
-    if (o.provider === 'custom') await this.runCustom(o, extra);
-    // Linux has no Epic Games Launcher; games of Heroic / Legendary are theirs on any system.
-    else if (o.provider === 'epic' && (o.via === 'legendary' || !system.features().epicLauncher))
-      how = await this.playLegendary(o, extra);
-    else if (
-      !o.installed &&
-      this.ctx.settings.nexusDownloads !== false &&
-      // Nexus downloads Epic games (Windows builds) only on Windows.
-      ((o.provider === 'epic' && system.features().epicDownloads) || o.provider === 'steam')
-    ) {
-      const r = await (o.provider === 'epic' ? this.ctx.epicInstall : this.ctx.steamInstall).install(id);
-      how =
-        r.how === 'client'
-          ? await this.openClient(
-              o.provider,
-              platforms.get(o.provider).launchUri(o),
-              'установить игру',
-              'launcher'
-            )
-          : r.how;
-      if (how === 'canceled' || how === 'client-install') return { how };
-      if (how === 'launcher') this.ctx.library.expectChange();
-      this.ctx.log.info('install', `${provider}:${o.appId} (${how})`);
-      return { how };
-    } else if (o.provider === 'epic' && o.installed && this.epic.canStart(o)) how = await this.playEpic(o, g);
-    else if (o.provider === 'steam' && o.installed && this.ctx.settings.steamSilent !== false)
-      how = await this.playSteam(o, extra);
-    else if (o.provider === 'steam' && o.installed && extra)
-      how = await this.openClient(
-        'steam',
-        launchOptions.steamRunUri(o.appId, extra),
-        'запустить игру',
-        'launcher'
-      );
-    else
-      how = await this.openClient(
-        o.provider,
-        platforms.get(o.provider).launchUri(o),
-        o.installed ? 'запустить игру' : 'установить игру',
-        'launcher'
-      );
+    if (this.nexusInstalls(o)) return this.installWithNexus(o, id, provider);
+    const how = await this.startOffer(o, g, extra);
     if (how === 'canceled' || how === 'client-install') return { how };
     if (!o.installed && o.provider !== 'custom') this.ctx.library.expectChange();
     if (o.installed)
@@ -102,6 +62,57 @@ class ActionsService {
     this.ctx.log.info('play', `${provider}:${o.appId} (${how})`);
     this.ctx.running?.soon(8000);
     return { how };
+  }
+  // Linux has no Epic Games Launcher; games of Heroic / Legendary are theirs on any system.
+  viaLegendary(o) {
+    return o.provider === 'epic' && (o.via === 'legendary' || !system.features().epicLauncher);
+  }
+  // A game that is not installed yet is downloaded by Nexus itself (Epic: Windows builds,
+  // so only on Windows), unless that is turned off.
+  nexusInstalls(o) {
+    if (o.installed || o.provider === 'custom' || this.viaLegendary(o)) return false;
+    if (this.ctx.settings.nexusDownloads === false) return false;
+    return (o.provider === 'epic' && system.features().epicDownloads) || o.provider === 'steam';
+  }
+  async installWithNexus(o, id, provider) {
+    const r = await (o.provider === 'epic' ? this.ctx.epicInstall : this.ctx.steamInstall).install(id);
+    const how =
+      r.how === 'client'
+        ? await this.openClient(
+            o.provider,
+            platforms.get(o.provider).launchUri(o),
+            'установить игру',
+            'launcher'
+          )
+        : r.how;
+    if (how === 'canceled' || how === 'client-install') return { how };
+    if (how === 'launcher') this.ctx.library.expectChange();
+    this.ctx.log.info('install', `${provider}:${o.appId} (${how})`);
+    return { how };
+  }
+  // Starts (or, through the official client, installs) one offer; returns how.
+  async startOffer(o, g, extra) {
+    if (o.provider === 'custom') {
+      await this.runCustom(o, extra);
+      return 'launcher';
+    }
+    if (this.viaLegendary(o)) return this.playLegendary(o, extra);
+    if (o.installed && o.provider === 'epic' && this.epic.canStart(o)) return this.playEpic(o, g);
+    if (o.installed && o.provider === 'steam' && this.ctx.settings.steamSilent !== false)
+      return this.playSteam(o, extra);
+    if (o.installed && o.provider === 'steam' && extra)
+      return this.openClient(
+        'steam',
+        launchOptions.steamRunUri(o.appId, extra),
+        'запустить игру',
+        'launcher'
+      );
+    return this.openClient(
+      o.provider,
+      platforms.get(o.provider).launchUri(o),
+      o.installed ? 'запустить игру' : 'установить игру',
+      'launcher'
+    );
   }
   // Epic without the Epic launcher; any failure falls back to the launcher.
   async playEpic(o, g) {

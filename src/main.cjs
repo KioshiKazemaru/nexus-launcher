@@ -373,12 +373,8 @@ function withQuitTimeout(promise) {
   ]).finally(() => clearTimeout(timer));
 }
 
-async function start() {
-  ctx.log.info('app', `start ${app.getVersion()} electron ${process.versions.electron}`);
-  ctx.storage = new Storage(app.getPath('userData'), safeStorage);
-  ctx.settings = ctx.storage.loadSettings();
-  ctx.vault = ctx.storage.loadVault();
-  if (ctx.storage.warning) ctx.log.warn('storage', ctx.storage.warning);
+// Network: the public catalog session and the Epic store fetchers.
+function setupFetchers() {
   const publicSession = session.fromPartition('nexus-public-catalog');
   ctx.publicFetch = (url, options = {}) => publicSession.fetch(url, { ...options, credentials: 'omit' });
   const catalogPage = new PageFetcher({
@@ -407,7 +403,9 @@ async function start() {
       );
     return accountPages.get(target.key);
   };
+}
 
+function createServices() {
   ctx.hub = new StateHub(
     snapshot,
     state => {
@@ -455,10 +453,9 @@ async function start() {
   ctx.artwork = new ArtworkCache(ctx.storage.file('covers'), ctx.publicFetch);
   ctx.artwork.prune().catch(e => ctx.log.warn('art', e.message));
   registerArtProtocol();
+}
 
-  await ctx.accounts.init();
-  await ctx.library.scanLocal();
-
+function createMainWindow() {
   main = new BrowserWindow({
     width: 1440,
     height: 940,
@@ -504,25 +501,10 @@ async function start() {
   main.once('ready-to-show', () => {
     if (!startHidden) main.show();
   });
-  registerIpc();
-  await main.loadURL(uiUrl);
+}
 
-  lastOnline = ctx.online();
-  watchNetwork();
-  ctx.running.start();
-  ctx.chat.start();
-  ctx.tray.create();
-  ctx.presence.start();
-  ctx.overlay.start();
-  ctx.epicInstall.init();
-  // Started from a game's desktop shortcut: the game starts once the library is read.
-  const playFromShortcut = playArg(process.argv);
-  if (playFromShortcut) setTimeout(() => ctx.shortcuts.launch(playFromShortcut), 3000).unref?.();
-  // Shortcuts of games no longer installed are removed (only the ones Nexus made).
-  if (process.env.NEXUS_TEST !== '1') {
-    setTimeout(() => ctx.shortcuts.cleanup(), 120000).unref?.();
-    setInterval(() => ctx.shortcuts.cleanup(), 600000).unref?.();
-  }
+// Repeating work: prices, wishlists, accounts, updates — each only when online.
+function scheduleBackground() {
   ctx.accounts.refreshAll().catch(e => ctx.log.warn('accounts', e.message));
   whenOnline('prices', () => ctx.store.initialPrices())();
   whenOnline('watch', () => ctx.store.watcher.check())();
@@ -575,6 +557,41 @@ async function start() {
     whenOnline('update', () => ctx.settings.autoUpdate && ctx.updater.check()),
     6 * 3600000
   ).unref();
+}
+
+async function start() {
+  ctx.log.info('app', `start ${app.getVersion()} electron ${process.versions.electron}`);
+  ctx.storage = new Storage(app.getPath('userData'), safeStorage);
+  ctx.settings = ctx.storage.loadSettings();
+  ctx.vault = ctx.storage.loadVault();
+  if (ctx.storage.warning) ctx.log.warn('storage', ctx.storage.warning);
+  setupFetchers();
+  createServices();
+
+  await ctx.accounts.init();
+  await ctx.library.scanLocal();
+
+  createMainWindow();
+  registerIpc();
+  await main.loadURL(uiUrl);
+
+  lastOnline = ctx.online();
+  watchNetwork();
+  ctx.running.start();
+  ctx.chat.start();
+  ctx.tray.create();
+  ctx.presence.start();
+  ctx.overlay.start();
+  ctx.epicInstall.init();
+  // Started from a game's desktop shortcut: the game starts once the library is read.
+  const playFromShortcut = playArg(process.argv);
+  if (playFromShortcut) setTimeout(() => ctx.shortcuts.launch(playFromShortcut), 3000).unref?.();
+  // Shortcuts of games no longer installed are removed (only the ones Nexus made).
+  if (process.env.NEXUS_TEST !== '1') {
+    setTimeout(() => ctx.shortcuts.cleanup(), 120000).unref?.();
+    setInterval(() => ctx.shortcuts.cleanup(), 600000).unref?.();
+  }
+  scheduleBackground();
 }
 
 // A failure during start would otherwise leave an invisible process behind.

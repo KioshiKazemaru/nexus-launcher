@@ -919,15 +919,51 @@ function rememberOpenPanels() {
   const panel = document.querySelector('.merge-suggestions');
   if (panel) suggestionsOpen = panel.open;
 }
-function render() {
-  // A full render covers every pending change.
-  dataChanged = false;
-  changedCards.clear();
-  applyDerived(state);
-  rememberOpenPanels();
-  if (librarySelection && !filteredLibrary().some(g => g.id === librarySelection)) librarySelection = null;
-  rememberView();
-  renderFriends();
+const PAGE_CRUMBS = {
+  store: 'МАГАЗИН <span>/ ОБЗОР</span>',
+  library: 'БИБЛИОТЕКА <span>/ ВСЕ ИГРЫ</span>',
+  wishlist: 'КОЛЛЕКЦИЯ <span>/ ЖЕЛАЕМОЕ</span>',
+  favorites: 'КОЛЛЕКЦИЯ <span>/ ИЗБРАННОЕ</span>',
+  recent: 'БИБЛИОТЕКА <span>/ НЕДАВНИЕ</span>',
+  downloads: 'БИБЛИОТЕКА <span>/ ЗАГРУЗКИ</span>',
+  storage: 'БИБЛИОТЕКА <span>/ ХРАНИЛИЩЕ</span>',
+  news: 'БИБЛИОТЕКА <span>/ НОВОСТИ</span>',
+  activity: 'СООБЩЕСТВО <span>/ АКТИВНОСТЬ ДРУЗЕЙ</span>',
+  profile: 'СООБЩЕСТВО <span>/ ПРОФИЛЬ</span>',
+  review: 'ПРОФИЛЬ <span>/ ИТОГИ NEXUS</span>',
+  friend: 'СООБЩЕСТВО <span>/ ПРОФИЛЬ ДРУГА</span>',
+  tracking: 'МАГАЗИН <span>/ СКИДКИ</span>',
+  accounts: 'NEXUS <span>/ НАСТРОЙКИ</span>',
+};
+function breadcrumb() {
+  if (page === 'library' && librarySelection)
+    return 'БИБЛИОТЕКА <span>/ ' + esc(game(librarySelection)?.name || 'ИГРА') + '</span>';
+  if (page === 'game') return 'МАГАЗИН <span>/ ' + esc(game(detailId)?.name || 'ИГРА') + '</span>';
+  if (page === 'community') return communityCrumb();
+  return PAGE_CRUMBS[page];
+}
+// The page's own content; pages not listed (wishlist, favorites, recent…) are library views.
+const PAGE_CONTENT = {
+  store: () => store(),
+  game: () => notice() + storeGamePage(),
+  downloads: () => downloadsPage(),
+  storage: () => storagePage(),
+  news: () => newsPage(),
+  activity: () => activityPage(),
+  profile: () => profilePage(),
+  review: () => reviewPage(),
+  // СООБЩЕСТВО is a webview drawn by renderCommunity.
+  community: () => '',
+  friend: () => friendPage(),
+  accounts: () => accounts() + epicImportPanel(),
+  tracking: () => dealsPage(),
+};
+function pageContent() {
+  if (page === 'library' && librarySelection) return libraryGamePage();
+  return (PAGE_CONTENT[page] || library)();
+}
+// Window frame, version, counters and the active menu item.
+function renderChrome() {
   document.body.dataset.page = page;
   // The window's own buttons lie over the top strip: on the right (Windows, Linux) or the left (macOS).
   document.body.classList.toggle('native-window', state.native === true && state.platform !== 'darwin');
@@ -955,28 +991,7 @@ function render() {
     if (el.classList.contains('active')) el.setAttribute('aria-current', 'page');
     else el.removeAttribute('aria-current');
   });
-  $('#breadcrumb').innerHTML =
-    page === 'library' && librarySelection
-      ? 'БИБЛИОТЕКА <span>/ ' + esc(game(librarySelection)?.name || 'ИГРА') + '</span>'
-      : page === 'game'
-        ? 'МАГАЗИН <span>/ ' + esc(game(detailId)?.name || 'ИГРА') + '</span>'
-        : {
-            store: 'МАГАЗИН <span>/ ОБЗОР</span>',
-            library: 'БИБЛИОТЕКА <span>/ ВСЕ ИГРЫ</span>',
-            wishlist: 'КОЛЛЕКЦИЯ <span>/ ЖЕЛАЕМОЕ</span>',
-            favorites: 'КОЛЛЕКЦИЯ <span>/ ИЗБРАННОЕ</span>',
-            recent: 'БИБЛИОТЕКА <span>/ НЕДАВНИЕ</span>',
-            downloads: 'БИБЛИОТЕКА <span>/ ЗАГРУЗКИ</span>',
-            storage: 'БИБЛИОТЕКА <span>/ ХРАНИЛИЩЕ</span>',
-            news: 'БИБЛИОТЕКА <span>/ НОВОСТИ</span>',
-            activity: 'СООБЩЕСТВО <span>/ АКТИВНОСТЬ ДРУЗЕЙ</span>',
-            profile: 'СООБЩЕСТВО <span>/ ПРОФИЛЬ</span>',
-            review: 'ПРОФИЛЬ <span>/ ИТОГИ NEXUS</span>',
-            community: communityCrumb(),
-            friend: 'СООБЩЕСТВО <span>/ ПРОФИЛЬ ДРУГА</span>',
-            tracking: 'МАГАЗИН <span>/ СКИДКИ</span>',
-            accounts: 'NEXUS <span>/ НАСТРОЙКИ</span>',
-          }[page];
+  $('#breadcrumb').innerHTML = breadcrumb();
   renderStoreTools();
   $('#search').disabled = page === 'accounts';
   $('#mode-label').textContent = demo
@@ -985,34 +1000,18 @@ function render() {
       ? 'Локальная библиотека'
       : 'Просмотр интерфейса · без подключения';
   $('#mode-label').classList.toggle('demo-badge', demo);
-  $('#content').innerHTML =
-    page === 'store'
-      ? store()
-      : page === 'game'
-        ? notice() + storeGamePage()
-        : page === 'downloads'
-          ? downloadsPage()
-          : page === 'storage'
-            ? storagePage()
-            : page === 'news'
-              ? newsPage()
-              : page === 'activity'
-                ? activityPage()
-                : page === 'profile'
-                  ? profilePage()
-                  : page === 'review'
-                    ? reviewPage()
-                    : page === 'community'
-                      ? ''
-                      : page === 'friend'
-                        ? friendPage()
-                        : page === 'accounts'
-                          ? accounts() + epicImportPanel()
-                          : page === 'tracking'
-                            ? dealsPage()
-                            : librarySelection && page === 'library'
-                              ? libraryGamePage()
-                              : library();
+}
+function render() {
+  // A full render covers every pending change.
+  dataChanged = false;
+  changedCards.clear();
+  applyDerived(state);
+  rememberOpenPanels();
+  if (librarySelection && !filteredLibrary().some(g => g.id === librarySelection)) librarySelection = null;
+  rememberView();
+  renderFriends();
+  renderChrome();
+  $('#content').innerHTML = pageContent();
   renderCommunity();
   renderPropsDialog();
   $('#footer-status').textContent = state.warnings[0] || '';

@@ -163,7 +163,6 @@ class IntegrationsService {
     await sleep(1500);
     const games = this.pendingGames || [];
     this.pendingGames = null;
-    let changed = false;
     const steamIds = [
       ...new Set(games.flatMap(g => g.offers.filter(o => o.provider === 'steam').map(o => o.appId))),
     ];
@@ -172,94 +171,21 @@ class IntegrationsService {
         games.flatMap(g => g.offers.filter(o => o.provider === 'epic').map(o => canonicalTitle(o.name)))
       ),
     ].filter(Boolean);
-
-    if (this.has('itad')) {
+    let changed = false;
+    const touch = () => (changed = true);
+    // Each service on its own: a failure is shown on its card and does not stop the others.
+    for (const [name, fn] of [
+      ['itad', () => this.runItad(games, steamIds, epicTitles, touch)],
+      ['igdb', () => this.runIgdb(games, steamIds, epicTitles, touch)],
+      ['sgdb', () => this.runSgdb(games, touch)],
+    ]) {
+      if (!this.has(name)) continue;
       try {
-        const missing = steamIds.filter(id => !(id in this.cache.itadSteam));
-        if (missing.length) {
-          const found = await api.itadLookupSteam(this.ctx.publicFetch, this.keys().itad, missing);
-          for (const id of missing) this.cache.itadSteam[id] = found[id] || null;
-          changed = true;
-        }
-        for (const t of epicTitles.filter(t => !(t in this.cache.itadTitle)).slice(0, 60)) {
-          const g = games.find(x =>
-            x.offers.some(o => o.provider === 'epic' && canonicalTitle(o.name) === t)
-          );
-          const name = g?.offers.find(o => o.provider === 'epic')?.name || t;
-          this.cache.itadTitle[t] =
-            (await api.itadLookupTitle(this.ctx.publicFetch, this.keys().itad, name))?.id || null;
-          changed = true;
-          await sleep(250);
-        }
-        delete this.lastError.itad;
+        await fn();
+        delete this.lastError[name];
       } catch (e) {
-        this.lastError.itad = e.message;
-      }
-    }
-    if (this.has('igdb')) {
-      try {
-        const auth = await this.igdb();
-        const missing = steamIds.filter(id => !(id in this.cache.igdbSteam));
-        if (missing.length) {
-          const found = await api.igdbBySteam(this.ctx.publicFetch, auth, missing);
-          for (const id of missing) this.cache.igdbSteam[id] = found[id] || null;
-          changed = true;
-        }
-        for (const t of epicTitles.filter(t => !(t in this.cache.igdbTitle)).slice(0, 40)) {
-          const name =
-            games.flatMap(g => g.offers).find(o => o.provider === 'epic' && canonicalTitle(o.name) === t)
-              ?.name || t;
-          const results = await api.igdbSearch(this.ctx.publicFetch, auth, name);
-          const hit = results.find(r => canonicalTitle(r.name) === t);
-          this.cache.igdbTitle[t] = hit?.id || null;
-          if (hit) this.cache.igdbGames[hit.id] = hit;
-          changed = true;
-          await sleep(300);
-        }
-        const ids = [
-          ...new Set([...Object.values(this.cache.igdbSteam), ...Object.values(this.cache.igdbTitle)]),
-        ].filter(id => Number.isInteger(id) && !this.cache.igdbGames[id]);
-        for (let i = 0; i < ids.length; i += 400) {
-          for (const g of await api.igdbGames(this.ctx.publicFetch, auth, ids.slice(i, i + 400)))
-            this.cache.igdbGames[g.id] = {
-              name: g.name,
-              summary: g.summary,
-              genres: g.genres,
-              cover: g.cover,
-            };
-          changed = true;
-          await sleep(300);
-        }
-        delete this.lastError.igdb;
-      } catch (e) {
-        this.lastError.igdb = e.message;
-        if (e.status === 401) this.igdbAuth = null;
-      }
-    }
-    if (this.has('sgdb')) {
-      try {
-        const need = games.filter(
-          g =>
-            this.sgdbDue(g.id) &&
-            (g.offers.some(o => o.provider === 'custom') || !g.offers.some(o => o.provider === 'steam'))
-        );
-        for (const g of need.slice(0, 60)) {
-          const steam = g.offers.find(o => o.provider === 'steam');
-          const url = await api
-            .sgdbPortrait(this.ctx.publicFetch, this.keys().sgdb, { steamAppId: steam?.appId, title: g.name })
-            .catch(e => {
-              if (e.status) throw e;
-              return '';
-            });
-          delete this.cache.sgdb[g.id];
-          this.seen.sgdb.delete(g.id); // a fresh lookup counts as new
-          this.cache.sgdb[g.id] = { url, at: Date.now() };
-          changed = true;
-          await sleep(250);
-        }
-        delete this.lastError.sgdb;
-      } catch (e) {
-        this.lastError.sgdb = e.message;
+        this.lastError[name] = e.message;
+        if (name === 'igdb' && e.status === 401) this.igdbAuth = null;
       }
     }
     if (changed) {
@@ -267,6 +193,76 @@ class IntegrationsService {
       this.laterRebuild();
     }
     this.ctx.hub.publish();
+  }
+  // IsThereAnyDeal ids: Steam games in one request, Epic games by title. touch() marks the cache
+  // changed, so what was found is saved even when a later lookup fails.
+  async runItad(games, steamIds, epicTitles, touch) {
+    const missing = steamIds.filter(id => !(id in this.cache.itadSteam));
+    if (missing.length) {
+      const found = await api.itadLookupSteam(this.ctx.publicFetch, this.keys().itad, missing);
+      for (const id of missing) this.cache.itadSteam[id] = found[id] || null;
+      touch();
+    }
+    for (const t of epicTitles.filter(t => !(t in this.cache.itadTitle)).slice(0, 60)) {
+      const g = games.find(x => x.offers.some(o => o.provider === 'epic' && canonicalTitle(o.name) === t));
+      const name = g?.offers.find(o => o.provider === 'epic')?.name || t;
+      this.cache.itadTitle[t] =
+        (await api.itadLookupTitle(this.ctx.publicFetch, this.keys().itad, name))?.id || null;
+      touch();
+      await sleep(250);
+    }
+  }
+  // IGDB: ids by Steam app and by Epic title, then the game details of every id.
+  async runIgdb(games, steamIds, epicTitles, touch) {
+    const auth = await this.igdb();
+    const missing = steamIds.filter(id => !(id in this.cache.igdbSteam));
+    if (missing.length) {
+      const found = await api.igdbBySteam(this.ctx.publicFetch, auth, missing);
+      for (const id of missing) this.cache.igdbSteam[id] = found[id] || null;
+      touch();
+    }
+    for (const t of epicTitles.filter(t => !(t in this.cache.igdbTitle)).slice(0, 40)) {
+      const name =
+        games.flatMap(g => g.offers).find(o => o.provider === 'epic' && canonicalTitle(o.name) === t)?.name ||
+        t;
+      const results = await api.igdbSearch(this.ctx.publicFetch, auth, name);
+      const hit = results.find(r => canonicalTitle(r.name) === t);
+      this.cache.igdbTitle[t] = hit?.id || null;
+      if (hit) this.cache.igdbGames[hit.id] = hit;
+      touch();
+      await sleep(300);
+    }
+    const ids = [
+      ...new Set([...Object.values(this.cache.igdbSteam), ...Object.values(this.cache.igdbTitle)]),
+    ].filter(id => Number.isInteger(id) && !this.cache.igdbGames[id]);
+    for (let i = 0; i < ids.length; i += 400) {
+      for (const g of await api.igdbGames(this.ctx.publicFetch, auth, ids.slice(i, i + 400)))
+        this.cache.igdbGames[g.id] = { name: g.name, summary: g.summary, genres: g.genres, cover: g.cover };
+      touch();
+      await sleep(300);
+    }
+  }
+  // SteamGridDB covers for games without Steam art (custom games, Epic-only games).
+  async runSgdb(games, touch) {
+    const need = games.filter(
+      g =>
+        this.sgdbDue(g.id) &&
+        (g.offers.some(o => o.provider === 'custom') || !g.offers.some(o => o.provider === 'steam'))
+    );
+    for (const g of need.slice(0, 60)) {
+      const steam = g.offers.find(o => o.provider === 'steam');
+      const url = await api
+        .sgdbPortrait(this.ctx.publicFetch, this.keys().sgdb, { steamAppId: steam?.appId, title: g.name })
+        .catch(e => {
+          if (e.status) throw e;
+          return '';
+        });
+      delete this.cache.sgdb[g.id];
+      this.seen.sgdb.delete(g.id); // a fresh lookup counts as new
+      this.cache.sgdb[g.id] = { url, at: Date.now() };
+      touch();
+      await sleep(250);
+    }
   }
   async igdb() {
     if (this.igdbAuth && this.igdbAuth.expiresAt - Date.now() > 60000) return this.igdbAuth;

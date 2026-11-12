@@ -786,10 +786,49 @@ document.addEventListener('click', event =>
     return CLICK_BY_ID[el.dataset.sgAct || el.id]?.(el);
   })
 );
-document.addEventListener('change', event =>
-  run(async () => {
-    const el = event.target;
-    if (el.dataset.target) {
+// A switch whose change failed goes back to where it was.
+async function revertOnError(el, fn) {
+  try {
+    await fn();
+  } catch (e) {
+    el.checked = !el.checked;
+    throw e;
+  }
+}
+async function changeStoreCountry(country) {
+  detailPrices.clear();
+  priceFilter.min = '';
+  priceFilter.max = '';
+  state = api
+    ? await call('country', country)
+    : { ...state, settings: { ...state.settings, storeCountry: country } };
+  if (query.trim()) await searchCatalog();
+  else {
+    render();
+    requestBrowse(storeList);
+  }
+}
+const PRICE_FILTER = { 'price-min': 'min', 'price-max': 'max', 'sale-only': 'sale', 'price-sort': 'sort' };
+const setAndRender = (fn, resetLibrary) => el => {
+  fn(el);
+  if (resetLibrary) libraryLimit = LIBRARY_PAGE;
+  render();
+};
+const saveSchedule = async () => {
+  state = await call('downloadSettings', {
+    schedule: {
+      enabled: $('#schedule-enabled').checked,
+      from: $('#schedule-from').value,
+      to: $('#schedule-to').value,
+    },
+  });
+  render();
+};
+// Changes by data attribute: the first match handles the element.
+const CHANGE_BY_DATA = [
+  [
+    el => el.dataset.target,
+    async el => {
       const value = el.value.trim();
       if (!el.checkValidity()) throw Error('Введите неотрицательную цену');
       state = await call('priceTarget', {
@@ -797,131 +836,91 @@ document.addEventListener('change', event =>
         target: value === '' ? null : Number(value),
       });
       toast('Желаемая цена сохранена');
-      return;
-    }
-    if (['price-min', 'price-max', 'sale-only', 'price-sort'].includes(el.id)) {
-      if (!el.checkValidity()) return;
-      if (el.id === 'price-min') priceFilter.min = el.value;
-      if (el.id === 'price-max') priceFilter.max = el.value;
-      if (el.id === 'sale-only') priceFilter.sale = el.checked;
-      if (el.id === 'price-sort') priceFilter.sort = el.value;
-      render();
-      return;
-    }
-    if (el.id === 'store-currency') {
-      detailPrices.clear();
-      const c = currencyCountries[el.value];
-      state = api ? await call('country', c) : { ...state, settings: { ...state.settings, storeCountry: c } };
-      priceFilter.min = '';
-      priceFilter.max = '';
-      if (query.trim()) await searchCatalog();
-      else {
-        render();
-        requestBrowse(storeList);
-      }
-      return;
-    }
-    if (el.id === 'store-country') {
-      detailPrices.clear();
-      priceFilter.min = '';
-      priceFilter.max = '';
-      state = api
-        ? await call('country', el.value)
-        : { ...state, settings: { ...state.settings, storeCountry: el.value } };
-      if (query.trim()) await searchCatalog();
-      else {
-        render();
-        requestBrowse(storeList);
-      }
-      return;
-    }
-    if (el.dataset.remember) {
-      try {
+    },
+  ],
+  [
+    el => el.dataset.remember,
+    el =>
+      revertOnError(el, async () => {
         state = await call('remember', { provider: el.dataset.remember, enabled: el.checked });
         render();
-      } catch (e) {
-        el.checked = !el.checked;
-        throw e;
-      }
-    }
-    if (el.dataset.collectionToggle) {
+      }),
+  ],
+  [
+    el => el.dataset.collectionToggle,
+    async el => {
       state = await call('setInCollection', {
         collection: el.dataset.collectionToggle,
         id: librarySelection,
         include: el.checked,
       });
       render();
-      return;
-    }
-    if (el.id === 'show-hidden') {
-      showHidden = el.checked;
-      libraryLimit = LIBRARY_PAGE;
-      render();
-      return;
-    }
-    if (el.id === 'wish-sort') {
-      wishSort = el.value;
-      render();
-      return;
-    }
-    if (el.id === 'deals-sort') {
-      dealsSort = el.value;
-      render();
-      return;
-    }
-    if (el.id === 'library-sort') {
-      librarySort = el.value;
-      libraryLimit = LIBRARY_PAGE;
-      render();
-      return;
-    }
-    if (el.id === 'notify-giveaways') state = await call('notifyGiveaways', el.checked);
-    if (el.id === 'notify-wish-sales') state = await call('notifyWishSales', el.checked);
-    if (el.id === 'auto-update') state = await call('autoUpdate', el.checked);
-    if (el.dataset.installTag && installDlg?.opts) {
+    },
+  ],
+  [
+    el => el.dataset.installTag && installDlg?.opts,
+    el => {
       installDlg.tags[el.checked ? 'add' : 'delete'](el.dataset.installTag);
       renderInstallDialog();
-      return;
-    }
-    if (el.dataset.installDlc && installDlg?.opts) {
-      installDlg.dlcs[el.checked ? 'add' : 'delete'](el.dataset.installDlc);
-      return;
-    }
-    if (el.dataset.launchSetting)
-      state = await call('launchSetting', { name: el.dataset.launchSetting, value: el.checked });
-    if (el.id === 'download-limit') {
-      if (!el.checkValidity()) throw Error('Укажите скорость от 0 до 10000 МБ/с');
-      state = await call('downloadSettings', { downloadLimit: Math.round(Number(el.value || 0) * 1024) });
-      toast(
-        Number(el.value) ? `Загрузки Nexus ограничены ${el.value} МБ/с` : 'Скорость загрузок не ограничена'
-      );
-    }
-    if (['schedule-enabled', 'schedule-from', 'schedule-to'].includes(el.id)) {
-      state = await call('downloadSettings', {
-        schedule: {
-          enabled: $('#schedule-enabled').checked,
-          from: $('#schedule-from').value,
-          to: $('#schedule-to').value,
-        },
-      });
-      render();
-    }
-    if (el.id === 'epic-auto-update') state = await call('downloadSettings', { epicAutoUpdate: el.checked });
-    if (el.id === 'download-notify') state = await call('downloadSettings', { downloadNotify: el.checked });
-    if (el.id === 'auto-start') {
-      try {
-        state = await call('autoStart', el.checked);
-      } catch (e) {
-        el.checked = !el.checked;
-        throw e;
-      }
-    }
-    if (el.name === 'provider') {
+    },
+  ],
+  [
+    el => el.dataset.installDlc && installDlg?.opts,
+    el => installDlg.dlcs[el.checked ? 'add' : 'delete'](el.dataset.installDlc),
+  ],
+  [
+    el => el.dataset.launchSetting,
+    async el => (state = await call('launchSetting', { name: el.dataset.launchSetting, value: el.checked })),
+  ],
+  [
+    el => el.name === 'provider',
+    async el => {
       selectedProvider = el.value;
       if (!demo && api) state = await call('preferred', { id: detailId, provider: selectedProvider });
       else state.settings.preferred[detailId] = selectedProvider;
       renderDetail();
-    }
+    },
+  ],
+];
+const CHANGE_BY_ID = {
+  ...Object.fromEntries(
+    Object.entries(PRICE_FILTER).map(([id, key]) => [
+      id,
+      el => {
+        if (!el.checkValidity()) return;
+        priceFilter[key] = el.type === 'checkbox' ? el.checked : el.value;
+        render();
+      },
+    ])
+  ),
+  'store-currency': el => changeStoreCountry(currencyCountries[el.value]),
+  'store-country': el => changeStoreCountry(el.value),
+  'show-hidden': setAndRender(el => (showHidden = el.checked), true),
+  'wish-sort': setAndRender(el => (wishSort = el.value)),
+  'deals-sort': setAndRender(el => (dealsSort = el.value)),
+  'library-sort': setAndRender(el => (librarySort = el.value), true),
+  'notify-giveaways': async el => (state = await call('notifyGiveaways', el.checked)),
+  'notify-wish-sales': async el => (state = await call('notifyWishSales', el.checked)),
+  'auto-update': async el => (state = await call('autoUpdate', el.checked)),
+  'download-limit': async el => {
+    if (!el.checkValidity()) throw Error('Укажите скорость от 0 до 10000 МБ/с');
+    state = await call('downloadSettings', { downloadLimit: Math.round(Number(el.value || 0) * 1024) });
+    toast(
+      Number(el.value) ? `Загрузки Nexus ограничены ${el.value} МБ/с` : 'Скорость загрузок не ограничена'
+    );
+  },
+  'schedule-enabled': saveSchedule,
+  'schedule-from': saveSchedule,
+  'schedule-to': saveSchedule,
+  'epic-auto-update': async el => (state = await call('downloadSettings', { epicAutoUpdate: el.checked })),
+  'download-notify': async el => (state = await call('downloadSettings', { downloadNotify: el.checked })),
+  'auto-start': el => revertOnError(el, async () => (state = await call('autoStart', el.checked))),
+};
+document.addEventListener('change', event =>
+  run(async () => {
+    const el = event.target;
+    for (const [test, act] of CHANGE_BY_DATA) if (test(el)) return act(el);
+    return CHANGE_BY_ID[el.id]?.(el);
   })
 );
 document.addEventListener('submit', event => {

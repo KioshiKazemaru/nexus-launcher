@@ -70,8 +70,17 @@ function sharedGlobals() {
   }
   return out;
 }
+// Ceilings so functions do not grow into tangles again: the most complex ones left are
+// parsers of Steam / Epic formats, where every field has a fallback. New code should stay
+// far below; lower these numbers when a function above them is split.
+const size = {
+  complexity: ['error', 35],
+  'max-depth': ['error', 6],
+  'max-lines-per-function': ['error', { max: 125, skipBlankLines: true, skipComments: true }],
+};
 module.exports = [
   { ignores: ['dist/**', 'node_modules/**', 'ui/demo.js'] },
+  { files: ['src/**/*.cjs', 'ui/**/*.js'], rules: size },
   {
     files: ['src/**/*.cjs', 'test/**/*.cjs', 'eslint.config.cjs'],
     languageOptions: { ecmaVersion: 2024, sourceType: 'commonjs', globals: node },

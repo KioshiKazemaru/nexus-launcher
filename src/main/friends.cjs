@@ -13,6 +13,32 @@ const PROFILE_MS = 5 * 60 * 1000;
 const GAME_MS = 2 * 60 * 1000;
 const GAME_LISTS = ['inGame', 'recent', 'ever', 'owns', 'wishlist'];
 
+// The saved part of a profile page, from Steam's answers (fetchProfile).
+function profileValue(person, { badges, owned, recent, items, page }, account, friend) {
+  let games = null;
+  try {
+    games = owned ? f.parseOwnedGames(owned) : null;
+  } catch {
+    games = null;
+  }
+  const lvl = badges?.response;
+  return {
+    ...person,
+    avatar: person.avatar.replace(/_medium\.jpg$/, '_full.jpg'),
+    accountId: account.id,
+    friend,
+    level: lvl && lvl.player_level !== undefined ? Number(lvl.player_level) || 0 : null,
+    badges: Array.isArray(lvl?.badges) ? lvl.badges.length : null,
+    games,
+    recent: recent ? f.parseRecentGames(recent) : [],
+    ...f.parseProfileItems(items),
+    realName: page?.realName || '',
+    location: page?.location || '',
+    summary: page?.summary || '',
+    memberSince: page?.memberSince || '',
+  };
+}
+
 class FriendsService {
   constructor(ctx) {
     this.ctx = ctx;
@@ -297,22 +323,40 @@ class FriendsService {
     if (!/^7656119\d{10}$/.test(id)) throw Error('Профиль недоступен');
     const hit = this.profiles.get(id);
     if (hit && Date.now() - hit.at < PROFILE_MS) return this.decorateProfile(hit.value);
-    const accounts = this.ctx.accounts.connected('steam');
-    if (!accounts.length) throw Error('Подключите Steam в «Аккаунтах»');
-    // The account this person is a friend of (their friends-only details are visible to it).
-    // Only needed with several Steam accounts, and only when the list is not loaded yet.
-    if (accounts.length > 1 && !accounts.some(a => a.id === id) && !this.cache)
-      await this.list().catch(() => {});
-    const isFriend = a =>
-      !!this.cache?.steam.some(g => g.account.id === a.id && g.friends.some(x => x.id === id));
-    // My own profile: through my own account.
-    const account = accounts.find(a => a.id === id) || accounts.find(isFriend) || accounts[0];
-    const api = await this.steamApi(account);
+    const { account, friend } = await this.profileAccount(id);
     const soft = (promise, what) =>
       promise.catch(e => {
         this.ctx.log.debug?.('friends', `profile ${what}: ${e.message}`);
         return null;
       });
+    const parts = await this.fetchProfile(account, id, soft);
+    const person = f.parseSteamLinkDetails(parts.details)[0];
+    if (!person) throw Error('Steam не отдал этот профиль');
+    if (person.gameId && !person.game) {
+      const client = this.ctx.presence?.clients?.get(String(account.id));
+      person.game = (await this.ctx.presence?.appName(client, Number(person.gameId)).catch(() => '')) || '';
+    }
+    const value = profileValue(person, parts, account, friend);
+    value.store = await this.profileStore(value, person, soft);
+    this.profiles.set(id, { at: Date.now(), value });
+    return this.decorateProfile(value);
+  }
+  // The account this person is a friend of (their friends-only details are visible to it);
+  // my own profile goes through my own account.
+  async profileAccount(id) {
+    const accounts = this.ctx.accounts.connected('steam');
+    if (!accounts.length) throw Error('Подключите Steam в «Аккаунтах»');
+    // Only needed with several Steam accounts, and only when the list is not loaded yet.
+    if (accounts.length > 1 && !accounts.some(a => a.id === id) && !this.cache)
+      await this.list().catch(() => {});
+    const isFriend = a =>
+      !!this.cache?.steam.some(g => g.account.id === a.id && g.friends.some(x => x.id === id));
+    const account = accounts.find(a => a.id === id) || accounts.find(isFriend) || accounts[0];
+    return { account, friend: isFriend(account) };
+  }
+  // Everything Steam has about the profile, in parallel; only the link details are required.
+  async fetchProfile(account, id, soft) {
+    const api = await this.steamApi(account);
     // The profile page's own data (real name, "О себе"), signed in: friends-only parts are visible.
     const session = this.ctx.accounts.session(account.key);
     const xml = async () => {
@@ -338,35 +382,10 @@ class FriendsService {
       soft(api('IPlayerService/GetProfileItemsEquipped/v1/', { steamid: id }), 'items'),
       soft(xml(), 'page'),
     ]);
-    const person = f.parseSteamLinkDetails(details)[0];
-    if (!person) throw Error('Steam не отдал этот профиль');
-    if (person.gameId && !person.game) {
-      const client = this.ctx.presence?.clients?.get(String(account.id));
-      person.game = (await this.ctx.presence?.appName(client, Number(person.gameId)).catch(() => '')) || '';
-    }
-    let games = null;
-    try {
-      games = owned ? f.parseOwnedGames(owned) : null;
-    } catch {
-      games = null;
-    }
-    const lvl = badges?.response;
-    const value = {
-      ...person,
-      avatar: person.avatar.replace(/_medium\.jpg$/, '_full.jpg'),
-      accountId: account.id,
-      friend: isFriend(account),
-      level: lvl && lvl.player_level !== undefined ? Number(lvl.player_level) || 0 : null,
-      badges: Array.isArray(lvl?.badges) ? lvl.badges.length : null,
-      games,
-      recent: recent ? f.parseRecentGames(recent) : [],
-      ...f.parseProfileItems(items),
-      realName: page?.realName || '',
-      location: page?.location || '',
-      summary: page?.summary || '',
-      memberSince: page?.memberSince || '',
-    };
-    // Images and names of the games the page shows: one store request.
+    return { details, badges, owned, recent, items, page };
+  }
+  // Images and names of the games the page shows: one store request.
+  async profileStore(value, person, soft) {
     const lib = this.libraryApps();
     const ownedGames = value.games?.games || [];
     const shown = [
@@ -383,11 +402,9 @@ class FriendsService {
     const storeHits = shown.length
       ? await soft(steamLib.storeItems(this.ctx.publicFetch, shown, this.ctx.settings?.storeCountry), 'store')
       : null;
-    value.store = Object.fromEntries(
+    return Object.fromEntries(
       [...(storeHits || new Map())].map(([k, x]) => [String(k), { name: x.name || '', image: x.image || '' }])
     );
-    this.profiles.set(id, { at: Date.now(), value });
-    return this.decorateProfile(value);
   }
   // Steam games of the library: app id → { id, minutes }.
   libraryApps() {

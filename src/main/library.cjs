@@ -440,62 +440,76 @@ class LibraryService {
 
   // ---- merge ------------------------------------------------------------
 
+  // Playtime of one offer: Epic does not record games started without its launcher, so
+  // Nexus adds its own minutes; Steam's local files may be ahead of the Web API.
+  offerWithPlaytime(o, nexusTime) {
+    const own = o.provider === 'epic' ? nexusTime[`epic:${o.appId}`] : null;
+    if (own)
+      o = {
+        ...o,
+        playtime: (Number(o.playtime) || 0) + (Number(own.minutes) || 0),
+        lastPlayed: Math.max(Number(o.lastPlayed) || 0, Number(own.lastPlayed) || 0),
+      };
+    const m = o.provider === 'steam' ? this.localMeta[o.appId] : null;
+    if (!m) return o;
+    return {
+      ...o,
+      lastPlayed: Math.max(o.lastPlayed || 0, m.lastPlayed),
+      playtime: Math.max(o.playtime || 0, m.playtime),
+    };
+  }
+  // The wide picture: the curated catalog, Steam's own art, the offers, then metadata.
+  gameImage(g, { steam, known, meta, assets }) {
+    return (
+      known?.image ||
+      assets?.image ||
+      (steam ? steamLib.steamImage(steam.appId) : '') ||
+      g.offers.find(o => o.image)?.image ||
+      this.artCache.get(g.id) ||
+      meta?.image ||
+      ''
+    );
+  }
+  // The cover: a chosen one first, then the offers, the catalog, Steam's local cache.
+  gamePortrait(g, { steam, known, meta, assets }) {
+    return (
+      this.ctx.integrations.portrait(g) ||
+      g.offers.find(o => o.portrait)?.portrait ||
+      known?.portrait ||
+      (steam && this.local.steamRoots.length ? `nexus-art://steam/${steam.appId}/portrait` : '') ||
+      assets?.portrait ||
+      meta?.cover ||
+      ''
+    );
+  }
+  // Pictures, description, genres and playtime of a merged game, from the best source.
+  decorateGame(g) {
+    const steam = g.offers.find(o => o.provider === 'steam');
+    if (steam) g.steam = steam.appId;
+    const known = catalog.find(c => c.id === g.id);
+    const meta = this.ctx.integrations.metadata(g);
+    const assets = steam ? this.steamAssets.get(String(steam.appId)) : null;
+    g.image = this.gameImage(g, { steam, known, meta, assets });
+    g.portrait = this.gamePortrait(g, { steam, known, meta, assets });
+    if (assets?.portrait) g.portraitCdn = assets.portrait;
+    else delete g.portraitCdn;
+    if (!g.desc && meta?.summary) g.desc = meta.summary;
+    if ((!g.tags?.length || g.tags[0] === 'Моя библиотека') && meta?.genres?.length) g.tags = meta.genres;
+    g.playtime = Math.max(0, ...g.offers.map(o => Number(o.playtime) || 0));
+    g.lastPlayed = Math.max(0, ...g.offers.map(o => Number(o.lastPlayed) || 0));
+  }
   rebuild() {
     const settings = this.ctx.settings;
-    const cloudOffers = Object.values(this.cloud).flat();
     const nexusTime = settings.nexusPlaytime || {};
-    const offers = [...cloudOffers, ...this.local.offers].map(o => {
-      // Epic does not record games started without its launcher: Nexus adds its own minutes.
-      const own = o.provider === 'epic' ? nexusTime[`epic:${o.appId}`] : null;
-      if (own)
-        o = {
-          ...o,
-          playtime: (Number(o.playtime) || 0) + (Number(own.minutes) || 0),
-          lastPlayed: Math.max(Number(o.lastPlayed) || 0, Number(own.lastPlayed) || 0),
-        };
-      const m = o.provider === 'steam' ? this.localMeta[o.appId] : null;
-      return m
-        ? {
-            ...o,
-            lastPlayed: Math.max(o.lastPlayed || 0, m.lastPlayed),
-            playtime: Math.max(o.playtime || 0, m.playtime),
-          }
-        : o;
-    });
+    const offers = [...Object.values(this.cloud).flat(), ...this.local.offers].map(o =>
+      this.offerWithPlaytime(o, nexusTime)
+    );
     const games = mergeGames(offers, {
       links: settings.links.map(l => [l.a, l.b]),
       splits: new Set(settings.splits),
       externalId: o => this.ctx.integrations.externalId(o),
     });
-    for (const g of games) {
-      const steam = g.offers.find(o => o.provider === 'steam');
-      if (steam) g.steam = steam.appId;
-      const known = catalog.find(c => c.id === g.id);
-      const meta = this.ctx.integrations.metadata(g);
-      const assets = steam ? this.steamAssets.get(String(steam.appId)) : null;
-      g.image =
-        known?.image ||
-        assets?.image ||
-        (steam ? steamLib.steamImage(steam.appId) : '') ||
-        g.offers.find(o => o.image)?.image ||
-        this.artCache.get(g.id) ||
-        meta?.image ||
-        '';
-      g.portrait =
-        this.ctx.integrations.portrait(g) ||
-        g.offers.find(o => o.portrait)?.portrait ||
-        known?.portrait ||
-        (steam && this.local.steamRoots.length ? `nexus-art://steam/${steam.appId}/portrait` : '') ||
-        assets?.portrait ||
-        meta?.cover ||
-        '';
-      if (assets?.portrait) g.portraitCdn = assets.portrait;
-      else delete g.portraitCdn;
-      if (!g.desc && meta?.summary) g.desc = meta.summary;
-      if ((!g.tags?.length || g.tags[0] === 'Моя библиотека') && meta?.genres?.length) g.tags = meta.genres;
-      g.playtime = Math.max(0, ...g.offers.map(o => Number(o.playtime) || 0));
-      g.lastPlayed = Math.max(0, ...g.offers.map(o => Number(o.lastPlayed) || 0));
-    }
+    for (const g of games) this.decorateGame(g);
     this.classifyLibrary(games);
     const hidden = new Set(settings.hidden);
     for (const g of games) {

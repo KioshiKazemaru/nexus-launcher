@@ -72,7 +72,10 @@ function parseSteamSearch(data, country = 'US') {
     if (!name) return;
     // The double-size file of the same capsule is sharper in the store cards.
     const img = imageUrl(
-      (el.find('.search_capsule img').attr('src') || '').replace(/\/capsule_231x87\.jpg(?=\?|$)/,'/capsule_231x87_2x.jpg')
+      (el.find('.search_capsule img').attr('src') || '').replace(
+        /\/capsule_231x87\.jpg(?=\?|$)/,
+        '/capsule_231x87_2x.jpg'
+      )
     );
     const amount =
       el.find('.discount_final_price').text().trim() ||
@@ -232,6 +235,77 @@ function epicSaleEnd(p, total) {
     .filter(t => Number.isFinite(t) && t > 0);
   return ends.length ? { saleEnd: Math.min(...ends) } : {};
 }
+// Catalog paths of an element; null for what is not a game or add-on (news, software, bundles…).
+function epicKind(x) {
+  const categories = x.categories?.map(c => c.path || c).filter(c => typeof c === 'string') || [];
+  if (categories.some(c => /^(news|editorial|articles|events|software|mods|bundles)(\/|$)/i.test(c)))
+    return null;
+  if (!categories.some(c => /^(games|addons|dlc)(\/|$)/i.test(c))) return null;
+  return categories.some(c => /^(addons|dlc)(\/|$)/i.test(c)) ? 'dlc' : 'game';
+}
+const EPIC_COVER_TYPES = [
+  'OfferImageWide',
+  'DieselStoreFrontWide',
+  'Thumbnail',
+  'OfferImageTall',
+  'DieselStoreFrontTall',
+];
+function epicCover(images) {
+  return imageUrl(
+    EPIC_COVER_TYPES.map(t => images.find(i => i.type === t)?.url).find(Boolean) || images[0]?.url
+  );
+}
+// "featuredMedia" is the gallery of the store page (Epic's screenshots).
+function epicScreenshots(images) {
+  const urls = images
+    .filter(i => /screenshot|gallery|featuredmedia/i.test(i.type || ''))
+    .map(i => imageUrl(epicThumb(i.url)))
+    .filter(Boolean);
+  return [...new Set(urls)].slice(0, 6);
+}
+function epicStoreUrl(x) {
+  const mapping = [...(x.offerMappings || []), ...(x.catalogNs?.mappings || [])].find(
+    m => m.pageType === 'productHome' && m.pageSlug
+  );
+  const slug = (mapping?.pageSlug || x.productSlug || '').replace(/\/home$/, '');
+  return /^[a-z0-9][a-z0-9-]{0,180}$/i.test(slug) ? `https://store.epicgames.com/p/${slug}` : null;
+}
+function epicPrice(totalPrice) {
+  const price = totalPrice || {};
+  const divisor = 10 ** (price.currencyInfo?.decimals ?? 2);
+  return {
+    amount: typeof price.discountPrice === 'number' ? price.discountPrice / divisor : null,
+    discount: price.originalPrice > 0 ? Math.round(100 * (1 - price.discountPrice / price.originalPrice)) : 0,
+    price: price.fmtPrice?.discountPrice || null,
+    originalPrice: price.fmtPrice?.originalPrice || null,
+    currency: price.currencyCode || null,
+  };
+}
+// One search element as an offer, or null when it is not a game or add-on.
+function epicSearchOffer(x) {
+  if (!x.id || !x.namespace || !x.title) return null;
+  const type = epicKind(x);
+  if (!type) return null;
+  const images = x.keyImages || [];
+  return {
+    provider: 'epic',
+    appId: x.id,
+    namespace: x.namespace,
+    name: x.title,
+    type,
+    desc: String(x.description || '')
+      .replace(/<[^>]*>/g, ' ')
+      .slice(0, 500),
+    items: (x.items || []).map(i => ({ id: i.id, namespace: i.namespace })),
+    image: epicCover(images),
+    screenshots: epicScreenshots(images),
+    tags: epicTags(x.tags),
+    ...epicRelease(x),
+    ...epicPrice(x.price?.totalPrice),
+    ...epicSaleEnd(x.price, x.price?.totalPrice),
+    url: epicStoreUrl(x),
+  };
+}
 function parseEpicSearch(data) {
   const result = data?.data?.Catalog?.searchStore;
   // GraphQL may return usable elements together with errors for single fields.
@@ -241,57 +315,7 @@ function parseEpicSearch(data) {
     throw e;
   }
   if (!Array.isArray(result?.elements)) throw Error('Неизвестный формат поиска Epic');
-  const offers = [];
-  for (const x of result.elements) {
-    if (!x.id || !x.namespace || !x.title) continue;
-    const categories = x.categories?.map(c => c.path || c).filter(c => typeof c === 'string') || [];
-    if (categories.some(c => /^(news|editorial|articles|events|software|mods|bundles)(\/|$)/i.test(c)))
-      continue;
-    if (!categories.some(c => /^(games|addons|dlc)(\/|$)/i.test(c))) continue;
-    const images = x.keyImages || [],
-      image = imageUrl(
-        ['OfferImageWide', 'DieselStoreFrontWide', 'Thumbnail', 'OfferImageTall', 'DieselStoreFrontTall']
-          .map(t => images.find(i => i.type === t)?.url)
-          .find(Boolean) || images[0]?.url
-      );
-    const mapping = [...(x.offerMappings || []), ...(x.catalogNs?.mappings || [])].find(
-      m => m.pageType === 'productHome' && m.pageSlug
-    );
-    const slug = (mapping?.pageSlug || x.productSlug || '').replace(/\/home$/, '');
-    const price = x.price?.totalPrice;
-    const divisor = 10 ** (price?.currencyInfo?.decimals ?? 2);
-    offers.push({
-      provider: 'epic',
-      appId: x.id,
-      namespace: x.namespace,
-      name: x.title,
-      type: categories.some(c => /^(addons|dlc)(\/|$)/i.test(c)) ? 'dlc' : 'game',
-      desc: String(x.description || '')
-        .replace(/<[^>]*>/g, ' ')
-        .slice(0, 500),
-      items: (x.items || []).map(i => ({ id: i.id, namespace: i.namespace })),
-      image,
-      // "featuredMedia" is the gallery of the store page (Epic's screenshots).
-      screenshots: [
-        ...new Set(
-          images
-            .filter(i => /screenshot|gallery|featuredmedia/i.test(i.type || ''))
-            .map(i => imageUrl(epicThumb(i.url)))
-            .filter(Boolean)
-        ),
-      ].slice(0, 6),
-      tags: epicTags(x.tags),
-      ...epicRelease(x),
-      amount: typeof price?.discountPrice === 'number' ? price.discountPrice / divisor : null,
-      discount:
-        price?.originalPrice > 0 ? Math.round(100 * (1 - price.discountPrice / price.originalPrice)) : 0,
-      price: price?.fmtPrice?.discountPrice || null,
-      originalPrice: price?.fmtPrice?.originalPrice || null,
-      currency: price?.currencyCode || null,
-      ...epicSaleEnd(x.price, price),
-      url: /^[a-z0-9][a-z0-9-]{0,180}$/i.test(slug) ? `https://store.epicgames.com/p/${slug}` : null,
-    });
-  }
+  const offers = result.elements.map(epicSearchOffer).filter(Boolean);
   return { offers, total: result.paging?.total || offers.length };
 }
 const EPIC_QUERY = `query NexusSearch($keywords:String,$country:String!,$start:Int!,$count:Int!){Catalog{searchStore(keywords:$keywords,country:$country,locale:"ru",start:$start,count:$count){elements{id namespace title description productSlug effectiveDate releaseDate keyImages{type url} tags{id name groupName} categories{path} items{id namespace} offerMappings{pageSlug pageType} catalogNs{mappings(pageType:"productHome"){pageSlug pageType}} price(country:$country){totalPrice{currencyCode originalPrice discountPrice currencyInfo{decimals} fmtPrice(locale:"ru"){originalPrice discountPrice}} lineOffers{appliedRules{endDate}}}} paging{count total}}}}`;
