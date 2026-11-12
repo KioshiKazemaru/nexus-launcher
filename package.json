@@ -132,6 +132,14 @@
         }
       },
       "syncDesktopName": true
+    },
+    "electronFuses": {
+      "runAsNode": false,
+      "enableCookieEncryption": true,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "enableEmbeddedAsarIntegrityValidation": true,
+      "onlyLoadAppFromAsar": true
     }
   },
   "homepage": "https://github.com/KioshiKazemaru/nexus-launcher",
