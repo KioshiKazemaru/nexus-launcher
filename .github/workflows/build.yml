@@ -1,4 +1,4 @@
-# Lint, tests and test installers on Windows, macOS and Linux.
+# Lint, tests, test installers and one start of the built app on Windows, macOS and Linux.
 # Started by hand or by a push to main; nothing is published. The macOS and Linux
 # installers of a release are taken from this run's artifacts.
 name: build
@@ -55,6 +55,18 @@ jobs:
       - run: ${{ matrix.dist }}
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      # The built app is started once with an empty profile: the main window has to
+      # open and the log must show no error (scripts/smoke-launch.cjs). Linux runners
+      # have no screen, so a virtual one (xvfb).
+      - name: Start the built Nexus once
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            sudo apt-get install -y xvfb >/dev/null
+            xvfb-run -a node scripts/smoke-launch.cjs
+          else
+            node scripts/smoke-launch.cjs
+          fi
       # Windows code signing through SignPath (docs/signing.md). Only once the SignPath
       # project is set up (repository variables SIGNPATH_* and the secret
       # SIGNPATH_API_TOKEN), and not for pull requests: they get no secrets.
