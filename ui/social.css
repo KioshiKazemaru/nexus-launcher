@@ -475,6 +475,15 @@ button.link:hover {
 .chat-img:hover {
   border-color: #66c0f4;
 }
+.chat-img-broken {
+  color: #66c0f4;
+  font-size: 12px;
+  word-break: break-all;
+  text-decoration: none;
+}
+.chat-img-broken:hover {
+  text-decoration: underline;
+}
 .viewer {
   position: fixed;
   inset: 0;

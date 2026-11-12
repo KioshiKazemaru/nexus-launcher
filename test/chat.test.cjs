@@ -532,6 +532,57 @@ test('Steam chat through the client: the port is switched on once, with a quiet 
   assert.equal(FakeSteamUser.last.loggedOff, true, 'then signed off');
 });
 
+test("Steam chat: the port switch goes to Steam's own folder (macOS: not into Steam.app); Flatpak waits for a restart outside a game", async () => {
+  const t = steamChat();
+  const cef = fakeCef({ port: false });
+  t.chat.steamCef = cef;
+  const root = path.join('Users', 'me', 'Library', 'Application Support', 'Steam');
+  const calls = [];
+  t.chat.ctx.actions = {
+    processRunning: async () => true,
+    steamExe: () => '/Applications/Steam.app/Contents/MacOS/steam_osx',
+    steamRoot: () => root,
+    runningSteamApp: async () => '0',
+  };
+  t.chat.ctx.steamInstall = {
+    stopSteam: async () => calls.push('stop'),
+    startSteam: () => (calls.push('start'), (cef.port = true)),
+  };
+  const key = c.convKey('steam', ME, FRIEND);
+  await t.chat.send(key, 'мак');
+  assert.equal(cef.dir, root);
+  assert.deepEqual(calls, ['stop', 'start']);
+  // Flatpak / Snap: no program Nexus can restart. Outside a game the message waits for
+  // the user's own Steam restart (no chat sign-in: checked only mid-game)…
+  cef.port = false;
+  cef.on = false;
+  calls.length = 0;
+  t.chat.ctx.actions.steamExe = () => null;
+  FakeSteamUser.last = null;
+  const flat = await t.chat.send(key, 'флатпак');
+  assert.equal(cef.dir, root, 'the switch is still set for the next Steam start');
+  assert.deepEqual(calls, []);
+  assert.equal(FakeSteamUser.last, null, 'no chat sign-in outside a game');
+  assert.equal(flat.pending, true);
+  assert.equal(flat.wait, 'restart');
+  clearTimeout(t.chat.queueTimer);
+  t.chat.queueTimer = null;
+  // …and goes out by itself once Steam was restarted with its port.
+  cef.port = true;
+  await t.chat.flushQueue();
+  assert.deepEqual(cef.sent.at(-1), [FRIEND, 'флатпак']);
+  const sent = t.chat.history[key].find(m => m.id === flat.id);
+  assert.equal(sent.pending, undefined);
+  assert.equal(sent.wait, undefined);
+  // In a game it is sent at once through a short chat sign-in.
+  cef.port = false;
+  t.chat.ctx.actions.runningSteamApp = async () => '730';
+  const inGame = await t.chat.send(key, 'в игре');
+  assert.deepEqual(FakeSteamUser.last.sent, [[FRIEND, 'в игре']]);
+  assert.equal(inGame.pending, undefined);
+  t.chat.stop();
+});
+
 test('Steam chat mid-game: when Steam does not let even a short sign-in, the message waits and goes out after the game', async () => {
   const t = steamChat();
   const cef = fakeCef({ port: false });

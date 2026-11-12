@@ -3,7 +3,7 @@
 const { setAutoStart } = require('../autostart.cjs');
 const { yearReview } = require('../../year-review.cjs');
 const path = require('node:path');
-const { app, shell } = require('electron');
+const { app, session, shell } = require('electron');
 const { bool, wrappers } = require('./helpers.cjs');
 
 function registerAppIpc(register, ctx, { onlineAgain }) {
@@ -21,6 +21,13 @@ function registerAppIpc(register, ctx, { onlineAgain }) {
   }));
   register('saveDiagnostics', () => actions.saveDiagnostics(ctx.mainWindow()));
   register('openLogs', () => shell.openPath(path.join(app.getPath('userData'), 'logs')));
+  // «Очистить кэш»: the pictures Chromium keeps on disk (sign-ins and settings stay).
+  register('clearCache', async () => {
+    const s = session.defaultSession;
+    const before = await s.getCacheSize();
+    await s.clearCache();
+    return { freedMB: Math.round(before / 1048576) };
+  });
   register('rendererError', message => {
     ctx.log.error('ui', String(message).slice(0, 2000));
   });
@@ -68,15 +75,20 @@ function registerAppIpc(register, ctx, { onlineAgain }) {
   // «Nexus» → «Выход» in the top menu, like «Выйти из Nexus» in the tray.
   register('quitApp', () => app.quit());
   // «Итоги Nexus»: the year from the session log and the libraries.
-  register('yearReview', year => {
-    if (year !== undefined && (!Number.isInteger(year) || year < 2000 || year > 2100)) throw Error('Некорректный год');
-    return yearReview({
-      year,
-      log: settings.playLog,
-      games: ctx.library.games || [],
-      wishlist: (settings.wishlist || []).length,
-    });
-  }, { quiet: true });
+  register(
+    'yearReview',
+    year => {
+      if (year !== undefined && (!Number.isInteger(year) || year < 2000 || year > 2100))
+        throw Error('Некорректный год');
+      return yearReview({
+        year,
+        log: settings.playLog,
+        games: ctx.library.games || [],
+        wishlist: (settings.wishlist || []).length,
+      });
+    },
+    { quiet: true }
+  );
 }
 
 module.exports = { registerAppIpc };

@@ -566,19 +566,21 @@ class ChatService {
       try {
         at = await this.steamSend(account, k.friendId, clean);
       } catch (e) {
-        if (e.code !== 'STEAM_IN_GAME') throw e;
-        // Steam is in a game and cannot be restarted for its port: the message
-        // waits (saved with the history) and goes out once the game is over.
+        if (e.code !== 'STEAM_IN_GAME' && e.code !== 'NO_RESTART') throw e;
+        // Steam cannot take it now — in a game (and even a short chat sign-in failed),
+        // or a Flatpak / Snap Steam Nexus cannot restart for its port: the message waits
+        // (saved with the history) and goes out by itself once Steam can take it.
         const msg = {
           from: 'me',
           text: clean,
           at,
           pending: true,
+          wait: e.code === 'NO_RESTART' ? 'restart' : 'game',
           id: `q${at}${Math.random().toString(36).slice(2, 8)}`,
         };
         this.store(k.key, c.addToHistory(this.history[k.key], msg));
         this.emit({ type: 'message', conv: k.key, message: msg });
-        this.ctx.log.info('chat', 'steam: a message waits for the game to end');
+        this.ctx.log.info('chat', `steam: a message waits (${msg.wait})`);
         this.scheduleQueue(QUEUE_MS);
         return msg;
       }
@@ -638,12 +640,12 @@ class ChatService {
         try {
           const account = this.account('steam', k.accountId);
           const at = await this.steamSend(account, k.friendId, m.text);
-          this.updateMessage(key, m.id, { pending: undefined, at });
+          this.updateMessage(key, m.id, { pending: undefined, wait: undefined, at });
           this.ctx.log.info('chat', 'steam: a waiting message is sent');
         } catch (e) {
-          // A new game started meanwhile: the rest waits again.
-          if (e.code === 'STEAM_IN_GAME') return this.scheduleQueue(QUEUE_MS);
-          this.updateMessage(key, m.id, { pending: undefined, failed: e.message });
+          // A new game started meanwhile, or Steam is still not restarted: the rest waits.
+          if (e.code === 'STEAM_IN_GAME' || e.code === 'NO_RESTART') return this.scheduleQueue(QUEUE_MS);
+          this.updateMessage(key, m.id, { pending: undefined, wait: undefined, failed: e.message });
         }
       }
     } finally {
@@ -760,8 +762,7 @@ class ChatService {
   prepareSteamClient() {
     if (process.env.NEXUS_TEST === '1' || !this.ctx.accounts.connected('steam').length) return;
     try {
-      const exe = this.ctx.actions?.steamExe?.();
-      const dir = exe && path.dirname(exe);
+      const dir = this.steamDir();
       if (dir && !this.steamCef.enabled(dir)) {
         this.steamCef.enable(dir);
         this.ctx.log.info('chat', 'steam: the DevTools port switch is set (works from the next Steam start)');
@@ -770,11 +771,18 @@ class ChatService {
       this.ctx.log.debug?.('chat', e.message);
     }
   }
+  // The switch file goes to Steam's own folder (not next to the program: on macOS
+  // that is inside Steam.app); without a known folder, next to the program.
+  steamDir() {
+    const root = this.ctx.actions?.steamRoot?.();
+    if (root) return root;
+    const exe = this.ctx.actions?.steamExe?.();
+    return exe ? path.dirname(exe) : null;
+  }
   async openSteamPort() {
     const exe = this.ctx.actions?.steamExe?.();
-    if (!exe) throw Error('Steam не найден');
-    const dir = path.dirname(exe);
-    if (!this.steamCef.enabled(dir)) {
+    const dir = this.steamDir();
+    if (dir && !this.steamCef.enabled(dir)) {
       this.steamCef.enable(dir);
       this.ctx.log.info('chat', 'steam: the DevTools port of the Steam client is switched on');
     }
@@ -785,6 +793,12 @@ class ChatService {
         ),
         { code: 'STEAM_IN_GAME' }
       );
+    // Flatpak / Snap: Nexus cannot restart that Steam itself.
+    // (A short chat sign-in is used only mid-game, where it was checked to keep the status.)
+    if (!exe)
+      throw Object.assign(Error('Перезапустите Steam один раз — после этого Nexus отправляет через него'), {
+        code: 'NO_RESTART',
+      });
     // Steam reads the switch at start: a quiet restart (tray only).
     await this.ctx.steamInstall.stopSteam(exe);
     this.ctx.steamInstall.startSteam(exe);

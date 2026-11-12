@@ -485,9 +485,12 @@ window.addEventListener('online', () =>
 window.addEventListener('error', e =>
   api?.rendererError?.(`${e.message} @ ${e.filename}:${e.lineno}`).catch(() => {})
 );
-window.addEventListener('unhandledrejection', e =>
-  api?.rendererError?.(String(e.reason?.stack || e.reason)).catch(() => {})
-);
+window.addEventListener('unhandledrejection', e => {
+  const text = String(e.reason?.stack || e.reason);
+  // A community page interrupted by the next one (ERR_ABORTED, -3) is a normal step.
+  if (/ERR_ABORTED \(-3\)/.test(text)) return e.preventDefault();
+  api?.rendererError?.(text).catch(() => {});
+});
 document.addEventListener(
   'toggle',
   e => {

@@ -15,6 +15,7 @@ const {
   SignedOut,
 } = require('../accounts.cjs');
 const epicOAuth = require('../epic-oauth.cjs');
+const { noVault } = require('./storage.cjs');
 
 const STEAM_LOGIN = 'https://store.steampowered.com/login/';
 
@@ -479,7 +480,7 @@ class AccountsService {
   }
   async setRemember(provider, enabled) {
     if (enabled && !this.ctx.storage.encryptionAvailable())
-      throw Error('Защищённое хранилище Windows недоступно. Вход можно использовать без сохранения.');
+      throw Error(`${noVault(this.ctx.storage.platform)} Вход можно использовать без сохранения.`);
     const previous = this.ctx.settings.remember[provider];
     this.ctx.settings.remember[provider] = enabled;
     try {

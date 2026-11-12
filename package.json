@@ -1,7 +1,7 @@
 {
   "name": "nexus-launcher",
   "productName": "Nexus Launcher",
-  "version": "0.15.5",
+  "version": "0.15.6",
   "private": true,
   "description": "Unified Steam and Epic library for Windows, macOS and Linux",
   "main": "src/main.cjs",
@@ -134,5 +134,9 @@
       "syncDesktopName": true
     }
   },
-  "homepage": "https://github.com/KioshiKazemaru/nexus-launcher"
+  "homepage": "https://github.com/KioshiKazemaru/nexus-launcher",
+  "overrides": {
+    "steam-appticket": "^2.0.1",
+    "adm-zip": "^0.6.1"
+  }
 }

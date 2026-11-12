@@ -1,7 +1,8 @@
 'use strict';
 // Persistent files in %APPDATA%\Nexus Launcher:
 //   settings.json        — preferences, lists, price watches (plain JSON)
-//   sessions.bin         — DPAPI-encrypted vault: cookies, Epic refresh tokens, API keys
+//   sessions.bin         — vault encrypted by the system (DPAPI / Keychain / Keyring):
+//                          cookies, Epic refresh tokens, API keys
 //   owned-library.json   — last account libraries per account
 //   integrations.json    — cache of external ids / metadata
 // Writes are atomic (temp file + rename), asynchronous and debounced; flushSync()
@@ -138,10 +139,19 @@ class JsonFile {
   }
 }
 
+// Where secrets are kept on each system, for the messages when it is missing.
+function noVault(platform = process.platform) {
+  if (platform === 'linux')
+    return 'Хранилище паролей системы (GNOME Keyring или KWallet) не найдено — установите его и перезапустите Nexus.';
+  if (platform === 'darwin') return 'Связка ключей macOS недоступна.';
+  return 'Защищённое хранилище Windows недоступно.';
+}
+
 class Storage {
-  constructor(dir, safeStorage) {
+  constructor(dir, safeStorage, platform = process.platform) {
     this.dir = dir;
     this.safeStorage = safeStorage;
+    this.platform = platform;
     fs.mkdirSync(dir, { recursive: true });
     this.settingsFile = new JsonFile(path.join(dir, 'settings.json'));
     this.ownedFile = new JsonFile(path.join(dir, 'owned-library.json'), 1000);
@@ -183,7 +193,12 @@ class Storage {
   }
   encryptionAvailable() {
     try {
-      return this.safeStorage.isEncryptionAvailable();
+      if (!this.safeStorage.isEncryptionAvailable()) return false;
+      // Linux without GNOME Keyring / KWallet: Electron "encrypts" with a key built into
+      // it (basic_text) — that is not protection, so nothing secret is saved then.
+      if (this.platform === 'linux' && this.safeStorage.getSelectedStorageBackend?.() === 'basic_text')
+        return false;
+      return true;
     } catch {
       return false;
     }
@@ -194,7 +209,10 @@ class Storage {
       if (!this.encryptionAvailable()) throw Error('no encryption');
       return JSON.parse(this.safeStorage.decryptString(fs.readFileSync(this.vaultFile)));
     } catch {
-      this.warning = 'Сохранённый вход не удалось восстановить. Войдите снова.';
+      this.warning =
+        this.platform === 'linux' && !this.encryptionAvailable()
+          ? `${noVault('linux')} Войдите снова — вход будет работать до закрытия Nexus.`
+          : 'Сохранённый вход не удалось восстановить. Войдите снова.';
       return {};
     }
   }
@@ -206,7 +224,7 @@ class Storage {
       return;
     }
     if (!this.encryptionAvailable())
-      throw Error('Защищённое хранилище Windows недоступно. Сохранение входа и ключей отключено.');
+      throw Error(`${noVault(this.platform)} Сохранение входа и ключей отключено.`);
     const tmp = this.vaultFile + '.tmp';
     fs.writeFileSync(tmp, this.safeStorage.encryptString(JSON.stringify(vault)), { mode: 0o600 });
     fs.renameSync(tmp, this.vaultFile);
@@ -223,4 +241,4 @@ class Storage {
   }
 }
 
-module.exports = { Storage, JsonFile, defaults };
+module.exports = { Storage, JsonFile, defaults, noVault };

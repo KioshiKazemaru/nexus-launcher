@@ -90,6 +90,7 @@ const channels = [
   'importBackup',
   'saveDiagnostics',
   'openLogs',
+  'clearCache',
   'quitApp',
   'yearReview',
   'rendererError',

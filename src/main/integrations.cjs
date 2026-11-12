@@ -5,6 +5,7 @@
 
 const api = require('../integrations.cjs');
 const { canonicalTitle } = require('../matching.cjs');
+const { noVault } = require('./storage.cjs');
 
 const KEY_RULES = {
   itad: /^[A-Za-z0-9_-]{16,128}$/,
@@ -69,7 +70,7 @@ class IntegrationsService {
     const v = typeof value === 'string' ? value.trim() : '';
     if (v && !KEY_RULES[name].test(v)) throw Error('Ключ имеет неверный формат');
     if (v && !this.ctx.storage.encryptionAvailable())
-      throw Error('Защищённое хранилище Windows недоступно, ключ не может быть сохранён.');
+      throw Error(`${noVault(this.ctx.storage.platform)} Ключ не может быть сохранён.`);
     const previous = this.ctx.vault.keys;
     const keys = { ...this.keys() };
     if (v) keys[name] = v;

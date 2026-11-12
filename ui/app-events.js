@@ -572,6 +572,12 @@ CLICK_BY_ID['save-diagnostics'] = async el => {
 CLICK_BY_ID['open-logs'] = async el => {
   await call('openLogs');
 };
+CLICK_BY_ID['clear-cache'] = async el => {
+  el.disabled = true;
+  const r = await call('clearCache');
+  el.disabled = false;
+  if (r) toast(r.freedMB ? `Кэш очищен: освобождено ${r.freedMB} МБ.` : 'Кэш уже пуст.');
+};
 CLICK_BY_ID['library-favorite'] = async el => {
   await toggle('favorites', librarySelection);
 };

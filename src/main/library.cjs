@@ -839,8 +839,10 @@ class LibraryService {
         this.ctx.store?.wishlistSoon(`${provider}:${accountId}`);
         if (provider === 'epic')
           this.enrichEpic(key, accountId, epoch).catch(e => this.ctx.log?.warn('epic-meta', e.message));
-        else if (offers.some(o => /^Steam #/.test(o.name) || !o.playtime))
-          this.enrichSteam(key, accountId, epoch).catch(e => this.ctx.log?.warn('steam-meta', e.message));
+        else if (offers.some(o => /^Steam #/.test(o.name)) && this.steamEnrichDue(accountId))
+          // Only for games Steam named by number; never played games have no playtime
+          // anyway. At most once a day: the community page is often closed or rate-limited.
+          this.enrichSteam(key, accountId, epoch).catch(e => this.ctx.log?.debug?.('steam-meta', e.message));
       } catch (e) {
         if (valid()) {
           this.ctx.log.warn('library', `${key}: ${e.message}`);
@@ -997,6 +999,12 @@ class LibraryService {
     return offers.map(o =>
       /^Steam #/.test(o.name) && known.has(o.appId) ? { ...o, name: known.get(o.appId) } : o
     );
+  }
+  steamEnrichDue(accountId, now = Date.now()) {
+    this.steamEnrichAt ||= new Map();
+    if (now - (this.steamEnrichAt.get(accountId) || 0) < 24 * 3600 * 1000) return false;
+    this.steamEnrichAt.set(accountId, now);
+    return true;
   }
   async enrichSteam(key, accountId, epoch) {
     const monitor = this.ctx.accounts.monitor;

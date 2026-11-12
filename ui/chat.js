@@ -92,7 +92,7 @@ function messagesHtml(list) {
     const grouped = prev && prev.from === m.from && m.at - prev.at < 5 * 60000;
     const who = m.from === 'me' ? 'Вы' : tab?.name || 'Друг';
     const state = m.pending
-      ? `<small class="msg-state">⏳ отправится, как только Steam сможет <button class="link" data-retry="${esc(m.id)}" data-drop="1">Отменить</button></small>`
+      ? `<small class="msg-state">⏳ ${m.wait === 'restart' ? 'перезапустите Steam один раз — сообщение уйдёт само' : 'отправится, как только Steam сможет'} <button class="link" data-retry="${esc(m.id)}" data-drop="1">Отменить</button></small>`
       : m.failed
         ? `<small class="msg-state failed">Не отправлено: ${esc(m.failed)} <button class="link" data-retry="${esc(m.id)}">Повторить</button> <button class="link" data-retry="${esc(m.id)}" data-drop="1">Удалить</button></small>`
         : '';
@@ -111,7 +111,8 @@ function messageBody(m) {
   for (const p of parts) {
     const shared = p.shared && sharedImages.get(p.shared);
     if (p.shared && shared === undefined) loadShared(p.shared);
-    const src = p.image || (shared && shared.url);
+    let src = p.image || (shared && shared.url);
+    if (src && brokenImages.has(src)) src = '';
     if (src && shown.has(src)) continue; // the same picture twice in one message: once
     if (src && shown.add(src))
       media += `<button class="chat-img" data-img="${esc(src)}" data-link="${esc(p.url)}" title="Открыть картинку"><img src="${esc(src)}" alt="${esc(shared?.title || 'Картинка')}" loading="lazy" referrerpolicy="no-referrer"></button>`;
@@ -253,6 +254,25 @@ document.addEventListener('keydown', e => {
   }
   if (e.key === 'Escape' && e.ctrlKey && active) closeTab(active);
 });
+// A picture that does not load (an expired Discord link, a removed upload): the link
+// instead of an empty frame. Remembered, so the next render does not try again.
+const brokenImages = new Set();
+document.addEventListener(
+  'error',
+  e => {
+    const btn = e.target.closest?.('.chat-img');
+    if (!btn || e.target.tagName !== 'IMG') return;
+    brokenImages.add(btn.dataset.img);
+    const a = document.createElement('a');
+    a.href = '#';
+    a.className = 'chat-img-broken';
+    a.dataset.link = btn.dataset.link || btn.dataset.img;
+    a.title = 'Картинка не загрузилась — открыть в браузере';
+    a.textContent = '🖼 ' + a.dataset.link;
+    btn.replaceWith(a);
+  },
+  true
+);
 window.addEventListener('focus', reportViewing);
 window.addEventListener('blur', reportViewing);
 

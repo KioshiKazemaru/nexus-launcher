@@ -183,6 +183,15 @@ class ActionsService {
       for (const exe of system.steamExecutables(root)) if (fs.existsSync(exe)) return exe;
     return null;
   }
+  // Steam's own folder (its settings and switch files): the one with the program, else
+  // the first found. On macOS the program is in Steam.app, the folder in Application
+  // Support; Flatpak and Snap have no program Nexus starts, only the folder.
+  steamRoot() {
+    const roots = this.ctx.library.local.steamRoots || [];
+    for (const root of roots)
+      if (system.steamExecutables(root).some(exe => fs.existsSync(exe)) && fs.existsSync(root)) return root;
+    return roots.find(r => fs.existsSync(r)) || null;
+  }
   steamRunning() {
     return processes.anyRunning(system.steamProcessNames());
   }

@@ -107,6 +107,8 @@ const system = require('./os.cjs');
 // A second copy only hands focus to the first one; it never starts services.
 const primary = app.requestSingleInstanceLock();
 if (!primary) app.exit(0);
+// Store pictures and covers fill Chromium's disk cache: kept to 150 MB (no limit by default).
+app.commandLine?.appendSwitch('disk-cache-size', String(150 * 1024 * 1024));
 protocol.registerSchemesAsPrivileged([
   { scheme: 'nexus-art', privileges: { standard: true, secure: true, supportFetchAPI: false } },
 ]);

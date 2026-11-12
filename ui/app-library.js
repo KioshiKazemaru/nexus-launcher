@@ -807,7 +807,7 @@ function importCards(steamConnected, epicConnected) {
 <section class="settings-card"><h3>Коллекции Steam</h3><p>Перенести коллекции, скрытые и избранные игры из клиента Steam (для подключённых аккаунтов). Динамические коллекции Steam — это правила фильтрации, они не переносятся.</p><div class="account-actions"><button class="secondary" id="import-collections" ${steamConnected ? '' : 'disabled'}>Импортировать коллекции Steam</button></div></section>`;
 }
 function backupCard() {
-  return `<section class="settings-card"><h3>Резервная копия и диагностика</h3><p>Копия содержит списки, коллекции, склейки, отслеживания цен и сохранённые библиотеки. Входы, токены и ключи в неё не попадают. Диагностика — отчёт для поиска проблем; токены и ключи в нём скрыты.</p><div class="account-actions"><button class="secondary" id="export-backup">Сохранить копию</button><button class="secondary" id="import-backup">Восстановить из копии</button><button class="secondary" id="save-diagnostics">Сохранить диагностику</button><button class="ghost" id="open-logs">Открыть папку журналов</button></div></section>`;
+  return `<section class="settings-card"><h3>Резервная копия и диагностика</h3><p>Копия содержит списки, коллекции, склейки, отслеживания цен и сохранённые библиотеки. Входы, токены и ключи в неё не попадают. Диагностика — отчёт для поиска проблем; токены и ключи в нём скрыты.</p><div class="account-actions"><button class="secondary" id="export-backup">Сохранить копию</button><button class="secondary" id="import-backup">Восстановить из копии</button><button class="secondary" id="save-diagnostics">Сохранить диагностику</button><button class="ghost" id="open-logs">Открыть папку журналов</button><button class="ghost" id="clear-cache" title="Картинки магазина и обложки скачаются заново. Входы и настройки останутся.">Очистить кэш</button></div></section>`;
 }
 // Optional keys of outside services (IsThereAnyDeal, IGDB, SteamGridDB).
 function integrationsCard() {
@@ -1002,17 +1002,17 @@ function render() {
                   ? profilePage()
                   : page === 'review'
                     ? reviewPage()
-                  : page === 'community'
-                    ? ''
-                  : page === 'friend'
-                    ? friendPage()
-                    : page === 'accounts'
-                      ? accounts() + epicImportPanel()
-                      : page === 'tracking'
-                        ? dealsPage()
-                        : librarySelection && page === 'library'
-                          ? libraryGamePage()
-                          : library();
+                    : page === 'community'
+                      ? ''
+                      : page === 'friend'
+                        ? friendPage()
+                        : page === 'accounts'
+                          ? accounts() + epicImportPanel()
+                          : page === 'tracking'
+                            ? dealsPage()
+                            : librarySelection && page === 'library'
+                              ? libraryGamePage()
+                              : library();
   renderCommunity();
   renderPropsDialog();
   $('#footer-status').textContent = state.warnings[0] || '';

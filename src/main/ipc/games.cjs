@@ -45,8 +45,9 @@ function registerGamesIpc(register, ctx) {
   register('downloadControl', async p => {
     const { id, action } = p || {};
     if (typeof id !== 'string' || id.length > 300) throw Error('Некорректная игра');
+    // An unknown action is an error; a known one may well return nothing.
+    if (!DOWNLOAD_ACTIONS.includes(action)) throw Error('Неизвестное действие');
     const result = await downloadAction(ctx.epicInstall, id, action);
-    if (result === null) throw Error('Неизвестное действие');
     return { result, state: ctx.hub.reply() };
   });
   register('checkUpdates', async () => ({
@@ -119,6 +120,7 @@ function registerGamesIpc(register, ctx) {
 }
 
 // A button of a Nexus download; null for an unknown one.
+const DOWNLOAD_ACTIONS = ['pause', 'first', 'now', 'resume', 'cancel', 'update', 'repair'];
 function downloadAction(e, id, action) {
   const run = {
     pause: () => e.pause(id),
