@@ -48,6 +48,12 @@ test('current and upcoming giveaways; paid discounts are not giveaways', () => {
   );
   assert.equal(r.current[0].url, 'https://store.epicgames.com/p/game-a');
   assert.equal(r.current[0].image, 'https://cdn1.epicgames.com/w.jpg');
+  // A store game for the hover preview: gamePrices finds its Epic offer again.
+  assert.equal(r.current[0].id, 'epic:a');
+  assert.deepEqual(
+    r.current[0].storeOffers.map(o => [o.provider, o.appId, o.namespace]),
+    [['epic', 'a', r.current[0].namespace]]
+  );
   assert.throws(() => f.parseFreeGames({}));
 });
 

@@ -45,6 +45,7 @@ function parseFreeGames(json, now = Date.now()) {
     const pick = types => types.map(t => safeImage(images.find(i => i.type === t)?.url)).find(Boolean) || '';
     const slug = slugOf(e);
     const base = {
+      id: 'epic:' + e.id,
       provider: 'epic',
       appId: e.id,
       namespace: e.namespace,
@@ -54,6 +55,10 @@ function parseFreeGames(json, now = Date.now()) {
       url: slug ? `https://store.epicgames.com/p/${slug}` : null,
       originalPrice: e.price?.totalPrice?.fmtPrice?.originalPrice || null,
     };
+    // As a store game (the hover preview): its Epic offer, found again by id and namespace.
+    base.storeOffers = [
+      { provider: 'epic', appId: base.appId, namespace: base.namespace, name: base.name, url: base.url },
+    ];
     const now0 = window(e.promotions?.promotionalOffers).find(w => w.start <= now && w.end > now);
     if (now0) {
       current.push({ ...base, start: now0.start, end: now0.end });

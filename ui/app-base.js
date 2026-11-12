@@ -176,6 +176,7 @@ function game(id) {
       ...dlcState.values(),
       homeState.get(state.settings.storeCountry || 'US') || {},
       recState.get(state.settings.storeCountry || 'US') || {},
+      { items: [...(state.free?.current || []), ...(state.free?.upcoming || [])] },
     ]
       .flatMap(x => [...(x.items || []), ...(x.promotions || [])])
       .find(x => x.id === id),

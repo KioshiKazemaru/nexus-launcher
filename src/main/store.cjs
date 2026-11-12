@@ -111,6 +111,11 @@ class StoreService {
   fetchers() {
     return { steam: this.ctx.publicFetch, epic: this.epicFetch };
   }
+  // Games shown outside the catalogue (recommendations, giveaways): the hover
+  // preview asks gamePrices for their screenshots and description.
+  remember(items) {
+    for (const g of items || []) if (g?.id && !this.index.has(g.id)) this.index.set(g.id, g);
+  }
   find(id) {
     return (
       this.index.get(id) || catalog.find(x => x.id === id) || this.ctx.library.games.find(x => x.id === id)
@@ -414,6 +419,8 @@ class StoreService {
       .sort()
       .join(',');
     const old = this.recResults.get(country);
+    // Kept from the last run (also across restarts): its games are previewed too.
+    this.remember(old?.value?.items);
     const start = () => {
       if (this.recRunning.has(country)) return this.recRunning.get(country);
       const run = this.computeRecommendations(owned, country)
@@ -802,6 +809,7 @@ class StoreService {
     if (!force && this.free && Date.now() - this.free.checkedAt < 30 * 60 * 1000) return this.free;
     const country = this.country();
     this.free = await fetchFreeGames(this.ctx.publicFetch, country);
+    this.remember([...this.free.current, ...this.free.upcoming]);
     const fresh = newGiveaways(this.free.current, this.ctx.settings.seenGiveaways);
     if (fresh.length) {
       const first = !this.ctx.settings.seenGiveaways.length;
