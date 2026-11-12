@@ -16,6 +16,7 @@ const PRESENCE_SETTINGS = [
   'closeToTray',
   'startHidden',
   'overlay',
+  'overlaySteam',
   'activityRecord',
   'activityOnline',
   'activityGame',

@@ -7,6 +7,11 @@
 // Limits: a window cannot cover a game in exclusive full screen; games in a
 // window or borderless full screen are covered. The hotkey is taken only
 // while a game runs.
+//
+// Steam games have Steam's own overlay on the same Shift+Tab, with the same
+// friends and achievement notices: there Nexus stays out (no hotkey, no notices)
+// unless «Оверлей Nexus и в играх Steam» is on. The FPS counter, switched on by
+// the user, works everywhere.
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -55,10 +60,14 @@ class Overlay {
     const [id, r] = running.sort((a, b) => b[1].since - a[1].since)[0];
     return { id, name: r.name, provider: r.provider, since: r.since };
   }
+  // A Steam game shows Steam's overlay; Nexus's would open on the same keys.
+  steamOverlayGame() {
+    return this.current()?.provider === 'steam' && this.settings().overlaySteam !== true;
+  }
   // ---- hotkey ---------------------------------------------------------------------
   gamesChanged() {
     const playing = !!this.current();
-    if (playing && this.settings().overlay !== false) this.arm();
+    if (playing && this.settings().overlay !== false && !this.steamOverlayGame()) this.arm();
     else this.disarm();
     this.syncFps();
     if (!playing) {
@@ -135,7 +144,7 @@ class Overlay {
     else this.show();
   }
   show() {
-    if (!this.current()) return;
+    if (!this.current() || this.steamOverlayGame()) return;
     const area = this.display().bounds;
     const w = this.create('overlay', { ...area });
     w.setBounds(area);
@@ -207,7 +216,8 @@ class Overlay {
   }
   // Achievements and friends' activity while a game runs.
   event(ev) {
-    if (!this.current()) return;
+    // Steam shows its own notices in a Steam game.
+    if (!this.current() || this.steamOverlayGame()) return;
     const notice = { ...ev, type: ev.kind, kind: 'notice' };
     this.sendHud(notice);
     this.win('overlay')?.webContents.send('overlay-event', notice);
@@ -289,6 +299,9 @@ class Overlay {
     try {
       child?.kill();
     } catch {}
+    // The corner window keeps showing what it was last sent: the counter is taken away,
+    // or the next notice would bring the last FPS back.
+    this.win('hud')?.webContents.send('overlay-event', { kind: 'fps', off: true });
     this.win('hud')?.hide();
   }
   stop() {

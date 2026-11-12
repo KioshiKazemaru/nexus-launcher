@@ -86,6 +86,7 @@ const defaults = () => ({
   overlay: true,
   overlayHotkey: 'Shift+Tab',
   overlayFps: false,
+  overlaySteam: false,
 });
 
 class JsonFile {

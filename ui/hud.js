@@ -23,7 +23,9 @@ function show(ev) {
 }
 
 api.onOverlayEvent(ev => {
-  if (ev.kind === 'fps') {
+  // The counter was switched off: it goes away (later notices show the corner without it).
+  if (ev.kind === 'fps' && ev.off) fpsBox.hidden = true;
+  else if (ev.kind === 'fps') {
     fpsBox.hidden = false;
     fpsBox.textContent = ev.error ? 'FPS —' : `${ev.fps || 0} FPS`;
     fpsBox.title = ev.error || '';

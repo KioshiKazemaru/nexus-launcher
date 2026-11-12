@@ -550,8 +550,8 @@ test('overlay: the hotkey exists only while a game runs; notices reach the corne
   const overlay = new Overlay(ctx);
   overlay.start();
   assert.equal(T.shortcuts.size, 0);
-  running = { 'steam:1': { name: 'Игра', provider: 'steam', since: Date.now() } };
-  ctx.gameEvents.emit('start', { id: 'steam:1' });
+  running = { 'epic:1': { name: 'Игра', provider: 'epic', since: Date.now() } };
+  ctx.gameEvents.emit('start', { id: 'epic:1' });
   assert.ok(T.shortcuts.has('Shift+Tab'));
   T.shortcuts.get('Shift+Tab')();
   const win = overlay.win('overlay');
@@ -572,9 +572,49 @@ test('overlay: the hotkey exists only while a game runs; notices reach the corne
   overlay.reconfigure();
   assert.ok(T.shortcuts.has('Shift+F1') && !T.shortcuts.has('Shift+Tab'));
   running = {};
-  ctx.gameEvents.emit('stop', { id: 'steam:1' });
+  ctx.gameEvents.emit('stop', { id: 'epic:1' });
   assert.equal(T.shortcuts.size, 0, 'Shift+Tab is given back to other programs');
   assert.equal(win.isVisible(), false);
+  overlay.stop();
+});
+
+test('overlay: a Steam game keeps the Steam overlay — Nexus takes no hotkey and shows no notices', () => {
+  const T = electron.__test;
+  const ctx = context();
+  let running = {};
+  ctx.running = { snapshot: () => running, running: {} };
+  const overlay = new Overlay(ctx);
+  overlay.start();
+  running = { 'steam:1': { name: 'Игра Steam', provider: 'steam', since: Date.now() } };
+  ctx.gameEvents.emit('start', { id: 'steam:1' });
+  assert.equal(T.shortcuts.size, 0, 'Shift+Tab stays with Steam');
+  overlay.show();
+  assert.equal(overlay.win('overlay'), null, 'no Nexus overlay over the Steam one');
+  overlay.event({ kind: 'achievement', name: 'Первая кровь' });
+  assert.equal(overlay.win('hud'), null, 'Steam shows its own achievement notice');
+  // «Оверлей Nexus и в играх Steam»: for those who switched Steam's overlay off.
+  ctx.settings.overlaySteam = true;
+  overlay.reconfigure();
+  assert.ok(T.shortcuts.has('Shift+Tab'));
+  ctx.settings.overlaySteam = false;
+  overlay.reconfigure();
+  assert.equal(T.shortcuts.size, 0);
+  running = {};
+  ctx.gameEvents.emit('stop', { id: 'steam:1' });
+  overlay.stop();
+});
+
+test('overlay: the FPS counter switched off does not come back with the next notice', () => {
+  const ctx = context();
+  const running = { 'epic:1': { name: 'Игра', provider: 'epic', since: Date.now() } };
+  ctx.running = { snapshot: () => running, running: {} };
+  const overlay = new Overlay(ctx);
+  // As if PresentMon ran and the corner window showed a number.
+  overlay.sendHud({ kind: 'fps', fps: 60 });
+  overlay.fpsProc = { kill() {} };
+  overlay.stopFps();
+  const sent = overlay.win('hud').webContents.sent.map(([, ev]) => ev);
+  assert.deepEqual(sent.at(-1), { kind: 'fps', off: true }, 'the corner window is told to drop the counter');
   overlay.stop();
 });
 
