@@ -834,3 +834,16 @@ test('epic chunks: Node HTTP client first, Chromium (system proxy) when Node can
     globalThis.fetch = real;
   }
 });
+
+test('epic download state: overlapping saves do not fail and the last one wins', async () => {
+  const dir = tmp();
+  const e = new EpicInstaller({ publicFetch: async () => new Response('') });
+  const job = { installDir: dir };
+  await Promise.all(Array.from({ length: 20 }, (_, i) => e.writeState(job, { done: [i] })));
+  assert.deepEqual(await e.readState(job), { done: [19] });
+  assert.deepEqual(
+    fs.readdirSync(path.join(dir, '.egstore')).filter(n => n.endsWith('.tmp')),
+    [],
+    'no temporary files left'
+  );
+});

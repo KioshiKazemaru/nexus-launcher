@@ -913,11 +913,28 @@ class EpicInstaller {
       return null;
     }
   }
-  async writeState(job, data) {
-    await fsp.mkdir(path.dirname(this.stateFile(job)), { recursive: true });
-    const tmp = this.stateFile(job) + '.tmp';
-    await fsp.writeFile(tmp, JSON.stringify(data));
-    await fsp.rename(tmp, this.stateFile(job));
+  // One write at a time per file, each through its own temporary file: two saves
+  // that overlapped (16 workers, the final save) renamed the same .tmp and the
+  // second one failed with ENOENT at the very end of a download.
+  writeState(job, data) {
+    const file = this.stateFile(job);
+    const chains = (this.stateWrites ||= new Map());
+    const run = (chains.get(file) || Promise.resolve())
+      .catch(() => {})
+      .then(async () => {
+        await fsp.mkdir(path.dirname(file), { recursive: true });
+        const tmp = `${file}.${process.pid}.${(this.stateSeq = (this.stateSeq || 0) + 1)}.tmp`;
+        try {
+          await fsp.writeFile(tmp, JSON.stringify(data));
+          await fsp.rename(tmp, file);
+        } catch (e) {
+          await fsp.rm(tmp, { force: true }).catch(() => {});
+          throw e;
+        }
+      });
+    chains.set(file, run);
+    run.finally(() => chains.get(file) === run && chains.delete(file)).catch(() => {});
+    return run;
   }
   async oldManifest(job) {
     const item = job.itemFile ? JSON.parse(await fsp.readFile(job.itemFile, 'utf8').catch(() => '{}')) : {};
@@ -1115,7 +1132,11 @@ class EpicInstaller {
           this.sample(job);
           if (Date.now() - saveAt > 5000) {
             saveAt = Date.now();
-            await persist();
+            // Only where to continue after a pause: a failed save (antivirus, a
+            // full disk for a moment) costs a few chunks later, not the download.
+            await persist().catch(e =>
+              this.ctx.log?.warn('epic-install', `progress not saved: ${e.message}`)
+            );
             this.publish();
           }
         }
