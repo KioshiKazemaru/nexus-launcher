@@ -276,7 +276,8 @@ test('Epic: a game is downloaded, checked and registered like the Epic launcher 
 test('Epic: pause and continue (also after a restart) without downloading parts twice', () => {
   const dir = tmp();
   return withProgramData(dir, async () => {
-    const files = { 'a.bin': rnd(14 * 1024 * 1024 + 5), 'b.bin': rnd(700 * 1024) };
+    // More chunks than parallel workers, or the pause has nothing left to stop.
+    const files = { 'a.bin': rnd(24 * 1024 * 1024 + 5), 'b.bin': rnd(700 * 1024) };
     const srv = fakeEpic();
     srv.publish(files, 1);
     const { ctx } = epicCtx(dir, ownedGame());
@@ -802,4 +803,34 @@ test('Epic: moving a game to another folder updates its records', () => {
     assert.equal(dat.InstallationList[0].InstallLocation, to);
     assert.match(toasts.at(-1), /перенесена/);
   });
+});
+
+test('epic chunks: Node HTTP client first, Chromium (system proxy) when Node cannot reach the CDN', async () => {
+  const real = globalThis.fetch;
+  const viaChromium = [];
+  const ctx = { publicFetch: async u => (viaChromium.push(u), new Response('c')), log: { warn() {} } };
+  try {
+    globalThis.fetch = async () => new Response('n');
+    let e = new EpicInstaller(ctx);
+    assert.equal(await (await e.chunkFetch('https://cdn/a')).text(), 'n');
+    assert.equal(viaChromium.length, 0, 'fast path: Node');
+    // No route without the proxy: after three network failures the chunks go through Chromium.
+    globalThis.fetch = async () => {
+      throw new TypeError('fetch failed');
+    };
+    e = new EpicInstaller(ctx);
+    for (let i = 0; i < 3; i++) await assert.rejects(e.chunkFetch('https://cdn/b'));
+    assert.equal(await (await e.chunkFetch('https://cdn/b')).text(), 'c');
+    // Once Node has worked, a failing CDN is just a failing CDN.
+    globalThis.fetch = async () => new Response('n');
+    e = new EpicInstaller(ctx);
+    await e.chunkFetch('https://cdn/c');
+    globalThis.fetch = async () => {
+      throw new TypeError('fetch failed');
+    };
+    for (let i = 0; i < 4; i++) await assert.rejects(e.chunkFetch('https://cdn/c'));
+    assert.equal(e.nodeBlocked, undefined);
+  } finally {
+    globalThis.fetch = real;
+  }
 });

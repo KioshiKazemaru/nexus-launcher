@@ -19,7 +19,9 @@ const programData = () => process.env.ProgramData || 'C:\\ProgramData';
 const epicManifestDir = () => path.join(programData(), 'Epic', 'EpicGamesLauncher', 'Data', 'Manifests');
 const launcherInstalledFile = () =>
   path.join(programData(), 'Epic', 'UnrealEngineLauncher', 'LauncherInstalled.dat');
-const WORKERS = 8;
+// Parallel chunk downloads: 16 fill a fast line (measured on Epic's CDNs: 8 → 36 MB/s,
+// 16 → 42 MB/s, 32 no faster).
+const WORKERS = 16;
 const TMP = '.nexus-new';
 const gb = n => (n / 1024 ** 3).toFixed(1);
 
@@ -70,6 +72,7 @@ class EpicInstaller {
   constructor(ctx, { fetcher } = {}) {
     this.ctx = ctx;
     this.fetch = fetcher || ((u, o) => ctx.publicFetch(u, o));
+    this.injectedFetch = !!fetcher;
     this.jobs = new Map(); // gameId → job
     this.updates = new Map(); // gameId → new build version
     this.prepared = new Map(); // gameId → what the install window showed
@@ -1039,6 +1042,27 @@ class EpicInstaller {
     const old = score.get(base);
     score.set(base, old === undefined ? msPerKb : old * 0.8 + msPerKb * 0.2);
   }
+  // Chunks go through Node's own HTTP client: Chromium's (session.fetch) is about 8×
+  // slower for many parallel 1 MiB downloads (Styx 2 from Epic's CDNs: 4.5 MB/s with
+  // Chromium, 36 MB/s with Node, same 8 workers). Node does not use the system proxy:
+  // when it cannot reach the CDNs at all, the chunks go through Chromium again.
+  chunkFetch(url, options) {
+    if (this.injectedFetch || this.nodeBlocked) return this.fetch(url, options);
+    return fetch(url, options).then(
+      r => {
+        this.nodeWorks = true;
+        return r;
+      },
+      e => {
+        // A network failure (TypeError), not a timeout: no route without the proxy.
+        if (!this.nodeWorks && e?.name === 'TypeError' && (this.nodeFails = (this.nodeFails || 0) + 1) >= 3) {
+          this.nodeBlocked = true;
+          this.ctx.log?.warn('epic-install', 'CDN unreachable without the system proxy: chunks via Chromium');
+        }
+        throw e;
+      }
+    );
+  }
   async fetchChunk(assets, c) {
     let last;
     for (let i = 0; i < assets.manifests.length * 2; i++) {
@@ -1046,7 +1070,7 @@ class EpicInstaller {
       const base = order[i % order.length];
       const t0 = Date.now();
       try {
-        const r = await this.fetch(`${base}/${c.chunk.path}`, { signal: AbortSignal.timeout(60000) });
+        const r = await this.chunkFetch(`${base}/${c.chunk.path}`, { signal: AbortSignal.timeout(60000) });
         if (!r.ok) throw Error(`HTTP ${r.status}`);
         const raw = Buffer.from(await r.arrayBuffer());
         this.rate(base, (Date.now() - t0) / Math.max(1, raw.length / 1024));
